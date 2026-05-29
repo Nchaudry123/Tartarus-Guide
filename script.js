@@ -5,6 +5,10 @@ const locationReadout = document.getElementById("locationReadout");
 const pinLabel = document.getElementById("pinLabel");
 const phaseLabel = document.getElementById("phaseLabel");
 const altitudeLabel = document.getElementById("altitudeLabel");
+const mapCanvas = document.getElementById("mapCanvas");
+const mapContext = mapCanvas?.getContext("2d");
+const mapAttribution = document.getElementById("mapAttribution");
+const mapStatus = document.getElementById("mapStatus");
 const rootStyle = document.documentElement.style;
 
 if ("scrollRestoration" in window.history) {
@@ -25,9 +29,12 @@ const state = {
   accuracy: fallbackLocation.accuracy,
   hasPreciseLocation: false,
   scroll: 0,
+  smoothScroll: 0,
   side: "origin",
   flipProgress: 0,
   flipTarget: 0,
+  isFlipping: false,
+  flipSettlingFrames: 0,
 };
 
 const hasThree = Boolean(window.THREE);
@@ -47,6 +54,32 @@ let marker;
 let markerGlow;
 let startQuaternion;
 let targetQuaternion;
+let resizeFrame = 0;
+const mapState = {
+  key: "",
+  pendingKey: "",
+  ready: false,
+  zoom: 15,
+};
+const tileCache = new Map();
+const maxTileCacheSize = 160;
+
+const mapLayers = {
+  imagery: {
+    attribution: "Imagery © Esri",
+    desktopZoom: 15,
+    mobileZoom: 14,
+    url: (zoom, tileX, tileY) =>
+      `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${tileX}`,
+  },
+  ocean: {
+    attribution: "Ocean map © Esri",
+    desktopZoom: 8,
+    mobileZoom: 7,
+    url: (zoom, tileX, tileY) =>
+      `https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/${zoom}/${tileY}/${tileX}`,
+  },
+};
 
 if (hasThree) {
   scene = new THREE.Scene();
@@ -58,7 +91,7 @@ if (hasThree) {
     powerPreference: "high-performance",
   });
 
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, window.innerWidth < 760 ? 1.75 : 2.5));
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.setClearColor(0x020307, 1);
 
@@ -382,6 +415,179 @@ function formatCoord(value, axis) {
   return `${Math.abs(value).toFixed(5)} ${suffix}`;
 }
 
+function lonToTileX(lon, zoom) {
+  return ((lon + 180) / 360) * 2 ** zoom;
+}
+
+function latToTileY(lat, zoom) {
+  const safeLat = clamp(lat, -85.0511, 85.0511);
+  const radians = safeLat * Math.PI / 180;
+  return (0.5 - Math.log((1 + Math.sin(radians)) / (1 - Math.sin(radians))) / (4 * Math.PI)) * 2 ** zoom;
+}
+
+function wrapTileX(tileX, zoom) {
+  const tileCount = 2 ** zoom;
+  return ((tileX % tileCount) + tileCount) % tileCount;
+}
+
+function mapLayerFor(target) {
+  return target.isAntipode ? mapLayers.ocean : mapLayers.imagery;
+}
+
+function setMapLoading(isLoading) {
+  document.body.classList.toggle("map-loading", isLoading);
+  document.getElementById("cityMap")?.classList.toggle("is-loading", isLoading);
+  rootStyle.setProperty("--map-loading", isLoading ? "1" : "0");
+  if (mapStatus) {
+    mapStatus.textContent = isLoading ? "preparing map" : "map ready";
+  }
+}
+
+function loadMapImage(url) {
+  if (tileCache.has(url)) {
+    return tileCache.get(url);
+  }
+
+  const request = new Promise((resolve) => {
+    const image = new Image();
+    let settled = false;
+    const timeout = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      tileCache.delete(url);
+      resolve(null);
+    }, 5500);
+
+    const settle = (result) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      resolve(result);
+    };
+
+    image.crossOrigin = "anonymous";
+    image.decoding = "async";
+    image.onload = () => settle(image);
+    image.onerror = () => {
+      tileCache.delete(url);
+      settle(null);
+    };
+    image.src = url;
+  }).then((result) => {
+    if (!result) {
+      tileCache.delete(url);
+    }
+    return result;
+  });
+
+  tileCache.set(url, request);
+  if (tileCache.size > maxTileCacheSize) {
+    tileCache.delete(tileCache.keys().next().value);
+  }
+  return request;
+}
+
+function drawMapFallback(layer, width, height) {
+  const gradient = mapContext.createLinearGradient(0, 0, width, height);
+  if (layer === mapLayers.ocean) {
+    gradient.addColorStop(0, "#0a2635");
+    gradient.addColorStop(0.48, "#123d52");
+    gradient.addColorStop(1, "#061621");
+  } else {
+    gradient.addColorStop(0, "#1d2f22");
+    gradient.addColorStop(0.42, "#365034");
+    gradient.addColorStop(1, "#0b1811");
+  }
+  mapContext.fillStyle = gradient;
+  mapContext.fillRect(0, 0, width, height);
+
+  mapContext.globalAlpha = 0.14;
+  mapContext.strokeStyle = "#ffffff";
+  mapContext.lineWidth = 1;
+  for (let index = -width; index < width * 1.5; index += 92) {
+    mapContext.beginPath();
+    mapContext.moveTo(index, 0);
+    mapContext.lineTo(index + height * 0.45, height);
+    mapContext.stroke();
+  }
+  mapContext.globalAlpha = 1;
+}
+
+async function updateMapCanvas(target, reveal) {
+  if (!mapCanvas || !mapContext || reveal < 0.01) return;
+
+  const layer = mapLayerFor(target);
+  const zoom = window.innerWidth < 760 ? layer.mobileZoom : layer.desktopZoom;
+  const centerX = lonToTileX(target.lon, zoom);
+  const centerY = latToTileY(target.lat, zoom);
+  const tileSize = 256;
+  const columns = Math.ceil(window.innerWidth / tileSize) + 4;
+  const rows = Math.ceil(window.innerHeight / tileSize) + 4;
+  const startX = Math.floor(centerX - columns / 2);
+  const startY = Math.floor(centerY - rows / 2);
+  const key = `${layer.attribution}:${zoom}:${Math.round(centerX * 100)}:${Math.round(centerY * 100)}:${columns}:${rows}`;
+
+  rootStyle.setProperty("--map-drift-x", `${((centerX % 1) - 0.5) * -18}px`);
+  rootStyle.setProperty("--map-drift-y", `${((centerY % 1) - 0.5) * -18}px`);
+
+  if (mapState.key === key || mapState.pendingKey === key) return;
+  mapState.pendingKey = key;
+  mapState.ready = false;
+  rootStyle.setProperty("--map-ready", "0");
+  setMapLoading(true);
+
+  const tiles = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const tileX = startX + column;
+      const tileY = startY + row;
+      const maxTile = 2 ** zoom - 1;
+      if (tileY < 0 || tileY > maxTile) continue;
+
+      tiles.push({
+        left: window.innerWidth / 2 + (tileX - centerX) * tileSize,
+        top: window.innerHeight / 2 + (tileY - centerY) * tileSize,
+        url: layer.url(zoom, wrapTileX(tileX, zoom), tileY),
+      });
+    }
+  }
+
+  const images = await Promise.all(tiles.map((tile) => loadMapImage(tile.url)));
+  if (mapState.pendingKey !== key) return;
+
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  mapCanvas.width = Math.ceil(width * pixelRatio);
+  mapCanvas.height = Math.ceil(height * pixelRatio);
+  mapContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  mapContext.clearRect(0, 0, width, height);
+  mapContext.fillStyle = "#071016";
+  mapContext.fillRect(0, 0, width, height);
+
+  const loadedCount = images.filter(Boolean).length;
+  const minimumUsefulTiles = Math.max(4, Math.floor(tiles.length * 0.28));
+  if (loadedCount < minimumUsefulTiles) {
+    drawMapFallback(layer, width, height);
+  }
+
+  images.forEach((image, index) => {
+    if (!image) return;
+    const tile = tiles[index];
+    mapContext.drawImage(image, tile.left, tile.top, tileSize, tileSize);
+  });
+
+  mapState.key = key;
+  mapState.pendingKey = "";
+  mapState.ready = true;
+  mapState.zoom = zoom;
+  if (mapAttribution) {
+    mapAttribution.textContent = layer.attribution;
+  }
+  rootStyle.setProperty("--map-ready", "1");
+  setMapLoading(false);
+}
+
 function latLonToVector3(lat, lon, radius = 2.09) {
   if (!hasThree) return null;
   const phi = THREE.MathUtils.degToRad(90 - lat);
@@ -416,10 +622,10 @@ function activeTarget() {
   };
 }
 
-function targetRotationFor(lat, lon) {
+function targetRotationFor(lat, lon, focusVector = new THREE.Vector3(0, 0, 1)) {
   if (!hasThree) return null;
   const surface = latLonToVector3(lat, lon, 1).normalize();
-  return new THREE.Quaternion().setFromUnitVectors(surface, new THREE.Vector3(0, 0, 1));
+  return new THREE.Quaternion().setFromUnitVectors(surface, focusVector.normalize());
 }
 
 function updateLocationCopy() {
@@ -431,7 +637,7 @@ function updateLocationCopy() {
     const accuracy = state.accuracy ? ` within about ${Math.round(state.accuracy)} m` : "";
     locationReadout.textContent = `Location locked${accuracy}. ${source}.`;
   } else {
-    locationReadout.textContent = "Requesting location. Previewing San Francisco until permission is granted.";
+    locationReadout.textContent = "Finding your place on Earth. Previewing San Francisco until permission is granted.";
   }
 }
 
@@ -441,30 +647,38 @@ function updateStageCopy(target) {
   const antiCoords = `${formatCoord(anti.lat, "lat")}, ${formatCoord(anti.lon, "lon")}`;
   const accuracy = state.accuracy ? ` within about ${Math.round(state.accuracy)} m` : "";
 
+  if (state.isFlipping) {
+    pinLabel.textContent = "crossing";
+    locationReadout.textContent = "Zooming out to cross through Earth to the antipode.";
+    return;
+  }
+
   if (!state.hasPreciseLocation) {
-    pinLabel.textContent = target.isAntipode ? "return to preview" : state.scroll > 0.82 ? "open preview antipode" : "preview location";
+    pinLabel.textContent = target.isAntipode ? "return" : state.scroll > 0.82 ? "show otherside" : "preview";
     locationReadout.textContent = target.isAntipode
-      ? `Preview antipode. ${antiCoords}. Click the marker to return.`
+      ? `Preview otherside. ${antiCoords}. Click the marker to return.`
       : state.scroll > 0.82
-        ? `Preview location. ${source}. Click the marker to see the other side.`
+        ? `Preview location. ${source}. Click the marker to cross through.`
         : `Preview location. ${source}. Allow location access for your exact position.`;
     return;
   }
 
-  pinLabel.textContent = target.isAntipode ? "return to location" : state.scroll > 0.82 ? "open otherside" : target.label;
+  pinLabel.textContent = target.isAntipode ? "return" : state.scroll > 0.82 ? "show otherside" : target.label;
 
   if (!target.isAntipode) {
     locationReadout.textContent = state.scroll > 0.82
-      ? `Your location${accuracy}. ${source}. Click the marker to reveal the antipode.`
+      ? `Your location${accuracy}. ${source}. Click the marker to cross through.`
       : `Your location${accuracy}. ${source}.`;
     return;
   }
 
-  locationReadout.textContent = `OtherSide. ${antiCoords}. Click the marker to return to your location.`;
+  locationReadout.textContent = `OtherSide. ${antiCoords}. Click the marker to return.`;
 }
 
 function updateMissionHud(target) {
-  if (target.isAntipode) {
+  if (state.isFlipping) {
+    phaseLabel.textContent = "crossing";
+  } else if (target.isAntipode) {
     phaseLabel.textContent = "otherside";
   } else if (state.flipProgress > 0.04) {
     phaseLabel.textContent = "transit";
@@ -472,19 +686,25 @@ function updateMissionHud(target) {
     phaseLabel.textContent = state.hasPreciseLocation ? "origin" : "preview";
   }
 
-  if (state.scroll < 0.28) {
+  if (state.isFlipping) {
+    altitudeLabel.textContent = "global view";
+  } else if (state.scroll < 0.28) {
     altitudeLabel.textContent = "high orbit";
   } else if (state.scroll < 0.74) {
     altitudeLabel.textContent = "approach";
   } else {
-    altitudeLabel.textContent = "surface hover";
+    altitudeLabel.textContent = "city hover";
   }
 }
 
 function toggleOtherSide() {
-  if (state.scroll < 0.82) return;
+  if (state.scroll < 0.82 || state.isFlipping) return;
   state.side = state.side === "origin" ? "antipode" : "origin";
   state.flipTarget = state.side === "antipode" ? 1 : 0;
+  state.isFlipping = true;
+  state.flipSettlingFrames = 0;
+  mapState.ready = false;
+  rootStyle.setProperty("--map-ready", "0");
 }
 
 function setLocation(lat, lon, accuracy = null, precise = true) {
@@ -524,12 +744,19 @@ function requestLocation() {
 function updateScrollProgress() {
   const distance = experience.offsetHeight - window.innerHeight;
   state.scroll = clamp(window.scrollY / Math.max(distance, 1), 0, 1);
-  const drift = easeInOut(state.scroll);
-  const uiReveal = easeInOut(clamp((state.scroll - 0.12) / 0.32, 0, 1));
-  const journeyProgress = state.scroll * (1 - state.flipProgress) + state.flipProgress;
-  rootStyle.setProperty("--scroll-progress", state.scroll.toFixed(4));
+}
+
+function updateProgressStyles(progress) {
+  const drift = easeInOut(progress);
+  const uiReveal = easeInOut(clamp((progress - 0.12) / 0.32, 0, 1));
+  const logoOpacity = 0.94 * (1 - easeInOut(clamp(progress / 0.5, 0, 1)));
+  const hintOpacity = 0.72 * (1 - easeInOut(clamp(progress / 0.18, 0, 1)));
+  const journeyProgress = progress * (1 - state.flipProgress) + state.flipProgress;
+  rootStyle.setProperty("--scroll-progress", progress.toFixed(4));
   rootStyle.setProperty("--journey-progress", journeyProgress.toFixed(4));
   rootStyle.setProperty("--ui-reveal", uiReveal.toFixed(4));
+  rootStyle.setProperty("--logo-opacity", logoOpacity.toFixed(4));
+  rootStyle.setProperty("--hint-opacity", hintOpacity.toFixed(4));
   rootStyle.setProperty("--space-drift", `${(-42 + drift * 84).toFixed(2)}px`);
 }
 
@@ -537,9 +764,23 @@ function resize() {
   if (!renderer || !camera) return;
   const width = window.innerWidth;
   const height = window.innerHeight;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, width < 760 ? 1.75 : 2.5));
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
+  mapState.key = "";
+  mapState.pendingKey = "";
+  mapState.ready = false;
+  setMapLoading(false);
+  rootStyle.setProperty("--map-ready", "0");
+}
+
+function scheduleResize() {
+  if (resizeFrame) return;
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = 0;
+    resize();
+  });
 }
 
 function projectMarker() {
@@ -550,12 +791,12 @@ function projectMarker() {
   const worldPosition = new THREE.Vector3();
   marker.getWorldPosition(worldPosition);
   const projected = worldPosition.clone().project(camera);
-  const focus = easeInOut(clamp((state.scroll - 0.5) / 0.5, 0, 1));
+  const focus = easeInOut(clamp((state.smoothScroll - 0.5) / 0.5, 0, 1));
   const projectedX = (projected.x * 0.5 + 0.5) * window.innerWidth;
   const projectedY = (-projected.y * 0.5 + 0.5) * window.innerHeight;
   const x = projectedX * (1 - focus) + window.innerWidth * 0.5 * focus;
-  const y = projectedY * (1 - focus) + window.innerHeight * 0.48 * focus;
-  const visible = state.scroll > 0.5;
+  const y = projectedY * (1 - focus) + window.innerHeight * 0.5 * focus;
+  const visible = state.smoothScroll > 0.5;
 
   locationPin.style.left = `${clamp(x, 26, window.innerWidth - 26)}px`;
   locationPin.style.top = `${clamp(y, 26, window.innerHeight - 26)}px`;
@@ -564,50 +805,82 @@ function projectMarker() {
 
 function render() {
   updateScrollProgress();
+  state.smoothScroll += (state.scroll - state.smoothScroll) * 0.055;
+  if (Math.abs(state.scroll - state.smoothScroll) < 0.0005) {
+    state.smoothScroll = state.scroll;
+  }
+  updateProgressStyles(state.smoothScroll);
 
   if (!renderer || !scene || !camera) {
     requestAnimationFrame(render);
     return;
   }
 
-  state.flipProgress += (state.flipTarget - state.flipProgress) * 0.055;
+  state.flipProgress += (state.flipTarget - state.flipProgress) * 0.024;
   if (Math.abs(state.flipTarget - state.flipProgress) < 0.001) {
     state.flipProgress = state.flipTarget;
+    if (state.isFlipping) {
+      state.flipSettlingFrames += 1;
+      if (state.flipSettlingFrames > 38) {
+        state.isFlipping = false;
+      }
+    }
   }
 
-  const travel = easeInOut(state.scroll);
-  const locate = easeInOut(clamp(state.scroll / 0.96, 0, 1));
+  const travel = easeInOut(state.smoothScroll);
+  const locate = easeInOut(clamp(state.smoothScroll / 0.96, 0, 1));
+  const cityZoom = easeInOut(clamp((state.smoothScroll - 0.52) / 0.48, 0, 1));
   const flipEase = easeInOut(state.flipProgress);
-  const introSpin = (1 - locate) * (Math.PI * 2.15) + flipEase * Math.PI * 0.55;
+  const transitArc = Math.sin(flipEase * Math.PI);
+  const transitFade = 1 - transitArc;
+  const transitClear = state.isFlipping ? 0 : transitFade;
+  const mapPreload = easeInOut(clamp((cityZoom - 0.06) / 0.94, 0, 1)) * transitClear;
+  const mapReveal = easeInOut(clamp((cityZoom - 0.2) / 0.8, 0, 1)) * transitClear;
+  const introSpin = (1 - locate) * (Math.PI * 2.15) + transitArc * Math.PI * 1.35;
   const targetPoint = activeTarget();
-  const target = targetRotationFor(targetPoint.lat, targetPoint.lon);
+  rootStyle.setProperty("--map-reveal", mapReveal.toFixed(4));
+  if (!state.isFlipping && (state.flipProgress < 0.02 || state.flipProgress > 0.98)) {
+    updateMapCanvas(targetPoint, mapPreload);
+  } else if (mapState.ready) {
+    mapState.ready = false;
+    rootStyle.setProperty("--map-ready", "0");
+  }
 
   if (marker && markerGlow) {
     marker.position.copy(latLonToVector3(targetPoint.lat, targetPoint.lon));
     markerGlow.position.copy(marker.position);
   }
 
-  camera.position.z = 3.42 + Math.sin(Math.min(state.scroll, 0.32) / 0.32 * Math.PI) * 0.9 + locate * 0.32 + Math.sin(flipEase * Math.PI) * 0.76;
-  camera.position.y = 1.56 - travel * 1.18 + Math.sin(flipEase * Math.PI) * 0.14;
-  earthGroup.position.y = -1.96 + travel * 1.42;
-  earthGroup.scale.setScalar(1.5 - travel * 0.06 - Math.sin(flipEase * Math.PI) * 0.08);
+  camera.position.z = 3.42 + Math.sin(Math.min(state.smoothScroll, 0.32) / 0.32 * Math.PI) * 0.9 + locate * 0.06 - cityZoom * 0.72 + transitArc * 2.38;
+  camera.position.y = 1.56 - travel * 1.08 - cityZoom * 0.2 + transitArc * 0.62;
+  earthGroup.position.y = -1.96 + travel * 1.46 + cityZoom * 0.08 - transitArc * 0.3;
+  earthGroup.scale.setScalar(1.5 + cityZoom * 0.34 - transitArc * 0.42);
+  const cameraFocus = new THREE.Vector3(
+    0,
+    (camera.position.y - earthGroup.position.y) / Math.max(camera.position.z, 0.001),
+    1
+  ).normalize();
+  const target = targetRotationFor(targetPoint.lat, targetPoint.lon, cameraFocus);
   startQuaternion.setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(72), introSpin, 0, "XYZ"));
   targetQuaternion.copy(target);
   earthGroup.quaternion.slerpQuaternions(startQuaternion, targetQuaternion, locate);
   clouds.rotation.y += 0.00075;
+  earthGroup.rotation.z = transitArc * 0.18;
   orbitLines.rotation.z += 0.0005;
   orbitLines.children.forEach((line, index) => {
-    line.material.opacity = (0.05 + (1 - locate) * 0.1) * (1 - index * 0.18);
+    line.material.opacity = (0.03 + (1 - locate) * 0.1 + transitArc * 0.18) * (1 - cityZoom * 0.62) * (1 - index * 0.18);
   });
-  nightLights.material.opacity = 0.07 + (1 - locate) * 0.08;
-  atmosphere.material.opacity = 0.14 + locate * 0.04;
-  stars.rotation.y += 0.00008 + state.scroll * 0.00008;
+  nightLights.material.opacity = 0.06 + (1 - locate) * 0.08 + cityZoom * 0.035 + transitArc * 0.08;
+  atmosphere.material.opacity = 0.14 + locate * 0.035 - cityZoom * 0.025 + transitArc * 0.08;
+  stars.rotation.y += 0.00008 + state.smoothScroll * 0.00008;
   stars.rotation.x = travel * -0.045;
   nebula.rotation.z = travel * 0.035;
-  nebula.position.x = (state.scroll - 0.5) * -0.42;
+  nebula.position.x = (state.smoothScroll - 0.5) * -0.42;
   nebula.position.y = travel * 0.18;
   sunGlow.material.opacity = 0.42 - travel * 0.12;
   sunGlow.position.x = -4.6 + travel * 0.42;
+  marker.scale.setScalar(1 + cityZoom * 0.28 + transitArc * 0.8);
+  markerGlow.scale.setScalar(1 + cityZoom * 0.72 + transitArc * 1.3);
   marker.visible = locate > 0.42;
   markerGlow.visible = marker.visible;
 
@@ -615,12 +888,14 @@ function render() {
   updateMissionHud(targetPoint);
   projectMarker();
   locationPin.classList.toggle("is-ready", state.scroll > 0.82 && state.flipProgress < 0.02);
+  locationPin.classList.toggle("is-crossing", state.isFlipping);
+  locationPin.disabled = state.isFlipping;
   locationPin.setAttribute("aria-label", state.side === "origin" ? "Go to the other side" : "Return to your location");
   renderer.render(scene, camera);
   requestAnimationFrame(render);
 }
 
-window.addEventListener("resize", resize);
+window.addEventListener("resize", scheduleResize);
 window.addEventListener("scroll", updateScrollProgress, { passive: true });
 locationPin.addEventListener("click", toggleOtherSide);
 

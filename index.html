@@ -15,6 +15,11 @@
       <section class="scene" id="scene" aria-label="OtherSide location flyover">
         <canvas id="earthCanvas" aria-hidden="true"></canvas>
         <div class="earth-fallback" id="earthFallback" aria-hidden="true"></div>
+        <div class="city-map" id="cityMap" aria-hidden="true">
+          <canvas class="map-canvas" id="mapCanvas"></canvas>
+          <span class="map-status" id="mapStatus">preparing map</span>
+          <span class="map-attribution" id="mapAttribution">Imagery © Esri</span>
+        </div>
         <div class="shade"></div>
         <div class="mission-panel" aria-hidden="true">
           <span id="phaseLabel">origin</span>
@@ -27,6 +32,7 @@
         <button class="location-pin" id="locationPin" type="button" aria-label="Go to the other side">
           <span id="pinLabel">your location</span>
         </button>
+        <p class="scroll-hint" aria-hidden="true">scroll to begin</p>
         <p class="location-readout" id="locationReadout">Locating...</p>
       </section>
     </main>
