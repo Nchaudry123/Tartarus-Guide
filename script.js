@@ -12,6 +12,7 @@ const chatModeLabel = document.getElementById("chatModeLabel");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const appShell = document.querySelector(".app-shell");
+const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 
 const recent = [];
 
@@ -133,7 +134,7 @@ function scrollMessagesToBottom() {
 async function requestAnswer(question) {
   if (apiAvailable) {
     try {
-      const response = await fetch("/api/chat", {
+      const response = await fetch(chatApiUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ question }),
@@ -164,7 +165,7 @@ async function requestAnswer(question) {
 
 async function checkApiStatus() {
   try {
-    const response = await fetch("/api/chat", {
+    const response = await fetch(chatApiUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question: "status check" }),

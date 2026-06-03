@@ -39,6 +39,16 @@ http://127.0.0.1:4173/
 
 This preview uses [index.html](</Users/namir/Documents/New project/index.html>), [styles.css](</Users/namir/Documents/New project/styles.css>), and [script.js](</Users/namir/Documents/New project/script.js>). It has the Persona-inspired chatbot UI and mock answers, so you can view and test the interface without credentials.
 
+If the static site is hosted separately from the API, set the API URL before [script.js](</Users/namir/Documents/New project/script.js>) runs:
+
+```html
+<script>
+  window.TARTARUS_API_URL = "https://your-vercel-app.vercel.app/api/chat";
+</script>
+```
+
+Without that value, the static preview calls `/api/chat` and falls back to mock answers when no API exists.
+
 Next.js app:
 
 ```bash
@@ -197,7 +207,32 @@ Response:
 }
 ```
 
-To connect a real backend later, set `RAG_CHAT_ENDPOINT` in `.env`. If it is not set, [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>) returns mock Persona-style responses.
+The Vercel/Next route in [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>) can run RAG directly when these environment variables are present:
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `EMBEDDING_API_KEY`
+- `CHAT_API_KEY`
+
+It retrieves structured facts and vector chunks from Supabase, asks an OpenAI-compatible chat API for a JSON response, and returns the card format above. If credentials are missing, retrieval fails, or `USE_MOCK_CHAT=true`, it falls back to mock Persona-style responses.
+
+For Groq chat generation, set:
+
+```bash
+CHAT_BASE_URL=https://api.groq.com/openai/v1
+CHAT_MODEL=llama-3.1-8b-instant
+CHAT_API_KEY=your-groq-api-key
+```
+
+Embeddings still need an embeddings provider such as OpenAI:
+
+```bash
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+```
+
+If you deploy RAG as a separate service later, set `RAG_CHAT_ENDPOINT`; the route will call that first before trying direct Supabase retrieval.
 
 To change mock responses, edit the `mockResponse` function in [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>) for the Next app, or `mockAnswer` in [script.js](</Users/namir/Documents/New project/script.js>) for the static preview.
 
@@ -238,5 +273,23 @@ npm run typecheck
 1. Push the repo to GitHub.
 2. Import the project in Vercel.
 3. Add environment variables in Vercel Project Settings.
-4. Set `RAG_CHAT_ENDPOINT` if the RAG backend is deployed separately.
+4. Run the Supabase migration and ingest sources before expecting source-backed answers.
 5. Deploy with the default Next.js settings.
+
+Minimum Vercel environment variables for live direct RAG:
+
+```bash
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+EMBEDDING_API_KEY=...
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_DIMENSIONS=1536
+CHAT_API_KEY=...
+CHAT_BASE_URL=https://api.groq.com/openai/v1
+CHAT_MODEL=llama-3.1-8b-instant
+USE_MOCK_CHAT=false
+ALLOWED_ORIGINS=https://nchaudry123.github.io
+```
+
+`ALLOWED_ORIGINS` is optional. Use it when GitHub Pages or another frontend calls the Vercel API route from a different origin. If omitted, the route allows all origins.
