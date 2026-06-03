@@ -1,6 +1,29 @@
 import { NextResponse } from "next/server";
 import type { ChatRequest, ChatResponse } from "../../../lib/types";
 
+export const runtime = "nodejs";
+
+function corsHeaders(request: Request): HeadersInit {
+  const origin = request.headers.get("origin");
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? "*")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const allowOrigin =
+    allowedOrigins.includes("*") || !origin
+      ? "*"
+      : allowedOrigins.includes(origin)
+        ? origin
+        : allowedOrigins[0] ?? "*";
+
+  return {
+    "access-control-allow-origin": allowOrigin,
+    "access-control-allow-methods": "POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "vary": "Origin",
+  };
+}
+
 const mockSources = [
   {
     title: "Persona 3 Reload Wiki Guide",
@@ -101,7 +124,74 @@ function mockResponse(question: string): ChatResponse {
   };
 }
 
-async function realRagResponse(question: string, conversationId?: string): Promise<ChatResponse | null> {
+function hasDirectRagEnv(): boolean {
+  return Boolean(
+    process.env.SUPABASE_URL &&
+      process.env.SUPABASE_SERVICE_ROLE_KEY &&
+      process.env.EMBEDDING_API_KEY &&
+      process.env.CHAT_API_KEY,
+  );
+}
+
+function extractJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const start = text.indexOf("{");
+    const end = text.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(text.slice(start, end + 1));
+    }
+    throw new Error("Chat model did not return JSON.");
+  }
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeRagResponse(raw: unknown, fallbackSources: ChatResponse["sources"]): ChatResponse {
+  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const sections = Array.isArray(value.sections)
+    ? value.sections
+        .map((section) => {
+          const item = section && typeof section === "object" ? (section as Record<string, unknown>) : {};
+          const title = asString(item.title);
+          const content = asString(item.content);
+          return title && content ? { title, content } : null;
+        })
+        .filter((section): section is { title: string; content: string } => Boolean(section))
+    : [];
+
+  const tables = Array.isArray(value.tables)
+    ? value.tables
+        .map((table) => {
+          const item = table && typeof table === "object" ? (table as Record<string, unknown>) : {};
+          const title = asString(item.title);
+          const columns = Array.isArray(item.columns) ? item.columns.filter((column): column is string => typeof column === "string") : [];
+          const rows = Array.isArray(item.rows)
+            ? item.rows
+                .map((row) => (Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === "string") : []))
+                .filter((row) => row.length > 0)
+            : [];
+          return title && columns.length && rows.length ? { title, columns, rows } : null;
+        })
+        .filter((table): table is { title: string; columns: string[]; rows: string[][] } => Boolean(table))
+    : [];
+
+  const confidence = typeof value.confidence === "number" ? Math.max(0, Math.min(1, value.confidence)) : 0.55;
+
+  return {
+    answer: asString(value.answer) ?? "I found source context, but the guide terminal could not format a complete answer.",
+    sections,
+    tables,
+    sources: fallbackSources,
+    confidence,
+    missingInfo: asString(value.missingInfo) ?? "No additional missing information was reported.",
+  };
+}
+
+async function externalRagResponse(question: string, conversationId?: string): Promise<ChatResponse | null> {
   const endpoint = process.env.RAG_CHAT_ENDPOINT;
   if (!endpoint || process.env.USE_MOCK_CHAT === "true") {
     return null;
@@ -122,19 +212,84 @@ async function realRagResponse(question: string, conversationId?: string): Promi
   return (await response.json()) as ChatResponse;
 }
 
+async function directRagResponse(question: string): Promise<ChatResponse | null> {
+  if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
+    return null;
+  }
+
+  const [{ buildContext, formatContext }, { createChatCompletion }] = await Promise.all([
+    import("../../../src/retrieval/buildContext.js"),
+    import("../../../src/db/client.js"),
+  ]);
+
+  const context = await buildContext(question);
+  if (!context.facts.length && !context.chunks.length) {
+    return {
+      answer:
+        "I could not find source-backed records for that question yet. Run ingestion or add a more specific Persona 3 Reload source before trusting an exact answer.",
+      sections: [
+        {
+          title: "No Match",
+          content:
+            "The route is connected, but Supabase did not return structured facts or vector chunks for this query.",
+        },
+      ],
+      sources: [],
+      confidence: 0.2,
+      missingInfo: "No matching facts or chunks were retrieved from the RAG database.",
+    };
+  }
+
+  const systemPrompt = `You answer Persona 3 Reload guide questions using only retrieved context.
+
+Return only JSON with this shape:
+{
+  "answer": "short direct answer",
+  "sections": [{"title": "string", "content": "string"}],
+  "tables": [{"title": "string", "columns": ["string"], "rows": [["string"]]}],
+  "confidence": 0.0,
+  "missingInfo": "string"
+}
+
+Rules:
+- Use structured facts first, then retrieved chunks.
+- Be practical, concise, and strategy-first.
+- Do not invent exact weaknesses, fusions, dates, floors, rewards, or boss mechanics.
+- If the retrieved context is incomplete, say what is missing in missingInfo.
+- Keep section content short enough for a mobile chat card.`;
+
+  const userPrompt = `Question: ${question}
+
+${formatContext(context)}
+
+Use only this retrieved context.`;
+
+  const messages = [
+    { role: "system" as const, content: systemPrompt },
+    { role: "user" as const, content: userPrompt },
+  ];
+
+  const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
+  return normalizeRagResponse(extractJson(rawAnswer), context.sources);
+}
+
 export async function POST(request: Request) {
   const body = (await request.json()) as Partial<ChatRequest>;
   const question = body.question?.trim();
 
   if (!question) {
-    return NextResponse.json({ error: "Question is required." }, { status: 400 });
+    return NextResponse.json({ error: "Question is required." }, { status: 400, headers: corsHeaders(request) });
   }
 
   try {
-    const rag = await realRagResponse(question, body.conversationId);
-    return NextResponse.json(rag ?? mockResponse(question));
+    const rag = (await externalRagResponse(question, body.conversationId)) ?? (await directRagResponse(question));
+    return NextResponse.json(rag ?? mockResponse(question), { headers: corsHeaders(request) });
   } catch (error) {
     console.error(error);
-    return NextResponse.json(mockResponse(question));
+    return NextResponse.json(mockResponse(question), { headers: corsHeaders(request) });
   }
+}
+
+export async function OPTIONS(request: Request) {
+  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
