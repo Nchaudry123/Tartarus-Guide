@@ -20,7 +20,7 @@ create table if not exists chunks (
   chunk_text text not null,
   chunk_hash text unique not null,
   token_count integer not null,
-  embedding vector(1536),
+  embedding vector(384),
   created_at timestamp with time zone not null default now()
 );
 
@@ -111,7 +111,7 @@ create index if not exists chunks_embedding_idx
   with (lists = 100);
 
 create or replace function match_chunks(
-  query_embedding vector(1536),
+  query_embedding vector(384),
   match_count integer default 8,
   similarity_threshold float default 0.72
 )
