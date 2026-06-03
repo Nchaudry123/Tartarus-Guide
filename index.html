@@ -5,43 +5,127 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="OtherSide finds your antipode from your current location with a cinematic Earth scroll experience."
+      content="Tartarus Guide is a Persona 3 Reload inspired guide chatbot interface."
     />
-    <title>otherside</title>
+    <title>Tartarus Guide</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <main class="experience" id="experience" aria-live="polite">
-      <section class="scene" id="scene" aria-label="OtherSide location flyover">
-        <canvas id="earthCanvas" aria-hidden="true"></canvas>
-        <div class="earth-fallback" id="earthFallback" aria-hidden="true"></div>
-        <div class="city-map" id="cityMap" aria-hidden="true">
-          <canvas class="map-canvas" id="mapCanvas"></canvas>
-          <span class="map-status" id="mapStatus">preparing map</span>
-          <span class="map-attribution" id="mapAttribution">Imagery © Esri</span>
+    <section class="entrance-screen" id="entranceScreen" aria-label="Tartarus Guide entrance">
+      <div class="entrance-art" aria-hidden="true"></div>
+      <div class="intro-flash" aria-hidden="true"></div>
+      <div class="intro-wipes" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <div class="intro-shards" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div class="intro-labels" aria-hidden="true">
+        <span>PAUSE</span>
+        <span>GUIDE</span>
+        <span>RECORDS</span>
+      </div>
+      <div class="entrance-copy">
+        <p>SEES Archive</p>
+        <h1>Tartarus <span>Guide</span></h1>
+        <strong>Persona 3 Reload strategy terminal</strong>
+        <button type="button" id="enterApp">Enter Records</button>
+      </div>
+    </section>
+
+    <main class="app-shell">
+      <div class="persona-bg" aria-hidden="true">
+        <img class="bg-art bg-art-main" src="./assets/chat-blue-wide.jpeg" alt="" />
+        <img class="bg-art bg-art-secondary" src="./assets/chat-equip.jpeg" alt="" />
+        <span class="orb"></span>
+        <span class="word word-guide">GUIDE</span>
+        <span class="word word-tartarus">TARTARUS</span>
+        <i></i><i></i><i></i><i></i><i></i>
+      </div>
+
+      <button class="menu-toggle" id="menuToggle" type="button" aria-label="Open quick menu" aria-expanded="false" aria-controls="sidePanel">☰</button>
+
+      <aside class="side-panel" id="sidePanel" aria-label="Quick menu">
+        <div class="panel-head">
+          <p>Quick Menu</p>
+          <h2>Records</h2>
         </div>
-        <div class="shade"></div>
-        <div class="mission-panel" aria-hidden="true">
-          <span id="phaseLabel">origin</span>
-          <div class="phase-track">
-            <i id="phaseProgress"></i>
+        <div class="rag-status" id="ragStatus">
+          <span></span>
+          <strong>Preview Mode</strong>
+          <small>Mock responses active</small>
+        </div>
+        <nav class="category-list" id="categoryList">
+          <button type="button" data-prompt="What enemy weaknesses should I know early?">Shadows</button>
+          <button type="button" data-prompt="How do I prepare for the next full moon boss?">Bosses</button>
+          <button type="button" data-prompt="How do I fuse Jack Frost?">Personas</button>
+          <button type="button" data-prompt="Which Social Links should I prioritize?">Social Links</button>
+          <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Requests</button>
+          <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus</button>
+        </nav>
+        <section>
+          <div class="recent-head">
+            <h3>Recent</h3>
+            <button type="button" id="clearChat">Clear</button>
           </div>
-          <span id="altitudeLabel">low orbit</span>
+          <div class="recent-list" id="recentList">
+            <p>Your last questions will appear here.</p>
+          </div>
+        </section>
+      </aside>
+
+      <section class="chat-stage">
+        <header class="hero">
+          <div>
+            <p class="eyebrow">Strategy Terminal</p>
+            <h1>Tartarus <span>Guide</span></h1>
+            <p class="subtitle">Ask anything about Persona 3 Reload.</p>
+          </div>
+          <div class="mode-card">
+            <strong>Source-backed mode</strong>
+            <span>Static preview uses mock answers. Connect the Next API route to your RAG service for live retrieval.</span>
+          </div>
+        </header>
+
+        <div class="suggestions" id="suggestions">
+          <button type="button" data-prompt="What is Dancing Hand weak to?">Enemy Weakness</button>
+          <button type="button" data-prompt="How do I beat Priestess?">Boss Strategy</button>
+          <button type="button" data-prompt="How do I fuse Jack Frost?">Fusion Help</button>
+          <button type="button" data-prompt="Which Social Links should I prioritize this week?">Social Links</button>
+          <button type="button" data-prompt="What party should I use for Tartarus?">Tartarus Prep</button>
+          <button type="button" data-prompt="Give me beginner tips.">Beginner Tips</button>
         </div>
-        <h1>otherside</h1>
-        <button class="location-pin" id="locationPin" type="button" aria-label="Go to the other side">
-          <span id="pinLabel">your location</span>
-        </button>
-        <p class="scroll-hint" aria-hidden="true">scroll to begin</p>
-        <p class="location-readout" id="locationReadout">Locating...</p>
+
+        <section class="chat-window" aria-live="polite">
+        <div class="chat-toolbar">
+            <span>Ask naturally. Scroll through the record log.</span>
+            <strong id="chatModeLabel">Mock API</strong>
+          </div>
+          <div class="messages" id="messages">
+            <div class="empty-state">
+              <div class="seal">Ⅲ</div>
+              <h2>What do you need help with?</h2>
+              <p>Try asking for a weakness, boss strategy, fusion route, Social Link choice, Elizabeth request, or daily-life tip.</p>
+              <div class="empty-examples">
+                <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
+                <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+                <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+              </div>
+            </div>
+          </div>
+
+          <form class="chat-form" id="chatForm">
+            <label class="sr-only" for="questionInput">Ask a Persona 3 Reload question</label>
+            <input id="questionInput" autocomplete="off" placeholder="Ask about weaknesses, bosses, fusion, Social Links..." />
+            <button type="submit" aria-label="Send question">➜</button>
+          </form>
+        </section>
       </section>
     </main>
 
-    <noscript>
-      <div class="noscript">OtherSide needs JavaScript to request location and animate Earth.</div>
-    </noscript>
-
-    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="./script.js"></script>
   </body>
 </html>
