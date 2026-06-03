@@ -1,0 +1,276 @@
+const form = document.getElementById("chatForm");
+const input = document.getElementById("questionInput");
+const messages = document.getElementById("messages");
+const suggestions = document.getElementById("suggestions");
+const categoryList = document.getElementById("categoryList");
+const recentList = document.getElementById("recentList");
+const menuToggle = document.getElementById("menuToggle");
+const sidePanel = document.getElementById("sidePanel");
+const clearChat = document.getElementById("clearChat");
+const ragStatus = document.getElementById("ragStatus");
+const chatModeLabel = document.getElementById("chatModeLabel");
+const entranceScreen = document.getElementById("entranceScreen");
+const enterApp = document.getElementById("enterApp");
+const appShell = document.querySelector(".app-shell");
+const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
+
+const recent = [];
+
+const source = {
+  title: "Persona 3 Reload Wiki Guide",
+  domain: "ign.com",
+  url: "https://www.ign.com/wikis/persona-3-reload/",
+};
+
+let apiAvailable = false;
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function mockAnswer(question) {
+  const normalized = question.toLowerCase();
+  if (normalized.includes("dancing hand") || normalized.includes("weak")) {
+    return {
+      answer: "Preview mode: the UI is ready, but the live RAG database is not connected in this static page. The real answer will pull exact weakness facts first, then confirm with source chunks.",
+      sections: [
+        ["Battle Read", "Ask for an enemy by name and the backend will return weakness, resistances, location notes, and a short practical opener."],
+        ["Player Advice", "Once weakness is confirmed, knock the shadow down, chain All-Out Attacks, and conserve SP if you are deep in Tartarus."],
+      ],
+      table: [["Dancing Hand", "Connect RAG to confirm", "Mock preview"]],
+      missing: "Live Supabase facts and chunks are not connected in this static preview.",
+      confidence: "42%",
+    };
+  }
+  if (normalized.includes("priestess") || normalized.includes("boss")) {
+    return {
+      answer: "Boss answers will prioritize sourced mechanics and practical turn priorities. Unsupported party advice should be marked clearly.",
+      sections: [
+        ["Strategy Flow", "Identify the boss, pull supported mechanics, call out dangerous turns, then give a short step plan."],
+        ["Party Check", "Recommended party cards appear only when the source directly supports them or when uncertainty is labeled."],
+      ],
+      missing: "No live boss facts were retrieved because this is the static mock API.",
+      confidence: "45%",
+    };
+  }
+  if (normalized.includes("fusion") || normalized.includes("jack frost")) {
+    return {
+      answer: "Fusion help is wired as a first-class response type. The real backend should avoid guessing recipes unless a source-backed fusion fact is retrieved.",
+      sections: [["Fusion Rule", "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the database is missing them, the answer should say so."]],
+      missing: "Connect the RAG backend for exact Persona fusion recipes.",
+      confidence: "40%",
+    };
+  }
+  return {
+    answer: "This is the frontend preview for Tartarus Guide. The interface is ready for natural Persona 3 Reload questions; connect the real RAG backend to replace this mock response.",
+    sections: [
+      ["What Works Now", "The chat UI, suggested prompts, loading state, source display, quick menu, and mock response format are in place."],
+      ["Next Connection", "Point the Next `/api/chat` route at the Supabase retrieval pipeline or an external backend endpoint."],
+    ],
+    missing: "Live retrieval is not enabled yet.",
+    confidence: "50%",
+  };
+}
+
+function addUserMessage(text) {
+  clearEmpty();
+  const node = document.createElement("article");
+  node.className = "message user-message";
+  node.textContent = text;
+  messages.appendChild(node);
+  scrollMessagesToBottom();
+}
+
+function addLoading() {
+  const node = document.createElement("div");
+  node.className = "loading";
+  node.id = "loading";
+  node.innerHTML = "<span></span><span></span><span></span><strong>Scanning Tartarus records...</strong>";
+  messages.appendChild(node);
+  scrollMessagesToBottom();
+}
+
+function addAssistantMessage(response) {
+  document.getElementById("loading")?.remove();
+  const sections = response.sections
+    .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(content)}</p></section>`)
+    .join("");
+  const table = response.table
+    ? `<div class="table-wrap"><h3>Weakness Preview</h3><table><thead><tr><th>Enemy</th><th>Weakness</th><th>Source State</th></tr></thead><tbody>${response.table
+        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+        .join("")}</tbody></table></div>`
+    : "";
+  const node = document.createElement("article");
+  node.className = "guide-card";
+  node.innerHTML = `
+    <div class="guide-head">
+      <div><p>Guide Response</p><h2>Analysis</h2></div>
+      <div class="confidence"><span>Confidence</span><strong>${escapeHtml(response.confidence)}</strong></div>
+    </div>
+    <p class="answer">${escapeHtml(response.answer)}</p>
+    <div class="warning">${escapeHtml(response.missing)}</div>
+    <div class="section-grid">${sections}</div>
+    ${table}
+    <footer>
+      <h3>Sources</h3>
+      <a href="${source.url}" target="_blank" rel="noreferrer"><strong>${escapeHtml(source.title)}</strong><span>${escapeHtml(source.domain)}</span></a>
+    </footer>
+  `;
+  messages.appendChild(node);
+  scrollMessagesToBottom();
+}
+
+function scrollMessagesToBottom() {
+  requestAnimationFrame(() => {
+    messages.scrollTop = messages.scrollHeight;
+  });
+}
+
+async function requestAnswer(question) {
+  if (apiAvailable) {
+    try {
+      const response = await fetch(chatApiUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+
+      if (!response.ok) {
+        throw new Error("No chat API available.");
+      }
+
+      const data = await response.json();
+      return {
+        answer: data.answer || "The chat API returned no answer.",
+        sections: (data.sections || []).map((section) => [section.title, section.content]),
+        table: data.tables?.[0]?.rows,
+        missing: data.missingInfo || "No missing information reported.",
+        confidence:
+          typeof data.confidence === "number"
+            ? `${Math.round(data.confidence * 100)}%`
+            : "N/A",
+      };
+    } catch {
+      setApiStatus(false);
+    }
+  }
+
+  return mockAnswer(question);
+}
+
+async function checkApiStatus() {
+  try {
+    const response = await fetch(chatApiUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ question: "status check" }),
+    });
+    setApiStatus(response.ok);
+  } catch {
+    setApiStatus(false);
+  }
+}
+
+function setApiStatus(isAvailable) {
+  apiAvailable = isAvailable;
+  ragStatus.classList.toggle("is-live", isAvailable);
+  ragStatus.querySelector("strong").textContent = isAvailable ? "RAG Online" : "Preview Mode";
+  ragStatus.querySelector("small").textContent = isAvailable ? "Live retrieval active" : "Mock responses active";
+  chatModeLabel.textContent = isAvailable ? "Live API" : "Mock API";
+}
+
+function clearEmpty() {
+  messages.querySelector(".empty-state")?.remove();
+}
+
+function renderEmptyState() {
+  messages.innerHTML = `
+    <div class="empty-state">
+      <div class="seal">Ⅲ</div>
+      <h2>What do you need help with?</h2>
+      <p>Try asking for a weakness, boss strategy, fusion route, Social Link choice, Elizabeth request, or daily-life tip.</p>
+      <div class="empty-examples">
+        <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
+        <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+        <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+      </div>
+    </div>
+  `;
+}
+
+function updateRecent(question) {
+  recent.unshift(question);
+  recent.splice(5);
+  recentList.innerHTML = "";
+  recent.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = item;
+    button.addEventListener("click", () => ask(item));
+    recentList.appendChild(button);
+  });
+}
+
+async function ask(question) {
+  const trimmed = question.trim();
+  if (!trimmed) return;
+  setMenu(false);
+  addUserMessage(trimmed);
+  updateRecent(trimmed);
+  input.value = "";
+  addLoading();
+  const response = await requestAnswer(trimmed);
+  window.setTimeout(() => addAssistantMessage(response), 250);
+}
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  ask(input.value);
+});
+
+[suggestions, categoryList].forEach((group) => {
+  group.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-prompt]");
+    if (button) ask(button.dataset.prompt);
+  });
+});
+
+function setMenu(open) {
+  sidePanel.classList.toggle("is-open", open);
+  menuToggle.textContent = open ? "×" : "☰";
+  menuToggle.setAttribute("aria-label", open ? "Close quick menu" : "Open quick menu");
+  menuToggle.setAttribute("aria-expanded", String(open));
+}
+
+menuToggle.addEventListener("click", () => setMenu(!sidePanel.classList.contains("is-open")));
+
+enterApp.addEventListener("click", () => {
+  if (entranceScreen.classList.contains("is-exiting")) return;
+  enterApp.disabled = true;
+  entranceScreen.classList.add("is-exiting");
+  appShell?.classList.add("is-entering");
+  window.setTimeout(() => {
+    entranceScreen.classList.add("is-hidden");
+    input.focus();
+  }, 720);
+});
+
+messages.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-prompt]");
+  if (button) ask(button.dataset.prompt);
+});
+
+clearChat.addEventListener("click", () => {
+  recent.splice(0);
+  recentList.innerHTML = "<p>Your last questions will appear here.</p>";
+  renderEmptyState();
+  setMenu(false);
+  input.focus();
+});
+
+checkApiStatus();
