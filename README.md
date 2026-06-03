@@ -9,7 +9,7 @@ The system is designed to store source metadata, small retrieval chunks, structu
 - TypeScript and Node.js
 - Supabase Postgres
 - pgvector
-- OpenAI-compatible embeddings API
+- Hugging Face feature extraction embeddings
 - OpenAI-compatible chat API
 - Cheerio for readable content extraction
 - robots.txt checks, rate limiting, and local raw HTML cache
@@ -73,6 +73,7 @@ Fill in:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `EMBEDDING_PROVIDER`
 - `EMBEDDING_API_KEY`
 - `EMBEDDING_BASE_URL`
 - `EMBEDDING_MODEL`
@@ -106,6 +107,8 @@ The migration creates:
 - `match_chunks(...)` vector search RPC
 
 `sources.credibility_rank` is used to prefer IGN when multiple sources conflict. Lower rank means more trusted.
+
+The default migration uses `vector(384)` for `sentence-transformers/all-MiniLM-L6-v2` Hugging Face embeddings. If you switch to a different embedding model, update `EMBEDDING_DIMENSIONS`, `chunks.embedding`, and the `match_chunks(query_embedding vector(...))` function before ingesting.
 
 ## Ingestion
 
@@ -211,6 +214,7 @@ The Vercel/Next route in [app/api/chat/route.ts](</Users/namir/Documents/New pro
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+- `EMBEDDING_PROVIDER`
 - `EMBEDDING_API_KEY`
 - `CHAT_API_KEY`
 
@@ -224,13 +228,16 @@ CHAT_MODEL=llama-3.1-8b-instant
 CHAT_API_KEY=your-groq-api-key
 ```
 
-Embeddings still need an embeddings provider such as OpenAI:
+For Hugging Face embeddings, set:
 
 ```bash
-EMBEDDING_BASE_URL=https://api.openai.com/v1
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSIONS=1536
+EMBEDDING_PROVIDER=huggingface
+EMBEDDING_BASE_URL=https://router.huggingface.co/hf-inference/models
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DIMENSIONS=384
 ```
+
+Create a Hugging Face token with Inference Providers permission. The route uses the feature extraction task, which Hugging Face describes as converting text into vectors for RAG and similarity search.
 
 If you deploy RAG as a separate service later, set `RAG_CHAT_ENDPOINT`; the route will call that first before trying direct Supabase retrieval.
 
@@ -281,10 +288,11 @@ Minimum Vercel environment variables for live direct RAG:
 ```bash
 SUPABASE_URL=...
 SUPABASE_SERVICE_ROLE_KEY=...
+EMBEDDING_PROVIDER=huggingface
 EMBEDDING_API_KEY=...
-EMBEDDING_BASE_URL=https://api.openai.com/v1
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSIONS=1536
+EMBEDDING_BASE_URL=https://router.huggingface.co/hf-inference/models
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+EMBEDDING_DIMENSIONS=384
 CHAT_API_KEY=...
 CHAT_BASE_URL=https://api.groq.com/openai/v1
 CHAT_MODEL=llama-3.1-8b-instant

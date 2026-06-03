@@ -21,10 +21,11 @@ export const supabase = createClient(
 );
 
 export const config = {
-  embeddingBaseUrl: process.env.EMBEDDING_BASE_URL ?? "https://api.openai.com/v1",
+  embeddingProvider: process.env.EMBEDDING_PROVIDER ?? "huggingface",
+  embeddingBaseUrl: process.env.EMBEDDING_BASE_URL ?? "https://router.huggingface.co/hf-inference/models",
   embeddingApiKey: required("EMBEDDING_API_KEY"),
-  embeddingModel: process.env.EMBEDDING_MODEL ?? "text-embedding-3-small",
-  embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? "1536"),
+  embeddingModel: process.env.EMBEDDING_MODEL ?? "sentence-transformers/all-MiniLM-L6-v2",
+  embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? "384"),
   chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.openai.com/v1",
   chatApiKey: required("CHAT_API_KEY"),
   chatModel: process.env.CHAT_MODEL ?? "gpt-4.1-mini",
@@ -47,6 +48,83 @@ export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function createEmbedding(input: string): Promise<number[]> {
+  if (config.embeddingProvider === "huggingface") {
+    return createHuggingFaceEmbedding(input);
+  }
+
+  return createOpenAiCompatibleEmbedding(input);
+}
+
+function assertEmbeddingDimensions(embedding: number[]): number[] {
+  if (embedding.length !== config.embeddingDimensions) {
+    throw new Error(
+      `Embedding dimension mismatch: expected ${config.embeddingDimensions}, received ${embedding.length}. ` +
+        "Update EMBEDDING_DIMENSIONS and the Supabase vector schema to match the selected model.",
+    );
+  }
+  return embedding;
+}
+
+function averageVectors(vectors: number[][]): number[] {
+  if (!vectors.length || !vectors[0]?.length) {
+    throw new Error("Embedding response did not include numeric vectors.");
+  }
+  const length = vectors[0].length;
+  const totals = new Array<number>(length).fill(0);
+  for (const vector of vectors) {
+    if (vector.length !== length) {
+      throw new Error("Embedding response included vectors with inconsistent dimensions.");
+    }
+    vector.forEach((value, index) => {
+      totals[index] += value;
+    });
+  }
+  return totals.map((value) => value / vectors.length);
+}
+
+function parseHuggingFaceEmbedding(value: unknown): number[] {
+  if (Array.isArray(value) && value.every((item) => typeof item === "number")) {
+    return value as number[];
+  }
+
+  if (Array.isArray(value) && value.every((item) => Array.isArray(item))) {
+    const vectors = value as unknown[][];
+    if (vectors.every((vector) => vector.every((item) => typeof item === "number"))) {
+      return vectors.length === 1 ? (vectors[0] as number[]) : averageVectors(vectors as number[][]);
+    }
+
+    if (vectors.length === 1 && vectors[0].every((item) => Array.isArray(item))) {
+      return averageVectors(vectors[0] as number[][]);
+    }
+  }
+
+  throw new Error("Hugging Face embedding response used an unsupported shape.");
+}
+
+async function createHuggingFaceEmbedding(input: string): Promise<number[]> {
+  const modelPath = encodeURIComponent(config.embeddingModel).replaceAll("%2F", "/");
+  const endpoint = `${config.embeddingBaseUrl.replace(/\/$/, "")}/${modelPath}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${config.embeddingApiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      inputs: input,
+      normalize: true,
+      truncate: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Hugging Face embedding request failed: ${response.status} ${await response.text()}`);
+  }
+
+  return assertEmbeddingDimensions(parseHuggingFaceEmbedding(await response.json()));
+}
+
+async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]> {
   const response = await fetch(`${config.embeddingBaseUrl}/embeddings`, {
     method: "POST",
     headers: {
@@ -71,7 +149,7 @@ export async function createEmbedding(input: string): Promise<number[]> {
   if (!embedding) {
     throw new Error("Embedding response did not include an embedding.");
   }
-  return embedding;
+  return assertEmbeddingDimensions(embedding);
 }
 
 export async function createChatCompletion(
