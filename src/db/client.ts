@@ -103,25 +103,46 @@ function parseHuggingFaceEmbedding(value: unknown): number[] {
 
 async function createHuggingFaceEmbedding(input: string): Promise<number[]> {
   const modelPath = encodeURIComponent(config.embeddingModel).replaceAll("%2F", "/");
-  const endpoint = `${config.embeddingBaseUrl.replace(/\/$/, "")}/${modelPath}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.embeddingApiKey}`,
-      "content-type": "application/json",
+  const baseUrl = config.embeddingBaseUrl.replace(/\/$/, "");
+  const endpoint = baseUrl.includes("/pipeline/feature-extraction")
+    ? `${baseUrl}/${modelPath}`
+    : `${baseUrl}/${modelPath}/pipeline/feature-extraction`;
+  const response = await fetchWithTimeout(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config.embeddingApiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        inputs: input,
+        normalize: true,
+        truncate: true,
+      }),
     },
-    body: JSON.stringify({
-      inputs: input,
-      normalize: true,
-      truncate: true,
-    }),
-  });
+    30_000,
+  );
 
   if (!response.ok) {
     throw new Error(`Hugging Face embedding request failed: ${response.status} ${await response.text()}`);
   }
 
   return assertEmbeddingDimensions(parseHuggingFaceEmbedding(await response.json()));
+}
+
+async function fetchWithTimeout(
+  input: string | URL,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]> {
