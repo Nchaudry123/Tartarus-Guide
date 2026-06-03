@@ -1,5 +1,5 @@
-import { supabase, createEmbedding, embeddingToSqlVector } from "../db/client.js";
-import type { SourceInput, SourceRecord, TextChunk } from "../types/schema.js";
+import { supabase, createEmbedding, embeddingToSqlVector } from "../db/client";
+import type { SourceInput, SourceRecord, TextChunk } from "../types/schema";
 
 const domainForUrl = (url: string): string => new URL(url).hostname.replace(/^www\./, "");
 

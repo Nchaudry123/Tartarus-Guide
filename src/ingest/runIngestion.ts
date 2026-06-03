@@ -1,10 +1,10 @@
 import "dotenv/config";
-import { curatedSources } from "./urls.js";
-import { fetchPages } from "./fetchPages.js";
-import { extractContent } from "./extractContent.js";
-import { chunkExtractedPage } from "./chunkText.js";
-import { embedAndInsertChunks } from "./embedChunks.js";
-import { extractAndInsertFacts } from "./extractFacts.js";
+import { curatedSources } from "./urls";
+import { fetchPages } from "./fetchPages";
+import { extractContent } from "./extractContent";
+import { chunkExtractedPage } from "./chunkText";
+import { embedAndInsertChunks } from "./embedChunks";
+import { extractAndInsertFacts } from "./extractFacts";
 
 const force = process.argv.includes("--force");
 const skipFacts = process.argv.includes("--skip-facts");

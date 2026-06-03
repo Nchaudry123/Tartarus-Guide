@@ -1,5 +1,5 @@
-import { normalizeName, supabase } from "../db/client.js";
-import type { FactMatch, FactType } from "../types/schema.js";
+import { normalizeName, supabase } from "../db/client";
+import type { FactMatch, FactType } from "../types/schema";
 
 const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /weak|weakness|vulnerable/i, types: ["weakness"] },

@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import robotsParser from "robots-parser";
-import { config, sleep } from "../db/client.js";
-import type { SourceInput } from "../types/schema.js";
+import { config, sleep } from "../db/client";
+import type { SourceInput } from "../types/schema";
 
 type RobotsCache = Map<string, ReturnType<typeof robotsParser>>;
 

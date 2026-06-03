@@ -1,4 +1,4 @@
-import type { SourceInput } from "../types/schema.js";
+import type { SourceInput } from "../types/schema";
 
 const ign = (title: string, path: string, category: string): SourceInput => ({
   title,

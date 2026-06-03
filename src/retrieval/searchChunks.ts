@@ -1,5 +1,5 @@
-import { createEmbedding, supabase } from "../db/client.js";
-import type { ChunkMatch } from "../types/schema.js";
+import { createEmbedding, supabase } from "../db/client";
+import type { ChunkMatch } from "../types/schema";
 
 export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch[]> {
   const embedding = await createEmbedding(query);

@@ -1,7 +1,7 @@
-import { supabase } from "../db/client.js";
-import type { ChunkMatch, FactMatch } from "../types/schema.js";
-import { searchChunks } from "./searchChunks.js";
-import { searchFacts } from "./searchFacts.js";
+import { supabase } from "../db/client";
+import type { ChunkMatch, FactMatch } from "../types/schema";
+import { searchChunks } from "./searchChunks";
+import { searchFacts } from "./searchFacts";
 
 export type RetrievalContext = {
   query: string;

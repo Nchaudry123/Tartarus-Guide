@@ -1,6 +1,6 @@
-import { createChatCompletion, normalizeName, supabase } from "../db/client.js";
-import { FactExtractionResponseSchema, type ExtractedFact, type SourceRecord, type TextChunk } from "../types/schema.js";
-import { upsertSource } from "./embedChunks.js";
+import { createChatCompletion, normalizeName, supabase } from "../db/client";
+import { FactExtractionResponseSchema, type ExtractedFact, type SourceRecord, type TextChunk } from "../types/schema";
+import { upsertSource } from "./embedChunks";
 
 export const factExtractionSystemPrompt = `You extract structured Persona 3 Reload guide facts from short source chunks.
 

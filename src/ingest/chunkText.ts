@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ExtractedPage, TextChunk } from "../types/schema.js";
+import type { ExtractedPage, TextChunk } from "../types/schema";
 
 const MIN_TOKENS = 300;
 const MAX_TOKENS = 700;
