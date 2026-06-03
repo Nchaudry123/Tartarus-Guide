@@ -218,8 +218,8 @@ async function directRagResponse(question: string): Promise<ChatResponse | null>
   }
 
   const [{ buildContext, formatContext }, { createChatCompletion }] = await Promise.all([
-    import("../../../src/retrieval/buildContext.js"),
-    import("../../../src/db/client.js"),
+    import("../../../src/retrieval/buildContext"),
+    import("../../../src/db/client"),
   ]);
 
   const context = await buildContext(question);

@@ -1,5 +1,5 @@
 import * as cheerio from "cheerio";
-import type { ExtractedPage, SourceInput } from "../types/schema.js";
+import type { ExtractedPage, SourceInput } from "../types/schema";
 
 const junkSelectors = [
   "script",

@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { createChatCompletion } from "./db/client.js";
-import { buildContext, formatContext } from "./retrieval/buildContext.js";
+import { createChatCompletion } from "./db/client";
+import { buildContext, formatContext } from "./retrieval/buildContext";
 
 const query = process.argv.slice(2).join(" ").trim();
 
