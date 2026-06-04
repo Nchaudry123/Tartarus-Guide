@@ -182,12 +182,7 @@ function addAssistantMessage(response) {
   const node = document.createElement("article");
   node.className = `guide-card mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
-    <div class="guide-head">
-      <div><p>Guide Response</p><h2>Analysis</h2></div>
-      <div class="confidence"><span>Confidence</span><strong>${escapeHtml(response.confidence)}</strong></div>
-    </div>
     <p class="answer">${escapeHtml(response.answer)}</p>
-    <div class="warning">${escapeHtml(response.missing)}</div>
     <div class="section-grid">${sections}</div>
     ${table}
     ${sourceFooter}
@@ -261,17 +256,21 @@ function setApiStatus(mode) {
   const isLive = mode === "rag";
   const isEmpty = mode === "empty";
   const isError = mode === "error";
-  ragStatus.classList.toggle("is-live", isLive);
-  ragStatus.classList.toggle("is-error", isError);
-  ragStatus.querySelector("strong").textContent = isLive ? "RAG Online" : isEmpty ? "RAG Connected" : isError ? "API Fallback" : "Preview Mode";
-  ragStatus.querySelector("small").textContent = isLive
-    ? "Live guide active"
-    : isEmpty
-      ? "No matching source yet"
-      : isError
-        ? "Mock fallback active"
-        : "Mock responses active";
-  chatModeLabel.textContent = isLive ? "RAG API" : isEmpty ? "No Match" : isError ? "Fallback" : "Mock API";
+  if (ragStatus) {
+    ragStatus.classList.toggle("is-live", isLive);
+    ragStatus.classList.toggle("is-error", isError);
+    ragStatus.querySelector("strong").textContent = isLive ? "RAG Online" : isEmpty ? "RAG Connected" : isError ? "API Fallback" : "Preview Mode";
+    ragStatus.querySelector("small").textContent = isLive
+      ? "Live guide active"
+      : isEmpty
+        ? "No matching source yet"
+        : isError
+          ? "Mock fallback active"
+          : "Mock responses active";
+  }
+  if (chatModeLabel) {
+    chatModeLabel.textContent = isLive ? "RAG API" : isEmpty ? "No Match" : isError ? "Fallback" : "Mock API";
+  }
   if (modeCardText) {
     modeCardText.textContent = isLive
       ? "Connected to live guide mode. Answers use your Persona 3 Reload guide index."
@@ -305,6 +304,7 @@ function renderEmptyState() {
 function updateRecent(question) {
   recent.unshift(question);
   recent.splice(5);
+  if (!recentList) return;
   recentList.innerHTML = "";
   recent.forEach((item) => {
     const button = document.createElement("button");
@@ -323,6 +323,7 @@ async function ask(question) {
   rememberTurn("user", trimmed);
   updateRecent(trimmed);
   input.value = "";
+  input.style.height = "";
   addLoading();
   const response = await requestAnswer(trimmed);
   window.setTimeout(() => addAssistantMessage(response), 250);
@@ -331,6 +332,18 @@ async function ask(question) {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   ask(input.value);
+});
+
+input.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+input.addEventListener("input", () => {
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
 });
 
 [suggestions, categoryList].forEach((group) => {
@@ -365,9 +378,9 @@ messages.addEventListener("click", (event) => {
   if (button) ask(button.dataset.prompt);
 });
 
-clearChat.addEventListener("click", () => {
+clearChat?.addEventListener("click", () => {
   recent.splice(0);
-  recentList.innerHTML = "<p>Your last questions will appear here.</p>";
+  if (recentList) recentList.innerHTML = "<p>Your last questions will appear here.</p>";
   renderEmptyState();
   setMenu(false);
   input.focus();
