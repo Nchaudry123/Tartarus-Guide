@@ -102,10 +102,7 @@ button { cursor: pointer; }
 .intro-shards i:nth-child(5) { left: 84%; top: 70%; --dx: 8vw; --dy: -8vh; --r: 35deg; animation-delay: 560ms; background: var(--cyan); }
 .intro-shards i:nth-child(6) { left: 44%; top: 30%; --dx: -7vw; --dy: -13vh; --r: 14deg; animation-delay: 660ms; }
 .intro-labels {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
+  display: none;
 }
 .intro-labels span {
   position: absolute;
@@ -239,11 +236,7 @@ button { cursor: pointer; }
   background: rgba(255,255,255,.88);
 }
 .word {
-  position: absolute;
-  font-family: Impact, "Arial Black", sans-serif;
-  font-style: italic;
-  line-height: .82;
-  pointer-events: none;
+  display: none;
 }
 .word-guide { right: 8vw; top: 6vh; font-size: 18vw; color: rgba(255,255,255,.16); animation: drift 8s ease-in-out infinite; }
 .word-tartarus { left: -3vw; bottom: 4vh; font-size: 14vw; color: rgba(0,0,0,.22); animation: drift 9s ease-in-out infinite reverse; }
