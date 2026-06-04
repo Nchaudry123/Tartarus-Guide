@@ -43,6 +43,7 @@ const curatedSources = [
   ign("Beginner Tips", "Beginner's_Guide_-_Tips_and_Tricks", "beginner_strategy"),
   game8("Persona 3 Reload Walkthrough and Guides", "https://game8.co/games/Persona-3-Reload", "overview"),
   game8("Beginner's Guide to Persona 3 Reload", "https://game8.co/games/Persona-3-Reload/archives/435585", "beginner_strategy"),
+  game8("Rare and Greedy Shadows Weaknesses and Locations", "https://game8.co/games/Persona-3-Reload/archives/443460", "enemies"),
   game8("Priestess Boss Guide", "https://game8.co/games/Persona-3-Reload/archives/441827", "bosses"),
   game8("Swift Axle Boss Guide", "https://game8.co/games/Persona-3-Reload/archives/443253", "bosses"),
   game8("Terminal Table Boss Guide", "https://game8.co/games/Persona-3-Reload/archives/444325", "bosses"),
