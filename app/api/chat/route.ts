@@ -32,6 +32,10 @@ const mockSources = [
   },
 ];
 
+function withMode(response: ChatResponse, retrievalMode: NonNullable<ChatResponse["retrievalMode"]>): ChatResponse {
+  return { ...response, retrievalMode };
+}
+
 function mockResponse(question: string): ChatResponse {
   const normalized = question.toLowerCase();
 
@@ -191,6 +195,32 @@ function normalizeRagResponse(raw: unknown, fallbackSources: ChatResponse["sourc
   };
 }
 
+function compactText(value: string, maxLength = 520): string {
+  const text = value.replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function extractiveRagResponse(
+  question: string,
+  context: {
+    chunks: Array<{ section_title: string | null; chunk_text: string; similarity?: number }>;
+    sources: ChatResponse["sources"];
+  },
+): ChatResponse {
+  const topChunks = context.chunks.slice(0, 3);
+  return withMode({
+    answer:
+      "I found source-backed guide records for this question. The response below is using retrieved guide excerpts directly because the chat model could not format a full strategy card.",
+    sections: topChunks.map((chunk, index) => ({
+      title: chunk.section_title || `Retrieved Record ${index + 1}`,
+      content: compactText(chunk.chunk_text),
+    })),
+    sources: context.sources,
+    confidence: topChunks[0]?.similarity ? Math.max(0.35, Math.min(0.8, topChunks[0].similarity)) : 0.55,
+    missingInfo: `Retrieved source chunks for "${question}", but final answer generation failed. Use the excerpts as source-backed notes.`,
+  }, "rag");
+}
+
 async function externalRagResponse(question: string, conversationId?: string): Promise<ChatResponse | null> {
   const endpoint = process.env.RAG_CHAT_ENDPOINT;
   if (!endpoint || process.env.USE_MOCK_CHAT === "true") {
@@ -224,7 +254,7 @@ async function directRagResponse(question: string): Promise<ChatResponse | null>
 
   const context = await buildContext(question);
   if (!context.facts.length && !context.chunks.length) {
-    return {
+    return withMode({
       answer:
         "I could not find source-backed records for that question yet. Run ingestion or add a more specific Persona 3 Reload source before trusting an exact answer.",
       sections: [
@@ -237,7 +267,7 @@ async function directRagResponse(question: string): Promise<ChatResponse | null>
       sources: [],
       confidence: 0.2,
       missingInfo: "No matching facts or chunks were retrieved from the RAG database.",
-    };
+    }, "empty");
   }
 
   const systemPrompt = `You answer Persona 3 Reload guide questions using only retrieved context.
@@ -269,8 +299,13 @@ Use only this retrieved context.`;
     { role: "user" as const, content: userPrompt },
   ];
 
-  const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
-  return normalizeRagResponse(extractJson(rawAnswer), context.sources);
+  try {
+    const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
+    return withMode(normalizeRagResponse(extractJson(rawAnswer), context.sources), "rag");
+  } catch (error) {
+    console.error(error);
+    return extractiveRagResponse(question, context);
+  }
 }
 
 export async function POST(request: Request) {
@@ -281,12 +316,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Question is required." }, { status: 400, headers: corsHeaders(request) });
   }
 
+  if (question === "__status__") {
+    const retrievalMode = process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv() ? "mock" : "rag";
+    return NextResponse.json(
+      withMode({
+        answer: retrievalMode === "rag" ? "RAG credentials are configured." : "Mock mode is active.",
+        sections: [],
+        sources: [],
+        confidence: retrievalMode === "rag" ? 0.8 : 0.4,
+        missingInfo:
+          retrievalMode === "rag"
+            ? "Status checks do not spend tokens on retrieval. Ask a guide question to retrieve sources."
+            : "Set Supabase, Hugging Face, Groq credentials, and USE_MOCK_CHAT=false to enable live retrieval.",
+      }, retrievalMode),
+      { headers: corsHeaders(request) },
+    );
+  }
+
   try {
     const rag = (await externalRagResponse(question, body.conversationId)) ?? (await directRagResponse(question));
-    return NextResponse.json(rag ?? mockResponse(question), { headers: corsHeaders(request) });
+    return NextResponse.json(rag ?? withMode(mockResponse(question), "mock"), { headers: corsHeaders(request) });
   } catch (error) {
     console.error(error);
-    return NextResponse.json(mockResponse(question), { headers: corsHeaders(request) });
+    return NextResponse.json(withMode(mockResponse(question), "error"), { headers: corsHeaders(request) });
   }
 }
 
