@@ -6,7 +6,7 @@ export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch
   const { data, error } = await supabase.rpc("match_chunks", {
     query_embedding: `[${embedding.join(",")}]`,
     match_count: limit,
-    similarity_threshold: 0.68,
+    similarity_threshold: 0.55,
   });
 
   if (error) {
