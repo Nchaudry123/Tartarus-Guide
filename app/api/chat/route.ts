@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { ChatRequest, ChatResponse } from "../../../lib/types";
+import type { ChatRequest, ChatResponse, PlayerProfile } from "../../../lib/types";
 
 export const runtime = "nodejs";
 
@@ -32,6 +32,166 @@ const mockSources = [
   },
 ];
 
+type CompanionIntent =
+  | "Boss Help"
+  | "Team Building"
+  | "Fusion Advice"
+  | "Social Links"
+  | "Daily Schedule Planning"
+  | "Tartarus Navigation"
+  | "Quest Help"
+  | "Story Guidance"
+  | "Achievement Hunting"
+  | "General Discussion";
+
+type CompanionAnalysis = {
+  intent: CompanionIntent;
+  retrievalQuery: string;
+  isAmbiguous: boolean;
+  followUpQuestions: string[];
+  profileUpdates: PlayerProfile;
+  spoilerCaution: boolean;
+};
+
+const partyMembers = ["Yukari", "Junpei", "Akihiko", "Mitsuru", "Aigis", "Koromaru", "Ken", "Shinjiro", "Fuuka"];
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+}
+
+function detectIntent(question: string): CompanionIntent {
+  const text = question.toLowerCase();
+  if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
+  if (/\b(team|party|weak|underleveled|level|build|members|composition|gear|equipment)\b/.test(text)) return "Team Building";
+  if (/\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion)\b/.test(text)) return "Fusion Advice";
+  if (/\b(social link|s-link|rank|romance|hang out|confidant)\b/.test(text)) return "Social Links";
+  if (/\b(day|schedule|calendar|month|night|after school|full moon|free time)\b/.test(text)) return "Daily Schedule Planning";
+  if (/\b(tartarus|floor|block|gatekeeper|border|explore|grind|shadows)\b/.test(text)) return "Tartarus Navigation";
+  if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) return "Quest Help";
+  if (/\b(story|spoiler|plot|ending|character dies|what happens)\b/.test(text)) return "Story Guidance";
+  if (/\b(achievement|trophy|platinum|completion|complete|100%)\b/.test(text)) return "Achievement Hunting";
+  return "General Discussion";
+}
+
+function extractProfileUpdates(question: string): PlayerProfile {
+  const updates: PlayerProfile = {};
+  const monthMatch = question.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
+  if (monthMatch) updates.currentMonth = monthMatch[1][0].toUpperCase() + monthMatch[1].slice(1).toLowerCase();
+
+  const levelMatch = question.match(/\b(?:level|lvl)\s*(\d{1,3})\b/i) ?? question.match(/\b(\d{1,3})\s*(?:level|lvl)\b/i);
+  if (levelMatch) updates.currentLevel = levelMatch[1];
+
+  const difficultyMatch = question.match(/\b(beginner|easy|normal|hard|merciless|peaceful)\b/i);
+  if (difficultyMatch) updates.difficulty = difficultyMatch[1][0].toUpperCase() + difficultyMatch[1].slice(1).toLowerCase();
+
+  const activeParty = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
+  if (activeParty.length) updates.activeParty = activeParty;
+
+  const playstyleMatch = question.match(/\b(physical|magic|balanced|defensive|aggressive|safe|grind|speedrun)\b/i);
+  if (playstyleMatch) updates.playstyle = playstyleMatch[1].toLowerCase();
+
+  const bossMatch = question.match(/\b(Priestess|Emperor|Empress|Hierophant|Lovers|Chariot|Justice|Hermit|Fortune|Strength|Hanged Man|Nyx)\b/i);
+  if (bossMatch) updates.recentBoss = bossMatch[1];
+
+  return updates;
+}
+
+function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): PlayerProfile {
+  return {
+    ...(base ?? {}),
+    ...updates,
+    activeParty: updates.activeParty?.length ? uniqueStrings(updates.activeParty) : base?.activeParty,
+    currentSocialLinks: updates.currentSocialLinks?.length ? uniqueStrings(updates.currentSocialLinks) : base?.currentSocialLinks,
+  };
+}
+
+function analyzeCompanionRequest(question: string, profile?: PlayerProfile): CompanionAnalysis {
+  const intent = detectIntent(question);
+  const profileUpdates = extractProfileUpdates(question);
+  const mergedProfile = mergeProfile(profile, profileUpdates);
+  const text = question.toLowerCase().trim();
+  const vagueSignals = [
+    "i'm stuck",
+    "im stuck",
+    "stuck",
+    "help",
+    "my team feels weak",
+    "team feels weak",
+    "what should i do",
+    "what do i do",
+    "lost",
+    "confused",
+  ];
+  const isShort = text.split(/\s+/).filter(Boolean).length <= 6;
+  const isAmbiguous = vagueSignals.some((signal) => text.includes(signal)) || (intent === "General Discussion" && isShort);
+  const followUpQuestions: string[] = [];
+
+  if (intent === "Team Building" && (!mergedProfile.currentLevel || !mergedProfile.activeParty?.length)) {
+    followUpQuestions.push("What level are you right now, and who is on your active team?");
+  }
+  if (intent === "Boss Help" && !mergedProfile.recentBoss && !/\bfull moon\b/i.test(question)) {
+    followUpQuestions.push("Which boss or Tartarus gatekeeper are you fighting?");
+  }
+  if (intent === "Daily Schedule Planning" && !mergedProfile.currentMonth) {
+    followUpQuestions.push("What month or date are you currently on?");
+  }
+  if (isAmbiguous && followUpQuestions.length === 0) {
+    followUpQuestions.push("Are you stuck on a boss, party setup, Social Link, request, or Tartarus route?");
+  }
+
+  const profileHints = [
+    mergedProfile.currentMonth ? `current month: ${mergedProfile.currentMonth}` : undefined,
+    mergedProfile.currentLevel ? `player level: ${mergedProfile.currentLevel}` : undefined,
+    mergedProfile.difficulty ? `difficulty: ${mergedProfile.difficulty}` : undefined,
+    mergedProfile.activeParty?.length ? `active party: ${mergedProfile.activeParty.join(", ")}` : undefined,
+    mergedProfile.recentBoss ? `recent boss: ${mergedProfile.recentBoss}` : undefined,
+    mergedProfile.playstyle ? `preferred playstyle: ${mergedProfile.playstyle}` : undefined,
+  ];
+
+  return {
+    intent,
+    retrievalQuery: uniqueStrings([question, intent, ...profileHints]).join("\n"),
+    isAmbiguous,
+    followUpQuestions: followUpQuestions.slice(0, 2),
+    profileUpdates,
+    spoilerCaution: intent === "Story Guidance" && !mergedProfile.currentMonth,
+  };
+}
+
+function companionClarificationResponse(question: string, analysis: CompanionAnalysis): ChatResponse {
+  const primaryQuestion = analysis.followUpQuestions[0] ?? "What part of Persona 3 Reload are you working on right now?";
+  return withMode({
+    answer:
+      "I can help, but I need one quick read on your situation first. In the meantime, treat this like triage: check whether the problem is damage, survivability, SP economy, or turn order.",
+    sections: [
+      {
+        title: "Quick Check",
+        content: primaryQuestion,
+      },
+      {
+        title: "Immediate Move",
+        content:
+          analysis.intent === "Team Building"
+            ? "If the party feels weak, upgrade weapons/armor, bring one healer, keep coverage for physical plus elemental damage, and fuse Personas near your level instead of relying on old favorites."
+            : "Tell me the exact bottleneck and I will narrow it into a practical plan without spoiling later-game events.",
+      },
+    ],
+    sources: [],
+    confidence: 0.45,
+    missingInfo: analysis.followUpQuestions.join(" "),
+    companion: {
+      intent: analysis.intent,
+      profileUpdates: analysis.profileUpdates,
+      followUpQuestions: analysis.followUpQuestions,
+      suggestedPrompts: [
+        "My party is Yukari, Akihiko, and Mitsuru",
+        "I'm level 28 on Normal",
+        "I'm stuck on the next full moon boss",
+      ],
+    },
+  }, "rag");
+}
+
 function withMode(response: ChatResponse, retrievalMode: NonNullable<ChatResponse["retrievalMode"]>): ChatResponse {
   return { ...response, retrievalMode };
 }
@@ -42,7 +202,7 @@ function mockResponse(question: string): ChatResponse {
   if (normalized.includes("dancing hand") || normalized.includes("weak")) {
     return {
       answer:
-        "I do not have your live RAG database connected in this preview, so treat this as a mock answer. Once ingestion is complete, this card will pull exact weakness facts first, then confirm with source chunks.",
+        "The live guide layer is not active in this preview, so treat this as a mock answer. Once the guide index is loaded, this card will check exact weakness facts first, then confirm with trusted guide notes.",
       sections: [
         {
           title: "Battle Read",
@@ -59,12 +219,12 @@ function mockResponse(question: string): ChatResponse {
         {
           title: "Weakness Preview",
           columns: ["Enemy", "Weakness", "Source State"],
-          rows: [["Dancing Hand", "Connect RAG to confirm", "Mock preview"]],
+          rows: [["Dancing Hand", "Connect live guide mode to confirm", "Mock preview"]],
         },
       ],
       sources: mockSources,
       confidence: 0.42,
-      missingInfo: "Live Supabase facts and chunks are not connected in this preview.",
+      missingInfo: "Live guide facts are not connected in this preview.",
     };
   }
 
@@ -86,19 +246,19 @@ function mockResponse(question: string): ChatResponse {
       ],
       sources: mockSources,
       confidence: 0.45,
-      missingInfo: "No live boss facts were retrieved because this is using the mock API.",
+      missingInfo: "Live boss facts are not active in this preview.",
     };
   }
 
   if (normalized.includes("fusion") || normalized.includes("jack frost")) {
     return {
       answer:
-        "Fusion help is wired as a first-class response type. The real backend should avoid guessing recipes unless a source-backed fusion fact is retrieved.",
+        "Fusion help is wired as a first-class response type. The live guide should avoid guessing recipes unless a trusted fusion fact is available.",
       sections: [
         {
           title: "Fusion Rule",
           content:
-            "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the database is missing them, the answer should say so.",
+            "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the guide index is missing them, the answer should say so.",
         },
       ],
       sources: mockSources,
@@ -154,7 +314,11 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function normalizeRagResponse(raw: unknown, fallbackSources: ChatResponse["sources"]): ChatResponse {
+function normalizeRagResponse(
+  raw: unknown,
+  fallbackSources: ChatResponse["sources"],
+  companion?: NonNullable<ChatResponse["companion"]>,
+): ChatResponse {
   const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const sections = Array.isArray(value.sections)
     ? value.sections
@@ -192,6 +356,7 @@ function normalizeRagResponse(raw: unknown, fallbackSources: ChatResponse["sourc
     sources: fallbackSources,
     confidence,
     missingInfo: asString(value.missingInfo) ?? "No additional missing information was reported.",
+    companion,
   };
 }
 
@@ -216,18 +381,26 @@ function extractiveRagResponse(
     chunks: Array<{ section_title: string | null; chunk_text: string; similarity?: number }>;
     sources: ChatResponse["sources"];
   },
+  analysis?: CompanionAnalysis,
 ): ChatResponse {
   const topChunks = context.chunks.slice(0, 3);
   return withMode({
     answer:
-      "I found source-backed guide records for this question. The response below is using retrieved guide excerpts directly because the chat model could not format a full strategy card.",
+      "I have enough guide notes to give you a starting read, but I would still treat this as a quick tactical pass. Use the strongest matching notes below, then answer the check-in question so I can tailor the plan.",
     sections: topChunks.map((chunk, index) => ({
-      title: chunk.section_title || `Retrieved Record ${index + 1}`,
+      title: chunk.section_title || `Guide Note ${index + 1}`,
       content: compactText(chunk.chunk_text),
     })),
     sources: context.sources,
     confidence: topChunks[0]?.similarity ? Math.max(0.35, Math.min(0.8, topChunks[0].similarity)) : 0.55,
-    missingInfo: `Retrieved source chunks for "${question}", but final answer generation failed. Use the excerpts as source-backed notes.`,
+    missingInfo: analysis?.followUpQuestions.join(" ") || `Tell me one more detail about "${question}" and I can tighten the recommendation.`,
+    companion: analysis
+      ? {
+          intent: analysis.intent,
+          profileUpdates: analysis.profileUpdates,
+          followUpQuestions: analysis.followUpQuestions,
+        }
+      : undefined,
   }, "rag");
 }
 
@@ -252,9 +425,19 @@ async function externalRagResponse(question: string, conversationId?: string): P
   return (await response.json()) as ChatResponse;
 }
 
-async function directRagResponse(question: string): Promise<ChatResponse | null> {
+async function directRagResponse(
+  question: string,
+  playerProfile?: PlayerProfile,
+  history: ChatRequest["history"] = [],
+): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
+  }
+
+  const analysis = analyzeCompanionRequest(question, playerProfile);
+
+  if (analysis.isAmbiguous && analysis.followUpQuestions.length && question.split(/\s+/).filter(Boolean).length <= 5) {
+    return companionClarificationResponse(question, analysis);
   }
 
   const [{ buildContext, formatContext }, { createChatCompletion }] = await Promise.all([
@@ -262,25 +445,12 @@ async function directRagResponse(question: string): Promise<ChatResponse | null>
     import("../../../src/db/client"),
   ]);
 
-  const context = await buildContext(question);
+  const context = await buildContext(analysis.retrievalQuery);
   if (!context.facts.length && !context.chunks.length) {
-    return withMode({
-      answer:
-        "I could not find source-backed records for that question yet. Run ingestion or add a more specific Persona 3 Reload source before trusting an exact answer.",
-      sections: [
-        {
-          title: "No Match",
-          content:
-            "The route is connected, but Supabase did not return structured facts or vector chunks for this query.",
-        },
-      ],
-      sources: [],
-      confidence: 0.2,
-      missingInfo: "No matching facts or chunks were retrieved from the RAG database.",
-    }, "empty");
+    return companionClarificationResponse(question, analysis);
   }
 
-  const systemPrompt = `You answer Persona 3 Reload guide questions using only retrieved context.
+  const systemPrompt = `You are Tartarus Guide: a Persona 3 Reload expert companion, strategic coach, and spoiler-aware veteran.
 
 Return only JSON with this shape:
 {
@@ -292,17 +462,35 @@ Return only JSON with this shape:
 }
 
 Rules:
-- Use structured facts first, then retrieved chunks.
-- Be practical, concise, and strategy-first.
+- Sound like a helpful Persona 3 Reload expert, not a search engine or wiki reader.
+- Never say "retrieved", "database", "according to IGN", "based on documents", or similar mechanics-facing phrases.
+- Use structured facts and guide chunks for exact weaknesses, dates, floors, fusions, rewards, and boss mechanics.
+- You may give general coaching when the user is vague, but mark uncertainty naturally and ask one useful follow-up.
+- Be practical, concise, and strategy-first. Give next actions, party/fusion/social priority ideas when relevant.
+- If the user gave profile details, personalize the advice around them.
+- If the request risks story spoilers, avoid revealing plot specifics unless the user explicitly asks.
 - Do not invent exact weaknesses, fusions, dates, floors, rewards, or boss mechanics.
-- If the retrieved context is incomplete, say what is missing in missingInfo.
+- If guide context is incomplete, put the needed player detail in missingInfo without exposing retrieval mechanics.
 - Keep section content short enough for a mobile chat card.`;
 
-  const userPrompt = `Question: ${question}
+  const profileForPrompt = mergeProfile(playerProfile, analysis.profileUpdates);
+  const historyForPrompt = (history ?? [])
+    .slice(-6)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n");
+
+  const userPrompt = `User question: ${question}
+
+Detected intent: ${analysis.intent}
+Known player profile: ${JSON.stringify(profileForPrompt)}
+Recent conversation:
+${historyForPrompt || "No prior turns."}
+Follow-up questions to ask if useful: ${analysis.followUpQuestions.join(" | ") || "None"}
+Spoiler caution: ${analysis.spoilerCaution ? "Avoid story specifics unless asked." : "Normal."}
 
 ${formatContext(context)}
 
-Use only this retrieved context.`;
+Answer as a companion. Use the guide context for exact claims, but do not mention the context or sources inside the prose.`;
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
@@ -311,10 +499,17 @@ Use only this retrieved context.`;
 
   try {
     const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
-    return withMode(normalizeRagResponse(extractJson(rawAnswer), context.sources), "rag");
+    return withMode(
+      normalizeRagResponse(extractJson(rawAnswer), context.sources, {
+        intent: analysis.intent,
+        profileUpdates: analysis.profileUpdates,
+        followUpQuestions: analysis.followUpQuestions,
+      }),
+      "rag",
+    );
   } catch (error) {
     console.error(error);
-    return extractiveRagResponse(question, context);
+    return extractiveRagResponse(question, context, analysis);
   }
 }
 
@@ -344,7 +539,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const rag = (await externalRagResponse(question, body.conversationId)) ?? (await directRagResponse(question));
+    const rag =
+      (await externalRagResponse(question, body.conversationId)) ??
+      (await directRagResponse(question, body.playerProfile, body.history));
     return NextResponse.json(rag ?? withMode(mockResponse(question), "mock"), { headers: corsHeaders(request) });
   } catch (error) {
     console.error(error);
