@@ -61,6 +61,35 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderText(value) {
+  return escapeHtml(value)
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function motionEnabled() {
+  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+async function typeText(node, value) {
+  const text = String(value || "");
+  if (!motionEnabled() || text.length > 1200) {
+    node.textContent = text;
+    return;
+  }
+
+  node.textContent = "";
+  const chunkSize = text.length > 420 ? 4 : 2;
+  for (let index = 0; index < text.length; index += chunkSize) {
+    node.textContent += text.slice(index, index + chunkSize);
+    if (index % 24 === 0) scrollMessagesToBottom();
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+  }
+}
+
 function mockAnswer(question) {
   const normalized = question.toLowerCase();
   if (normalized.includes("dancing hand") || normalized.includes("weak")) {
@@ -141,7 +170,7 @@ function addUserMessage(text) {
   clearEmpty();
   const node = document.createElement("article");
   node.className = "message user-message";
-  node.textContent = text;
+  node.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
   messages.appendChild(node);
   scrollMessagesToBottom();
 }
@@ -150,20 +179,25 @@ function addLoading() {
   const node = document.createElement("div");
   node.className = "loading";
   node.id = "loading";
-  node.innerHTML = "<span></span><span></span><span></span><strong>Scanning Tartarus records...</strong>";
+  node.innerHTML = `
+    <span class="assistant-avatar">III</span>
+    <div class="bubble typing" aria-label="Assistant is thinking">
+      <i></i><i></i><i></i>
+    </div>
+  `;
   messages.appendChild(node);
   scrollMessagesToBottom();
 }
 
-function addAssistantMessage(response) {
+async function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
   mergeProfileUpdates(response.companion?.profileUpdates);
-  const sections = response.sections
-    .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(content)}</p></section>`)
+  const sections = (response.sections || [])
+    .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
     .join("");
-  const table = response.table
-    ? `<div class="table-wrap"><h3>Weakness Preview</h3><table><thead><tr><th>Enemy</th><th>Weakness</th><th>Source State</th></tr></thead><tbody>${response.table
+  const table = response.table?.length
+    ? `<div class="table-wrap"><table><tbody>${response.table
         .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
         .join("")}</tbody></table></div>`
     : "";
@@ -179,15 +213,33 @@ function addAssistantMessage(response) {
         ${sourceLinks}
       </footer>`
     : "";
+  const prompts = (response.companion?.suggestedPrompts || response.companion?.followUpQuestions || [])
+    .slice(0, 3)
+    .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}">${escapeHtml(prompt)}</button>`)
+    .join("");
+  const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
   const node = document.createElement("article");
-  node.className = `guide-card mode-${escapeHtml(response.retrievalMode || "mock")}`;
+  node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
-    <p class="answer">${escapeHtml(response.answer)}</p>
-    <div class="section-grid">${sections}</div>
-    ${table}
-    ${sourceFooter}
+    <span class="assistant-avatar">III</span>
+    <div class="bubble">
+      <div class="answer is-typing"></div>
+      <div class="message-extra is-pending">
+        ${sections ? `<div class="section-grid">${sections}</div>` : ""}
+        ${table}
+        ${sourceFooter}
+        ${followUps}
+      </div>
+    </div>
   `;
   messages.appendChild(node);
+  const answerNode = node.querySelector(".answer");
+  if (answerNode) {
+    await typeText(answerNode, response.answer);
+    answerNode.classList.remove("is-typing");
+    answerNode.innerHTML = renderText(response.answer);
+  }
+  node.querySelector(".message-extra")?.classList.remove("is-pending");
   rememberTurn("assistant", response.answer);
   scrollMessagesToBottom();
 }
