@@ -75,7 +75,13 @@ let insertedChunks = 0;
 
 for (const source of sources) {
   console.log(`Fetching ${source.title}...`);
-  const page = await fetchPage(source.url);
+  let page;
+  try {
+    page = await fetchPage(source.url);
+  } catch (error) {
+    console.log(`Skipping ${source.title}; fetch failed: ${error.message}`);
+    continue;
+  }
   const text = pageToText(page);
   if (text.length < 500 || isBlockedOrEmpty(text)) {
     console.log(`Skipping ${source.title}; fetched text was empty or blocked.`);
@@ -109,7 +115,13 @@ async function discoverSources(seeds, maxPages) {
 
   while (queue.length && byUrl.size < maxPages) {
     const source = queue.shift();
-    const page = await fetchPage(source.url);
+    let page;
+    try {
+      page = await fetchPage(source.url);
+    } catch (error) {
+      console.log(`Discovery skipped ${source.title}; fetch failed: ${error.message}`);
+      continue;
+    }
     const links = discoverLinks(page, source.url);
     for (const link of links) {
       if (byUrl.has(link.url)) continue;
