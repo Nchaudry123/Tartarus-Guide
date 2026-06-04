@@ -55,6 +55,24 @@ type CompanionAnalysis = {
   spoilerCaution: boolean;
 };
 
+type ControllerAction =
+  | "answer_directly"
+  | "ask_clarifying_question"
+  | "search_guides"
+  | "search_structured_facts"
+  | "search_both";
+
+type ControllerDecision = {
+  action: ControllerAction;
+  intent: CompanionIntent;
+  retrievalQuery: string;
+  answer: string | null;
+  followUpQuestions: string[];
+  profileUpdates: PlayerProfile;
+  suggestedPrompts: string[];
+  spoilerCaution: boolean;
+};
+
 const partyMembers = ["Yukari", "Junpei", "Akihiko", "Mitsuru", "Aigis", "Koromaru", "Ken", "Shinjiro", "Fuuka"];
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
@@ -471,6 +489,83 @@ function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function asStringArray(value: unknown, maxItems = 3): string[] {
+  return Array.isArray(value)
+    ? value
+        .map((item) => asString(item))
+        .filter((item): item is string => Boolean(item))
+        .slice(0, maxItems)
+    : [];
+}
+
+function sanitizeIntent(value: unknown, fallback: CompanionIntent): CompanionIntent {
+  const intents: CompanionIntent[] = [
+    "Enemy Weakness",
+    "Boss Help",
+    "Team Building",
+    "Fusion Advice",
+    "Social Links",
+    "Daily Schedule Planning",
+    "Tartarus Navigation",
+    "Quest Help",
+    "Story Guidance",
+    "Achievement Hunting",
+    "General Discussion",
+  ];
+  return intents.includes(value as CompanionIntent) ? (value as CompanionIntent) : fallback;
+}
+
+function sanitizeControllerAction(value: unknown, fallback: ControllerAction): ControllerAction {
+  const actions: ControllerAction[] = [
+    "answer_directly",
+    "ask_clarifying_question",
+    "search_guides",
+    "search_structured_facts",
+    "search_both",
+  ];
+  return actions.includes(value as ControllerAction) ? (value as ControllerAction) : fallback;
+}
+
+function normalizeProfileUpdates(value: unknown): PlayerProfile {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const updates: PlayerProfile = {};
+  const currentMonth = asString(raw.currentMonth);
+  const currentLevel = asString(raw.currentLevel);
+  const difficulty = asString(raw.difficulty);
+  const recentBoss = asString(raw.recentBoss);
+  const playstyle = asString(raw.playstyle);
+  const activeParty = asStringArray(raw.activeParty, 4);
+  const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
+
+  if (currentMonth) updates.currentMonth = currentMonth;
+  if (currentLevel) updates.currentLevel = currentLevel;
+  if (difficulty) updates.difficulty = difficulty;
+  if (recentBoss) updates.recentBoss = recentBoss;
+  if (playstyle) updates.playstyle = playstyle;
+  if (activeParty.length) updates.activeParty = activeParty;
+  if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
+
+  return updates;
+}
+
+function normalizeControllerDecision(raw: unknown, fallback: CompanionAnalysis): ControllerDecision {
+  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const fallbackAction: ControllerAction =
+    fallback.isAmbiguous && fallback.followUpQuestions.length ? "ask_clarifying_question" : "search_both";
+  const profileUpdates = mergeProfile(fallback.profileUpdates, normalizeProfileUpdates(value.profileUpdates));
+
+  return {
+    action: sanitizeControllerAction(value.action, fallbackAction),
+    intent: sanitizeIntent(value.intent, fallback.intent),
+    retrievalQuery: asString(value.retrievalQuery) ?? fallback.retrievalQuery,
+    answer: asString(value.answer),
+    followUpQuestions: asStringArray(value.followUpQuestions, 3),
+    profileUpdates,
+    suggestedPrompts: asStringArray(value.suggestedPrompts, 4),
+    spoilerCaution: typeof value.spoilerCaution === "boolean" ? value.spoilerCaution : fallback.spoilerCaution,
+  };
+}
+
 function normalizeRagResponse(
   raw: unknown,
   fallbackSources: ChatResponse["sources"],
@@ -582,6 +677,91 @@ async function externalRagResponse(question: string, conversationId?: string): P
   return (await response.json()) as ChatResponse;
 }
 
+async function decideCompanionAction(
+  question: string,
+  analysis: CompanionAnalysis,
+  playerProfile: PlayerProfile | undefined,
+  history: ChatRequest["history"],
+  createChatCompletion: (
+    messages: Array<{ role: "system" | "user"; content: string }>,
+    options?: { jsonObject?: boolean },
+  ) => Promise<string>,
+): Promise<ControllerDecision> {
+  const profile = mergeProfile(playerProfile, analysis.profileUpdates);
+  const historyForPrompt = (history ?? [])
+    .slice(-8)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n");
+
+  const systemPrompt = `You are the conversation controller for Tartarus Guide, a Persona 3 Reload expert assistant.
+
+Your job is to decide how the assistant should respond before any guide lookup happens.
+
+Return only JSON:
+{
+  "action": "answer_directly" | "ask_clarifying_question" | "search_guides" | "search_structured_facts" | "search_both",
+  "intent": "Enemy Weakness" | "Boss Help" | "Team Building" | "Fusion Advice" | "Social Links" | "Daily Schedule Planning" | "Tartarus Navigation" | "Quest Help" | "Story Guidance" | "Achievement Hunting" | "General Discussion",
+  "retrievalQuery": "string",
+  "answer": "string or null",
+  "followUpQuestions": ["string"],
+  "profileUpdates": {
+    "currentMonth": "string",
+    "currentLevel": "string",
+    "difficulty": "string",
+    "activeParty": ["string"],
+    "recentBoss": "string",
+    "currentSocialLinks": ["string"],
+    "playstyle": "string"
+  },
+  "suggestedPrompts": ["string"],
+  "spoilerCaution": false
+}
+
+Routing rules:
+- Act like ChatGPT first. For greetings, thanks, small talk, and meta questions, choose answer_directly.
+- If the user is vague but clearly wants help, choose ask_clarifying_question and ask one natural question.
+- Do not force exact guide keywords from the user. Infer the likely intent from normal language.
+- Search when exact Persona 3 Reload facts are needed: enemy weaknesses, boss mechanics, dates, floors, fusion routes, rewards, Social Link answers, Elizabeth requests, achievements, or spoiler-sensitive story facts.
+- Use search_structured_facts for exact weakness/resistance/entity facts.
+- Use search_guides for broad plans and walkthrough-style advice.
+- Use search_both when both exact facts and guide explanation would help.
+- If the user says their team feels weak, party feels weak, they are stuck, or they need coaching, do not search immediately unless they named a boss/enemy/floor. Ask for level, active team, and bottleneck.
+- If player progress is unclear and the question could spoil story, ask before revealing story details.
+- Keep answer concise when action is answer_directly or ask_clarifying_question.
+- Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in answer.
+- retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.`;
+
+  const userPrompt = `User message: ${question}
+
+Heuristic intent hint: ${analysis.intent}
+Heuristic ambiguity hint: ${analysis.isAmbiguous}
+Known player profile: ${JSON.stringify(profile)}
+Recent conversation:
+${historyForPrompt || "No prior turns."}
+
+Decide the next action.`;
+
+  try {
+    const rawDecision = await createChatCompletion(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { jsonObject: true },
+    ).catch(() =>
+      createChatCompletion([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ]),
+    );
+
+    return normalizeControllerDecision(extractJson(rawDecision), analysis);
+  } catch (error) {
+    console.error(error);
+    return normalizeControllerDecision({}, analysis);
+  }
+}
+
 async function directRagResponse(
   question: string,
   playerProfile?: PlayerProfile,
@@ -592,21 +772,8 @@ async function directRagResponse(
   }
 
   const analysis = analyzeCompanionRequest(question, playerProfile);
-  if (isCasualMessage(question) || (analysis.intent === "General Discussion" && !analysis.isAmbiguous && !hasGuideIntent(question))) {
+  if (isCasualMessage(question)) {
     return casualChatResponse(question, playerProfile, history);
-  }
-
-  const needsPersonalTeamRead =
-    analysis.intent === "Team Building" &&
-    !analysis.profile.recentBoss &&
-    !/\b(boss|enemy|shadow|gatekeeper|floor|block|full moon|weak to|weakness|resist|dancing hand|fortune|priestess)\b/i.test(question);
-
-  if (analysis.isAmbiguous && analysis.followUpQuestions.length && question.split(/\s+/).filter(Boolean).length <= 5) {
-    return companionClarificationResponse(question, analysis);
-  }
-
-  if (needsPersonalTeamRead) {
-    return companionClarificationResponse(question, analysis);
   }
 
   const [{ buildContext, formatContext }, { createChatCompletion }] = await Promise.all([
@@ -614,9 +781,56 @@ async function directRagResponse(
     import("../../../src/db/client"),
   ]);
 
-  const context = await buildContext(analysis.retrievalQuery);
+  const controller = await decideCompanionAction(question, analysis, playerProfile, history, createChatCompletion);
+  const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
+  const controllerFollowUps = controller.followUpQuestions.length ? controller.followUpQuestions : analysis.followUpQuestions;
+  const companion = {
+    intent: controller.intent,
+    profileUpdates: controller.profileUpdates,
+    followUpQuestions: controllerFollowUps,
+    suggestedPrompts: controller.suggestedPrompts.length ? controller.suggestedPrompts : undefined,
+  };
+
+  if (controller.action === "answer_directly") {
+    return withMode({
+      answer:
+        controller.answer ??
+        "I’m with you. Tell me what part of Persona 3 Reload you’re working on and I’ll help you reason through it.",
+      sections: [],
+      sources: [],
+      confidence: 0.78,
+      missingInfo: controllerFollowUps.join(" ") || "No guide lookup was needed for this message.",
+      companion,
+    }, "rag");
+  }
+
+  if (controller.action === "ask_clarifying_question") {
+    const answer =
+      controller.answer ??
+      controllerFollowUps[0] ??
+      "What part of Persona 3 Reload are you working on right now: a boss, Tartarus, fusion, Social Links, or daily planning?";
+    return withMode({
+      answer,
+      sections: [],
+      sources: [],
+      confidence: 0.72,
+      missingInfo: controllerFollowUps.join(" ") || "One player detail is needed before giving exact guidance.",
+      companion,
+    }, "rag");
+  }
+
+  const context = await buildContext(controller.retrievalQuery || analysis.retrievalQuery);
   if (!context.facts.length && !context.chunks.length) {
-    return companionClarificationResponse(question, analysis);
+    return withMode({
+      answer:
+        controller.answer ??
+        "I can help, but I don’t have enough exact guide support for that yet. Give me the enemy, boss, date, floor, or Social Link name and I’ll narrow it down.",
+      sections: [],
+      sources: [],
+      confidence: 0.35,
+      missingInfo: controllerFollowUps.join(" ") || "No matching guide facts or chunks were found for this query.",
+      companion,
+    }, "rag");
   }
 
   const systemPrompt = `You are Tartarus Guide: a Persona 3 Reload expert companion, strategic coach, and spoiler-aware veteran.
@@ -634,7 +848,7 @@ Rules:
 - Sound like a helpful Persona 3 Reload expert, not a search engine or wiki reader.
 - Answer like a modern chat assistant in a normal back-and-forth conversation: lead with the direct guidance, then explain briefly.
 - Never say "retrieved", "database", "guide context", "provided context", "according to IGN", "based on documents", or similar mechanics-facing phrases.
-- Never apologize for missing guide context in the answer. If exact source support is missing, answer with a useful next step and put the missing detail in missingInfo.
+- Never apologize for missing guide context in the answer. If exact source support is thin, answer with a useful next step and put the missing detail in missingInfo.
 - Use structured facts and guide chunks for exact weaknesses, dates, floors, fusions, rewards, and boss mechanics.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
 - You may give general coaching when the user is vague, but mark uncertainty naturally and ask one useful follow-up.
@@ -646,9 +860,9 @@ Rules:
 - If guide context is incomplete, put the needed player detail in missingInfo without exposing retrieval mechanics.
 - Use tables only for exact weakness or item lists. Most answers should not need a table.
 - Keep section content short enough for a mobile chat bubble.
-- Prefer no more than two sections. Omit sections when a direct answer is enough.`;
+- Prefer one natural answer plus no more than two short sections. Omit sections when a direct answer is enough.`;
 
-  const profileForPrompt = mergeProfile(playerProfile, analysis.profileUpdates);
+  const profileForPrompt = controllerProfile;
   const historyForPrompt = (history ?? [])
     .slice(-6)
     .map((message) => `${message.role}: ${message.content}`)
@@ -656,17 +870,17 @@ Rules:
 
   const userPrompt = `User question: ${question}
 
-Detected intent: ${analysis.intent}
+Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
 Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
-Follow-up questions to ask if useful: ${analysis.followUpQuestions.join(" | ") || "None"}
-Spoiler caution: ${analysis.spoilerCaution ? "Avoid story specifics unless asked." : "Normal."}
+Follow-up questions to ask if useful: ${controllerFollowUps.join(" | ") || "None"}
+Spoiler caution: ${controller.spoilerCaution ? "Avoid story specifics unless asked." : "Normal."}
 
 ${formatContext(context)}
 
-Answer as a companion. Use the guide context for exact claims, but do not mention the context or sources inside the prose.`;
+Answer as a companion. Use the guide material for exact claims, but do not mention sources or backend mechanics inside the prose.`;
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
@@ -677,9 +891,10 @@ Answer as a companion. Use the guide context for exact claims, but do not mentio
     const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
     return withMode(
       normalizeRagResponse(extractJson(rawAnswer), context.sources, {
-        intent: analysis.intent,
-        profileUpdates: analysis.profileUpdates,
-        followUpQuestions: analysis.followUpQuestions,
+        intent: controller.intent,
+        profileUpdates: controller.profileUpdates,
+        followUpQuestions: controllerFollowUps,
+        suggestedPrompts: controller.suggestedPrompts,
       }),
       "rag",
     );
