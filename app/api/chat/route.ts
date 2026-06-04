@@ -50,6 +50,7 @@ type CompanionAnalysis = {
   isAmbiguous: boolean;
   followUpQuestions: string[];
   profileUpdates: PlayerProfile;
+  profile: PlayerProfile;
   spoilerCaution: boolean;
 };
 
@@ -135,7 +136,14 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   if (intent === "Daily Schedule Planning" && !mergedProfile.currentMonth) {
     followUpQuestions.push("What month or date are you currently on?");
   }
-  if (isAmbiguous && followUpQuestions.length === 0) {
+  const hasKnownSituation = Boolean(
+    mergedProfile.currentLevel ||
+      mergedProfile.activeParty?.length ||
+      mergedProfile.currentMonth ||
+      mergedProfile.recentBoss ||
+      mergedProfile.playstyle,
+  );
+  if (isAmbiguous && followUpQuestions.length === 0 && !hasKnownSituation) {
     followUpQuestions.push("Are you stuck on a boss, party setup, Social Link, request, or Tartarus route?");
   }
 
@@ -154,11 +162,51 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     isAmbiguous,
     followUpQuestions: followUpQuestions.slice(0, 2),
     profileUpdates,
+    profile: mergedProfile,
     spoilerCaution: intent === "Story Guidance" && !mergedProfile.currentMonth,
   };
 }
 
 function companionClarificationResponse(question: string, analysis: CompanionAnalysis): ChatResponse {
+  if (!analysis.followUpQuestions.length && analysis.intent === "Team Building") {
+    const profile = analysis.profile;
+    const levelLine = profile.currentLevel ? `At level ${profile.currentLevel}` : "At your current level";
+    const partyLine = profile.activeParty?.length ? ` with ${profile.activeParty.join(", ")}` : "";
+    const difficultyLine = profile.difficulty ? ` on ${profile.difficulty}` : "";
+
+    return withMode({
+      answer:
+        `${levelLine}${partyLine}${difficultyLine}, I would treat this as a balance check rather than a grind alarm. Your next move is to make sure your active Personas cover healing, one strong physical option, and at least two elements your party does not naturally cover.`,
+      sections: [
+        {
+          title: "Party Read",
+          content:
+            profile.activeParty?.length
+              ? `Keep ${profile.activeParty[0]} anchored to their strongest role, then use your protagonist to patch whatever the group is missing instead of duplicating the same element.`
+              : "Use the protagonist as your flexible slot: one healer/support Persona, one physical attacker, and one elemental coverage Persona.",
+        },
+        {
+          title: "Next Upgrade",
+          content:
+            "Fuse closer to your level, check armor before weapons if you are dying quickly, and carry SP recovery before long Tartarus pushes. If the issue is a specific boss, tell me the name and I will switch into a turn-by-turn plan.",
+        },
+      ],
+      sources: [],
+      confidence: 0.5,
+      missingInfo: "Tell me the boss, floor, or enemy giving you trouble and I can make this more exact.",
+      companion: {
+        intent: analysis.intent,
+        profileUpdates: analysis.profileUpdates,
+        followUpQuestions: ["Which enemy or boss is making the party feel weak?"],
+        suggestedPrompts: [
+          "I'm stuck on a Tartarus gatekeeper",
+          "My party is taking too much damage",
+          "What Persona should I fuse at my level?",
+        ],
+      },
+    }, "rag");
+  }
+
   const primaryQuestion = analysis.followUpQuestions[0] ?? "What part of Persona 3 Reload are you working on right now?";
   return withMode({
     answer:
