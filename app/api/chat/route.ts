@@ -483,8 +483,16 @@ async function directRagResponse(
   }
 
   const analysis = analyzeCompanionRequest(question, playerProfile);
+  const needsPersonalTeamRead =
+    analysis.intent === "Team Building" &&
+    !analysis.profile.recentBoss &&
+    !/\b(boss|enemy|shadow|gatekeeper|floor|block|full moon|weak to|weakness|resist|dancing hand|fortune|priestess)\b/i.test(question);
 
   if (analysis.isAmbiguous && analysis.followUpQuestions.length && question.split(/\s+/).filter(Boolean).length <= 5) {
+    return companionClarificationResponse(question, analysis);
+  }
+
+  if (needsPersonalTeamRead) {
     return companionClarificationResponse(question, analysis);
   }
 
