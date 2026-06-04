@@ -302,7 +302,7 @@ button { cursor: pointer; }
 .rag-status small { color: rgba(223,252,255,.72); font-weight: 800; }
 .rag-status.is-live span { background: var(--cyan); box-shadow: 0 0 18px rgba(85,247,255,.9); }
 
-.category-list, .recent-list { display: grid; gap: .6rem; }
+.category-list, .recent-list { display: grid; gap: .72rem; }
 .category-list button, .recent-list button, .suggestions button {
   min-width: 0;
   border: 0;
@@ -330,13 +330,20 @@ button { cursor: pointer; }
 }
 .category-list button:hover, .recent-list button:hover, .suggestions button:hover { transform: translateY(-2px); background: var(--ice); }
 .recent-list p { color: rgba(223,252,255,.72); font-weight: 700; }
-.recent-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.2rem; }
+.recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.65rem;
+  margin-bottom: .72rem;
+}
 .recent-head h3 { margin: 0; }
 .recent-head button {
   border: 1px solid rgba(85,247,255,.45);
   background: rgba(85,247,255,.08);
   color: var(--cyan);
-  padding: .3rem .55rem;
+  padding: .42rem .72rem;
   font-size: .72rem;
   font-weight: 900;
   text-transform: uppercase;
