@@ -18,6 +18,18 @@ export type ChatTable = {
 export type ChatRequest = {
   question: string;
   conversationId?: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
+  playerProfile?: PlayerProfile;
+};
+
+export type PlayerProfile = {
+  currentMonth?: string;
+  currentLevel?: string;
+  difficulty?: string;
+  activeParty?: string[];
+  recentBoss?: string;
+  currentSocialLinks?: string[];
+  playstyle?: string;
 };
 
 export type ChatResponse = {
@@ -28,6 +40,12 @@ export type ChatResponse = {
   confidence?: number;
   missingInfo?: string;
   retrievalMode?: "rag" | "empty" | "mock" | "error";
+  companion?: {
+    intent?: string;
+    profileUpdates?: PlayerProfile;
+    followUpQuestions?: string[];
+    suggestedPrompts?: string[];
+  };
 };
 
 export type ChatMessage = {

@@ -16,8 +16,41 @@ const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 
 const recent = [];
+const chatHistory = [];
+let playerProfile = loadPlayerProfile();
 
 let apiAvailable = false;
+
+function loadPlayerProfile() {
+  try {
+    return JSON.parse(window.sessionStorage.getItem("tartarusPlayerProfile") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function savePlayerProfile() {
+  window.sessionStorage.setItem("tartarusPlayerProfile", JSON.stringify(playerProfile));
+}
+
+function rememberTurn(role, content) {
+  chatHistory.push({ role, content });
+  chatHistory.splice(0, Math.max(0, chatHistory.length - 10));
+}
+
+function mergeProfileUpdates(updates) {
+  if (!updates || typeof updates !== "object") return;
+  playerProfile = {
+    ...playerProfile,
+    ...updates,
+    activeParty: Array.isArray(updates.activeParty) && updates.activeParty.length ? [...new Set(updates.activeParty)] : playerProfile.activeParty,
+    currentSocialLinks:
+      Array.isArray(updates.currentSocialLinks) && updates.currentSocialLinks.length
+        ? [...new Set(updates.currentSocialLinks)]
+        : playerProfile.currentSocialLinks,
+  };
+  savePlayerProfile();
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -32,13 +65,13 @@ function mockAnswer(question) {
   const normalized = question.toLowerCase();
   if (normalized.includes("dancing hand") || normalized.includes("weak")) {
     return {
-      answer: "Preview mode: the UI is ready, but the live RAG database is not connected in this static page. The real answer will pull exact weakness facts first, then confirm with source chunks.",
+      answer: "Preview mode: the UI is ready, but live guide mode is not connected in this static page. The real answer will check exact weakness facts first, then confirm with trusted guide notes.",
       sections: [
         ["Battle Read", "Ask for an enemy by name and the backend will return weakness, resistances, location notes, and a short practical opener."],
         ["Player Advice", "Once weakness is confirmed, knock the shadow down, chain All-Out Attacks, and conserve SP if you are deep in Tartarus."],
       ],
-      table: [["Dancing Hand", "Connect RAG to confirm", "Mock preview"]],
-      missing: "Live Supabase facts and chunks are not connected in this static preview.",
+      table: [["Dancing Hand", "Connect live guide mode to confirm", "Mock preview"]],
+      missing: "Live guide facts are not connected in this static preview.",
       confidence: "42%",
       retrievalMode: "mock",
       sources: [
@@ -57,7 +90,7 @@ function mockAnswer(question) {
         ["Strategy Flow", "Identify the boss, pull supported mechanics, call out dangerous turns, then give a short step plan."],
         ["Party Check", "Recommended party cards appear only when the source directly supports them or when uncertainty is labeled."],
       ],
-      missing: "No live boss facts were retrieved because this is the static mock API.",
+      missing: "Live boss facts are not active in this static preview.",
       confidence: "45%",
       retrievalMode: "mock",
       sources: [
@@ -71,8 +104,8 @@ function mockAnswer(question) {
   }
   if (normalized.includes("fusion") || normalized.includes("jack frost")) {
     return {
-      answer: "Fusion help is wired as a first-class response type. The real backend should avoid guessing recipes unless a source-backed fusion fact is retrieved.",
-      sections: [["Fusion Rule", "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the database is missing them, the answer should say so."]],
+      answer: "Fusion help is wired as a first-class response type. The live guide should avoid guessing recipes unless a trusted fusion fact is available.",
+      sections: [["Fusion Rule", "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the guide index is missing them, the answer should say so."]],
       missing: "Connect the RAG backend for exact Persona fusion recipes.",
       confidence: "40%",
       retrievalMode: "mock",
@@ -125,6 +158,7 @@ function addLoading() {
 function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
+  mergeProfileUpdates(response.companion?.profileUpdates);
   const sections = response.sections
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(content)}</p></section>`)
     .join("");
@@ -133,21 +167,18 @@ function addAssistantMessage(response) {
         .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
         .join("")}</tbody></table></div>`
     : "";
-  const sources = response.sources?.length
-    ? response.sources
-    : [
-        {
-          title: "No source returned",
-          domain: "missing",
-          url: "#",
-        },
-      ];
-  const sourceLinks = sources
+  const sourceLinks = (response.sources || [])
     .map(
       (item) =>
         `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.domain)}</span></a>`,
     )
     .join("");
+  const sourceFooter = sourceLinks
+    ? `<footer>
+        <h3>Sources</h3>
+        ${sourceLinks}
+      </footer>`
+    : "";
   const node = document.createElement("article");
   node.className = `guide-card mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
@@ -159,12 +190,10 @@ function addAssistantMessage(response) {
     <div class="warning">${escapeHtml(response.missing)}</div>
     <div class="section-grid">${sections}</div>
     ${table}
-    <footer>
-      <h3>Sources</h3>
-      ${sourceLinks}
-    </footer>
+    ${sourceFooter}
   `;
   messages.appendChild(node);
+  rememberTurn("assistant", response.answer);
   scrollMessagesToBottom();
 }
 
@@ -180,7 +209,11 @@ async function requestAnswer(question) {
       const response = await fetch(chatApiUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({
+          question,
+          history: chatHistory.slice(-8),
+          playerProfile,
+        }),
       });
 
       if (!response.ok) {
@@ -194,6 +227,7 @@ async function requestAnswer(question) {
         table: data.tables?.[0]?.rows,
         missing: data.missingInfo || "No missing information reported.",
         retrievalMode: data.retrievalMode || "mock",
+        companion: data.companion,
         sources: data.sources || [],
         confidence:
           typeof data.confidence === "number"
@@ -231,7 +265,7 @@ function setApiStatus(mode) {
   ragStatus.classList.toggle("is-error", isError);
   ragStatus.querySelector("strong").textContent = isLive ? "RAG Online" : isEmpty ? "RAG Connected" : isError ? "API Fallback" : "Preview Mode";
   ragStatus.querySelector("small").textContent = isLive
-    ? "Source retrieval active"
+    ? "Live guide active"
     : isEmpty
       ? "No matching source yet"
       : isError
@@ -240,7 +274,7 @@ function setApiStatus(mode) {
   chatModeLabel.textContent = isLive ? "RAG API" : isEmpty ? "No Match" : isError ? "Fallback" : "Mock API";
   if (modeCardText) {
     modeCardText.textContent = isLive
-      ? "Connected to Supabase RAG. Answers cite retrieved Persona 3 Reload guide sources."
+      ? "Connected to live guide mode. Answers use your Persona 3 Reload guide index."
       : isEmpty
         ? "The API is connected, but this question did not match the current knowledge base."
         : isError
@@ -286,6 +320,7 @@ async function ask(question) {
   if (!trimmed) return;
   setMenu(false);
   addUserMessage(trimmed);
+  rememberTurn("user", trimmed);
   updateRecent(trimmed);
   input.value = "";
   addLoading();
