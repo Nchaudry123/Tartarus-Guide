@@ -517,6 +517,7 @@ Rules:
 - Be practical, concise, and strategy-first. Give next actions, party/fusion/social priority ideas when relevant.
 - If the user gave profile details, personalize the advice around them.
 - If the request risks story spoilers, avoid revealing plot specifics unless the user explicitly asks.
+- Do not assume party members, Personas, skills, months, or bosses are available just because they appear in guide context. If the player's progress is unclear, say "if unlocked" or ask what is available.
 - Do not invent exact weaknesses, fusions, dates, floors, rewards, or boss mechanics.
 - If guide context is incomplete, put the needed player detail in missingInfo without exposing retrieval mechanics.
 - Keep section content short enough for a mobile chat card.`;
@@ -531,6 +532,7 @@ Rules:
 
 Detected intent: ${analysis.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
+Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 Follow-up questions to ask if useful: ${analysis.followUpQuestions.join(" | ") || "None"}
