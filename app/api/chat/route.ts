@@ -643,6 +643,35 @@ function compactText(value: string, maxLength = 520): string {
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
+function formatAssistantContext(context: {
+  facts: Array<{
+    entity: { name: string; type: string };
+    fact_type: string;
+    value: string;
+    confidence: number;
+    source: { url: string };
+  }>;
+  chunks: Array<{ source_title: string; source_url: string; section_title: string | null; chunk_text: string }>;
+}): string {
+  const facts = context.facts
+    .slice(0, 8)
+    .map(
+      (fact, index) =>
+        `[Fact ${index + 1}] ${fact.entity.name} (${fact.entity.type}) - ${fact.fact_type}: ${fact.value} (confidence ${fact.confidence}, source: ${fact.source.url})`,
+    )
+    .join("\n");
+
+  const chunks = context.chunks
+    .slice(0, 5)
+    .map(
+      (chunk, index) =>
+        `[Guide ${index + 1}] ${chunk.source_title} / ${chunk.section_title ?? "Untitled"} (${chunk.source_url})\n${compactText(chunk.chunk_text, 900)}`,
+    )
+    .join("\n\n");
+
+  return `Structured facts:\n${facts || "No structured facts found."}\n\nGuide excerpts:\n${chunks || "No guide excerpts found."}`;
+}
+
 function extractiveRagResponse(
   question: string,
   context: {
@@ -654,11 +683,8 @@ function extractiveRagResponse(
   const topChunks = context.chunks.slice(0, 3);
   return withMode({
     answer:
-      "I have enough guide notes to give you a starting read, but I would still treat this as a quick tactical pass. Use the strongest matching notes below, then answer the check-in question so I can tailor the plan.",
-    sections: topChunks.map((chunk, index) => ({
-      title: chunk.section_title || `Guide Note ${index + 1}`,
-      content: compactText(chunk.chunk_text),
-    })),
+      "I found related guide pages, but I could not turn them into a clean answer this time. Give me the exact enemy, boss, floor, or date again and I’ll try a narrower lookup instead of guessing.",
+    sections: [],
     sources: context.sources,
     confidence: topChunks[0]?.similarity ? Math.max(0.35, Math.min(0.8, topChunks[0].similarity)) : 0.55,
     missingInfo: analysis?.followUpQuestions.join(" ") || `Tell me one more detail about "${question}" and I can tighten the recommendation.`,
@@ -792,7 +818,7 @@ async function directRagResponse(
     return casualChatResponse(question, playerProfile, history);
   }
 
-  const [{ buildContext, formatContext }, { createChatCompletion }] = await Promise.all([
+  const [{ buildContext }, { createChatCompletion }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
   ]);
@@ -894,7 +920,7 @@ ${historyForPrompt || "No prior turns."}
 Follow-up questions to ask if useful: ${controllerFollowUps.join(" | ") || "None"}
 Spoiler caution: ${controller.spoilerCaution ? "Avoid story specifics unless asked." : "Normal."}
 
-${formatContext(context)}
+${formatAssistantContext(context)}
 
 Answer as a companion. Use the guide material for exact claims, but do not mention sources or backend mechanics inside the prose.`;
 
