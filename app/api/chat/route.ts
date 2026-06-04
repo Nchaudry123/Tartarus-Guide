@@ -196,7 +196,17 @@ function normalizeRagResponse(raw: unknown, fallbackSources: ChatResponse["sourc
 }
 
 function compactText(value: string, maxLength = 520): string {
-  const text = value.replace(/\s+/g, " ").trim();
+  const text = value
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[[^\]]*\]\((?:https?:)?\/\/[^)]*\)/g, " ")
+    .replace(/Title:\s*.*?(?:Markdown Content:|Published Time:\s*\S+)/gis, " ")
+    .replace(/URL Source:\s*\S+/gi, " ")
+    .replace(/Published Time:\s*\S+/gi, " ")
+    .replace(/Markdown Content:/gi, " ")
+    .replace(/\badvertisement\b/gi, " ")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
