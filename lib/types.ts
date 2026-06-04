@@ -27,6 +27,7 @@ export type ChatResponse = {
   sources: ChatSource[];
   confidence?: number;
   missingInfo?: string;
+  retrievalMode?: "rag" | "empty" | "mock" | "error";
 };
 
 export type ChatMessage = {

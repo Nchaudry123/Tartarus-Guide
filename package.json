@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "ingest": "tsx src/ingest/runIngestion.ts",
+    "ingest:lite": "node scripts/ingest-lite.mjs",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit"
   },

@@ -9,18 +9,13 @@ const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
 const ragStatus = document.getElementById("ragStatus");
 const chatModeLabel = document.getElementById("chatModeLabel");
+const modeCardText = document.getElementById("modeCardText");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 
 const recent = [];
-
-const source = {
-  title: "Persona 3 Reload Wiki Guide",
-  domain: "ign.com",
-  url: "https://www.ign.com/wikis/persona-3-reload/",
-};
 
 let apiAvailable = false;
 
@@ -45,6 +40,14 @@ function mockAnswer(question) {
       table: [["Dancing Hand", "Connect RAG to confirm", "Mock preview"]],
       missing: "Live Supabase facts and chunks are not connected in this static preview.",
       confidence: "42%",
+      retrievalMode: "mock",
+      sources: [
+        {
+          title: "Persona 3 Reload Guide Preview",
+          domain: "local preview",
+          url: "https://game8.co/games/Persona-3-Reload",
+        },
+      ],
     };
   }
   if (normalized.includes("priestess") || normalized.includes("boss")) {
@@ -56,6 +59,14 @@ function mockAnswer(question) {
       ],
       missing: "No live boss facts were retrieved because this is the static mock API.",
       confidence: "45%",
+      retrievalMode: "mock",
+      sources: [
+        {
+          title: "Persona 3 Reload Guide Preview",
+          domain: "local preview",
+          url: "https://game8.co/games/Persona-3-Reload",
+        },
+      ],
     };
   }
   if (normalized.includes("fusion") || normalized.includes("jack frost")) {
@@ -64,6 +75,14 @@ function mockAnswer(question) {
       sections: [["Fusion Rule", "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the database is missing them, the answer should say so."]],
       missing: "Connect the RAG backend for exact Persona fusion recipes.",
       confidence: "40%",
+      retrievalMode: "mock",
+      sources: [
+        {
+          title: "Persona 3 Reload Guide Preview",
+          domain: "local preview",
+          url: "https://game8.co/games/Persona-3-Reload",
+        },
+      ],
     };
   }
   return {
@@ -74,6 +93,14 @@ function mockAnswer(question) {
     ],
     missing: "Live retrieval is not enabled yet.",
     confidence: "50%",
+    retrievalMode: "mock",
+    sources: [
+      {
+        title: "Persona 3 Reload Guide Preview",
+        domain: "local preview",
+        url: "https://game8.co/games/Persona-3-Reload",
+      },
+    ],
   };
 }
 
@@ -97,6 +124,7 @@ function addLoading() {
 
 function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
+  setApiStatus(response.retrievalMode || "mock");
   const sections = response.sections
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3><p>${escapeHtml(content)}</p></section>`)
     .join("");
@@ -105,8 +133,23 @@ function addAssistantMessage(response) {
         .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
         .join("")}</tbody></table></div>`
     : "";
+  const sources = response.sources?.length
+    ? response.sources
+    : [
+        {
+          title: "No source returned",
+          domain: "missing",
+          url: "#",
+        },
+      ];
+  const sourceLinks = sources
+    .map(
+      (item) =>
+        `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.domain)}</span></a>`,
+    )
+    .join("");
   const node = document.createElement("article");
-  node.className = "guide-card";
+  node.className = `guide-card mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
     <div class="guide-head">
       <div><p>Guide Response</p><h2>Analysis</h2></div>
@@ -118,7 +161,7 @@ function addAssistantMessage(response) {
     ${table}
     <footer>
       <h3>Sources</h3>
-      <a href="${source.url}" target="_blank" rel="noreferrer"><strong>${escapeHtml(source.title)}</strong><span>${escapeHtml(source.domain)}</span></a>
+      ${sourceLinks}
     </footer>
   `;
   messages.appendChild(node);
@@ -150,6 +193,8 @@ async function requestAnswer(question) {
         sections: (data.sections || []).map((section) => [section.title, section.content]),
         table: data.tables?.[0]?.rows,
         missing: data.missingInfo || "No missing information reported.",
+        retrievalMode: data.retrievalMode || "mock",
+        sources: data.sources || [],
         confidence:
           typeof data.confidence === "number"
             ? `${Math.round(data.confidence * 100)}%`
@@ -168,20 +213,40 @@ async function checkApiStatus() {
     const response = await fetch(chatApiUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: "status check" }),
+      body: JSON.stringify({ question: "__status__" }),
     });
-    setApiStatus(response.ok);
+    const data = response.ok ? await response.json() : {};
+    setApiStatus(response.ok ? data.retrievalMode || "mock" : "mock");
   } catch {
-    setApiStatus(false);
+    setApiStatus("mock");
   }
 }
 
-function setApiStatus(isAvailable) {
-  apiAvailable = isAvailable;
-  ragStatus.classList.toggle("is-live", isAvailable);
-  ragStatus.querySelector("strong").textContent = isAvailable ? "RAG Online" : "Preview Mode";
-  ragStatus.querySelector("small").textContent = isAvailable ? "Live retrieval active" : "Mock responses active";
-  chatModeLabel.textContent = isAvailable ? "Live API" : "Mock API";
+function setApiStatus(mode) {
+  apiAvailable = mode !== "mock";
+  const isLive = mode === "rag";
+  const isEmpty = mode === "empty";
+  const isError = mode === "error";
+  ragStatus.classList.toggle("is-live", isLive);
+  ragStatus.classList.toggle("is-error", isError);
+  ragStatus.querySelector("strong").textContent = isLive ? "RAG Online" : isEmpty ? "RAG Connected" : isError ? "API Fallback" : "Preview Mode";
+  ragStatus.querySelector("small").textContent = isLive
+    ? "Source retrieval active"
+    : isEmpty
+      ? "No matching source yet"
+      : isError
+        ? "Mock fallback active"
+        : "Mock responses active";
+  chatModeLabel.textContent = isLive ? "RAG API" : isEmpty ? "No Match" : isError ? "Fallback" : "Mock API";
+  if (modeCardText) {
+    modeCardText.textContent = isLive
+      ? "Connected to Supabase RAG. Answers cite retrieved Persona 3 Reload guide sources."
+      : isEmpty
+        ? "The API is connected, but this question did not match the current knowledge base."
+        : isError
+          ? "The API route responded, but retrieval failed and the terminal used a fallback answer."
+          : "Static preview uses mock answers until the deployed API has live credentials.";
+  }
 }
 
 function clearEmpty() {
