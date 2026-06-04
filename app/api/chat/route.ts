@@ -33,6 +33,7 @@ const mockSources = [
 ];
 
 type CompanionIntent =
+  | "Enemy Weakness"
   | "Boss Help"
   | "Team Building"
   | "Fusion Advice"
@@ -62,8 +63,10 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
+  if (/\b(team feels weak|party feels weak|my team is weak|my party is weak|underleveled|under-leveled|team|party|build|members|composition|gear|equipment)\b/.test(text)) return "Team Building";
+  if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
-  if (/\b(team|party|weak|underleveled|level|build|members|composition|gear|equipment)\b/.test(text)) return "Team Building";
+  if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
   if (/\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion)\b/.test(text)) return "Fusion Advice";
   if (/\b(social link|s-link|rank|romance|hang out|confidant)\b/.test(text)) return "Social Links";
   if (/\b(day|schedule|calendar|month|night|after school|full moon|free time)\b/.test(text)) return "Daily Schedule Planning";
