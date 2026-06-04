@@ -74,6 +74,18 @@ function detectIntent(question: string): CompanionIntent {
   return "General Discussion";
 }
 
+function isCasualMessage(question: string): boolean {
+  const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
+  if (/^(hi|hello|hey|yo|sup|what's up|whats up|good morning|good afternoon|good evening)$/.test(text)) return true;
+  if (/^(thanks|thank you|ty|appreciate it|cool|nice|ok|okay|got it)$/.test(text)) return true;
+  if (/\b(who are you|what can you do|how do you work|how are you)\b/.test(text)) return true;
+  return false;
+}
+
+function hasGuideIntent(question: string): boolean {
+  return detectIntent(question) !== "General Discussion";
+}
+
 function extractProfileUpdates(question: string): PlayerProfile {
   const updates: PlayerProfile = {};
   const monthMatch = question.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
@@ -165,6 +177,100 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     profile: mergedProfile,
     spoilerCaution: intent === "Story Guidance" && !mergedProfile.currentMonth,
   };
+}
+
+function casualFallbackResponse(question: string, profileUpdates: PlayerProfile = {}): ChatResponse {
+  const normalized = question.toLowerCase().trim();
+  const isGreeting = /^(hi|hello|hey|yo|sup)\b/.test(normalized);
+  const answer = isGreeting
+    ? "Hey. I’m here. Tell me what you’re dealing with in Persona 3 Reload and I’ll help you work through it."
+    : "I’m here to help with Persona 3 Reload. You can talk naturally, and I’ll ask for details when I need them instead of making you know exact guide keywords.";
+
+  return withMode({
+    answer,
+    sections: [],
+    sources: [],
+    confidence: 0.75,
+    missingInfo: "Tell me your current date, level, party, boss, floor, or goal whenever you want more specific advice.",
+    companion: {
+      intent: "General Discussion",
+      profileUpdates,
+      followUpQuestions: ["What are you working on right now: a boss, Tartarus, fusion, Social Links, or daily planning?"],
+      suggestedPrompts: [
+        "My team feels weak",
+        "Help me plan today",
+        "What should I fuse next?",
+      ],
+    },
+  }, "rag");
+}
+
+async function casualChatResponse(
+  question: string,
+  playerProfile?: PlayerProfile,
+  history: ChatRequest["history"] = [],
+): Promise<ChatResponse> {
+  const { createChatCompletion } = await import("../../../src/db/client");
+  const profileUpdates = extractProfileUpdates(question);
+  const profile = mergeProfile(playerProfile, profileUpdates);
+  const historyForPrompt = (history ?? [])
+    .slice(-6)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n");
+
+  const systemPrompt = `You are Tartarus Guide, a friendly Persona 3 Reload expert companion.
+
+Return only JSON:
+{
+  "answer": "string",
+  "sections": [{"title": "string", "content": "string"}],
+  "confidence": 0.0,
+  "missingInfo": "string"
+}
+
+Rules:
+- Act like a normal chat assistant first. Greetings should receive a friendly greeting, not a guide answer.
+- Do not force retrieval, sources, boss strategy, or wiki-style content for casual chat.
+- If the user is starting a conversation, invite them to describe their current Persona 3 Reload situation.
+- If they ask what you can do, explain that you can help with bosses, weaknesses, party building, fusion, Social Links, requests, Tartarus, and schedule planning.
+- Keep it concise and natural.`;
+
+  const userPrompt = `User message: ${question}
+Known player profile: ${JSON.stringify(profile)}
+Recent conversation:
+${historyForPrompt || "No prior turns."}
+
+Answer naturally.`;
+
+  try {
+    const rawAnswer = await createChatCompletion(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { jsonObject: true },
+    ).catch(() =>
+      createChatCompletion([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ]),
+    );
+
+    const normalized = normalizeRagResponse(extractJson(rawAnswer), [], {
+      intent: "General Discussion",
+      profileUpdates,
+      followUpQuestions: ["What are you working on right now: a boss, Tartarus, fusion, Social Links, or daily planning?"],
+      suggestedPrompts: [
+        "My team feels weak",
+        "Help me plan today",
+        "What should I fuse next?",
+      ],
+    });
+    return withMode({ ...normalized, sources: [] }, "rag");
+  } catch (error) {
+    console.error(error);
+    return casualFallbackResponse(question, profileUpdates);
+  }
 }
 
 function companionClarificationResponse(question: string, analysis: CompanionAnalysis): ChatResponse {
@@ -483,6 +589,10 @@ async function directRagResponse(
   }
 
   const analysis = analyzeCompanionRequest(question, playerProfile);
+  if (isCasualMessage(question) || (analysis.intent === "General Discussion" && !analysis.isAmbiguous && !hasGuideIntent(question))) {
+    return casualChatResponse(question, playerProfile, history);
+  }
+
   const needsPersonalTeamRead =
     analysis.intent === "Team Building" &&
     !analysis.profile.recentBoss &&
