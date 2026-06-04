@@ -612,6 +612,22 @@ function normalizeRagResponse(
   };
 }
 
+function responseFromPlainText(
+  rawAnswer: string,
+  fallbackSources: ChatResponse["sources"],
+  companion?: NonNullable<ChatResponse["companion"]>,
+): ChatResponse {
+  return {
+    answer: compactText(rawAnswer, 1800),
+    sections: [],
+    tables: [],
+    sources: fallbackSources,
+    confidence: fallbackSources.length ? 0.68 : 0.55,
+    missingInfo: "The assistant returned a plain response instead of structured JSON.",
+    companion,
+  };
+}
+
 function compactText(value: string, maxLength = 520): string {
   const text = value
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
@@ -889,13 +905,20 @@ Answer as a companion. Use the guide material for exact claims, but do not menti
 
   try {
     const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
+    const responseCompanion = {
+      intent: controller.intent,
+      profileUpdates: controller.profileUpdates,
+      followUpQuestions: controllerFollowUps,
+      suggestedPrompts: controller.suggestedPrompts,
+    };
+    let normalized: ChatResponse;
+    try {
+      normalized = normalizeRagResponse(extractJson(rawAnswer), context.sources, responseCompanion);
+    } catch {
+      normalized = responseFromPlainText(rawAnswer, context.sources, responseCompanion);
+    }
     return withMode(
-      normalizeRagResponse(extractJson(rawAnswer), context.sources, {
-        intent: controller.intent,
-        profileUpdates: controller.profileUpdates,
-        followUpQuestions: controllerFollowUps,
-        suggestedPrompts: controller.suggestedPrompts,
-      }),
+      normalized,
       "rag",
     );
   } catch (error) {
