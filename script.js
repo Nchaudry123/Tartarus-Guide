@@ -256,7 +256,7 @@ function clearEmpty() {
 function renderEmptyState() {
   messages.innerHTML = `
     <div class="empty-state">
-      <div class="seal">Ⅲ</div>
+      <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
       <h2>What do you need help with?</h2>
       <p>Try asking for a weakness, boss strategy, fusion route, Social Link choice, Elizabeth request, or daily-life tip.</p>
       <div class="empty-examples">
