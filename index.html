@@ -53,11 +53,6 @@
           <p>Quick Menu</p>
           <h2>Records</h2>
         </div>
-        <div class="rag-status" id="ragStatus">
-          <span></span>
-          <strong>Preview Mode</strong>
-          <small>Mock responses active</small>
-        </div>
         <nav class="category-list" id="categoryList">
           <button type="button" data-prompt="What enemy weaknesses should I know early?">Shadows</button>
           <button type="button" data-prompt="How do I prepare for the next full moon boss?">Bosses</button>
@@ -66,15 +61,6 @@
           <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Requests</button>
           <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus</button>
         </nav>
-        <section>
-          <div class="recent-head">
-            <h3>Recent</h3>
-            <button type="button" id="clearChat">Clear</button>
-          </div>
-          <div class="recent-list" id="recentList">
-            <p>Your last questions will appear here.</p>
-          </div>
-        </section>
       </aside>
 
       <section class="chat-stage">
@@ -83,10 +69,6 @@
             <p class="eyebrow">Strategy Terminal</p>
             <h1>Tartarus <span>Guide</span></h1>
             <p class="subtitle">Ask anything about Persona 3 Reload.</p>
-          </div>
-          <div class="mode-card">
-            <strong>Source-backed mode</strong>
-            <span id="modeCardText">RAG-ready terminal. Live deployments retrieve from Supabase; static previews fall back to mock answers.</span>
           </div>
         </header>
 
@@ -101,8 +83,7 @@
 
         <section class="chat-window" aria-live="polite">
         <div class="chat-toolbar">
-            <span>Ask naturally. Scroll through the record log.</span>
-            <strong id="chatModeLabel">Mock API</strong>
+            <span>Ask naturally. I’ll use your guide index, keep context, and answer like a strategy coach.</span>
           </div>
           <div class="messages" id="messages">
             <div class="empty-state">
@@ -119,7 +100,7 @@
 
           <form class="chat-form" id="chatForm">
             <label class="sr-only" for="questionInput">Ask a Persona 3 Reload question</label>
-            <input id="questionInput" autocomplete="off" placeholder="Ask about weaknesses, bosses, fusion, Social Links..." />
+            <textarea id="questionInput" rows="2" autocomplete="off" placeholder="Ask anything about Persona 3 Reload..."></textarea>
             <button type="submit" aria-label="Send question">➜</button>
           </form>
         </section>
