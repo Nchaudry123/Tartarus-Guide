@@ -26,6 +26,31 @@ button { cursor: pointer; }
   background: #fff;
   transition: opacity .36s ease, visibility .36s ease;
 }
+.entrance-screen::before,
+.entrance-screen::after {
+  content: "";
+  position: absolute;
+  inset: -16vh -18vw;
+  z-index: 2;
+  pointer-events: none;
+}
+.entrance-screen::before {
+  background:
+    linear-gradient(102deg, transparent 0 34%, rgba(85,247,255,.26) 34.3% 35.2%, transparent 35.5%),
+    linear-gradient(102deg, transparent 0 57%, rgba(255,255,255,.34) 57.2% 58.4%, transparent 58.7%);
+  transform: translateX(-28vw) skewX(-10deg);
+  opacity: 0;
+  animation: introSlashSweep 1450ms cubic-bezier(.16,1,.3,1) 260ms both;
+}
+.entrance-screen::after {
+  z-index: 1;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.08) 0 1px, transparent 1px 5px),
+    radial-gradient(circle at 72% 44%, rgba(85,247,255,.18), transparent 34%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: scanlineFade 1400ms ease 520ms both;
+}
 .entrance-screen.is-hidden {
   opacity: 0;
   visibility: hidden;
@@ -52,6 +77,76 @@ button { cursor: pointer; }
   filter: saturate(1.08) contrast(1.08);
   transform: scale(1.2) translate3d(8vw, -4vh, 0) rotate(-3deg);
   animation: introArtSnap 1200ms cubic-bezier(.16,1,.3,1) both, introArtIdle 5.2s ease-in-out 1300ms infinite;
+}
+.entrance-art::before,
+.entrance-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.entrance-art::before {
+  background:
+    linear-gradient(106deg, rgba(2,7,32,.56) 0 26%, transparent 26.2% 100%),
+    linear-gradient(106deg, transparent 0 58%, rgba(2,7,32,.38) 58.2% 72%, transparent 72.2%);
+  transform: translateX(9vw);
+  animation: introMaskShift 1800ms cubic-bezier(.16,1,.3,1) both;
+}
+.entrance-art::after {
+  background: linear-gradient(90deg, transparent 0 42%, rgba(255,255,255,.52) 48%, transparent 54%);
+  transform: translateX(-120%);
+  opacity: .78;
+  animation: introLightSweep 1650ms cubic-bezier(.78,0,.12,1) 760ms both;
+}
+.intro-panels {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.intro-panels span {
+  position: absolute;
+  display: block;
+  width: clamp(14rem, 28vw, 34rem);
+  height: clamp(18rem, 48vh, 38rem);
+  background: rgba(2, 7, 32, .62);
+  clip-path: polygon(22% 0, 100% 0, 78% 100%, 0 100%);
+  opacity: 0;
+  transform: translate3d(24vw, -8vh, 0) skewX(-5deg);
+  animation: panelDrop 960ms cubic-bezier(.16,1,.3,1) both;
+}
+.intro-panels span:nth-child(1) {
+  right: 6vw;
+  top: -8vh;
+  background: rgba(2, 7, 32, .72);
+  animation-delay: 360ms;
+}
+.intro-panels span:nth-child(2) {
+  right: 36vw;
+  top: 16vh;
+  width: clamp(8rem, 17vw, 20rem);
+  height: 72vh;
+  background: rgba(7, 92, 255, .30);
+  animation-delay: 460ms;
+}
+.intro-panels span:nth-child(3) {
+  left: -8vw;
+  bottom: -16vh;
+  width: clamp(12rem, 24vw, 28rem);
+  height: 48vh;
+  background: rgba(255, 255, 255, .78);
+  animation-delay: 560ms;
+}
+.intro-scan {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0, rgba(85,247,255,.42) 48%, rgba(255,255,255,.68) 50%, transparent 54%);
+  opacity: 0;
+  transform: translateX(-120%) skewX(-18deg);
+  mix-blend-mode: screen;
+  animation: introScanCut 980ms cubic-bezier(.78,0,.12,1) 1040ms both;
 }
 .intro-flash {
   position: absolute;
@@ -124,6 +219,7 @@ button { cursor: pointer; }
   width: min(92vw, 980px);
   padding: clamp(1.2rem, 4vw, 3rem);
   transform: translate3d(-5vw, 2vh, 0) skewX(-4deg);
+  animation: copyLean 1600ms cubic-bezier(.16,1,.3,1) both;
 }
 .entrance-copy p,
 .entrance-copy strong {
@@ -148,7 +244,7 @@ button { cursor: pointer; }
   text-shadow: 10px 12px 0 rgba(2,7,32,.58);
   opacity: 0;
   transform: translateX(-18vw) scaleX(1.18);
-  animation: titleSlam 640ms cubic-bezier(.16,1,.3,1) 760ms both;
+  animation: titleSlam 720ms cubic-bezier(.16,1,.3,1) 760ms both, titleBreath 4.8s ease-in-out 1900ms infinite;
 }
 .entrance-copy h1 span { display: block; color: var(--cyan); }
 .entrance-copy p { animation-delay: 620ms; }
@@ -695,6 +791,17 @@ footer span {
 @keyframes typingDot { 50% { transform: translateY(-.22rem); opacity: .45; } }
 @keyframes slowPan { 50% { transform: scale(1.05) translate3d(-1.5vw, .8vh, 0); } }
 @keyframes entranceDrift { 50% { transform: scale(1.06) translate3d(-1.8vw, .8vh, 0); } }
+@keyframes introSlashSweep {
+  0% { opacity: 0; transform: translateX(-36vw) skewX(-10deg); }
+  18% { opacity: 1; }
+  82% { opacity: .9; }
+  100% { opacity: 0; transform: translateX(28vw) skewX(-10deg); }
+}
+@keyframes scanlineFade {
+  0% { opacity: 0; transform: translateY(-1.5vh); }
+  34%, 84% { opacity: .48; }
+  100% { opacity: .28; transform: translateY(0); }
+}
 @keyframes introFlash {
   0%, 14% { opacity: 1; }
   15%, 28% { opacity: 0; }
@@ -715,6 +822,26 @@ footer span {
 @keyframes introArtIdle {
   50% { transform: scale(1.06) translate3d(-1.2vw, .6vh, 0); }
 }
+@keyframes introMaskShift {
+  0% { opacity: 0; transform: translateX(22vw); }
+  34% { opacity: 1; }
+  100% { opacity: 1; transform: translateX(0); }
+}
+@keyframes introLightSweep {
+  0% { transform: translateX(-120%) skewX(-14deg); }
+  55% { opacity: .95; }
+  100% { opacity: 0; transform: translateX(120%) skewX(-14deg); }
+}
+@keyframes panelDrop {
+  0% { opacity: 0; transform: translate3d(24vw, -8vh, 0) skewX(-5deg); }
+  58% { opacity: 1; transform: translate3d(-1vw, .5vh, 0) skewX(-5deg); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) skewX(-5deg); }
+}
+@keyframes introScanCut {
+  0% { opacity: 0; transform: translateX(-120%) skewX(-18deg); }
+  24%, 62% { opacity: .9; }
+  100% { opacity: 0; transform: translateX(125%) skewX(-18deg); }
+}
 @keyframes shardBurst {
   0% { opacity: 0; transform: translate3d(0,0,0) rotate(0deg) scale(.4); }
   28% { opacity: 1; }
@@ -729,10 +856,18 @@ footer span {
   from { opacity: 0; transform: translateX(-5vw); }
   to { opacity: 1; transform: translateX(0); }
 }
+@keyframes copyLean {
+  0% { transform: translate3d(-10vw, 2vh, 0) skewX(-8deg); }
+  62% { transform: translate3d(-4.3vw, 2vh, 0) skewX(-3deg); }
+  100% { transform: translate3d(-5vw, 2vh, 0) skewX(-4deg); }
+}
 @keyframes titleSlam {
   0% { opacity: 0; transform: translateX(-18vw) scaleX(1.18); }
   65% { opacity: 1; transform: translateX(1vw) scaleX(.98); }
   100% { opacity: 1; transform: translateX(0) scaleX(1); }
+}
+@keyframes titleBreath {
+  50% { transform: translateX(.18vw) scaleX(1.015); text-shadow: 12px 14px 0 rgba(2,7,32,.48); }
 }
 @keyframes buttonPop {
   from { opacity: 0; transform: translateY(1rem) skewX(4deg); }
