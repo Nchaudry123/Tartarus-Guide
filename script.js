@@ -22,6 +22,18 @@ let playerProfile = loadPlayerProfile();
 let apiAvailable = false;
 let autoStickToBottom = true;
 
+function syncDeviceLayout() {
+  const isMobile =
+    window.matchMedia("(max-width: 760px)").matches ||
+    (window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 900);
+  document.documentElement.classList.toggle("is-mobile", isMobile);
+  document.documentElement.style.setProperty("--app-height", `${window.visualViewport?.height || window.innerHeight}px`);
+}
+
+syncDeviceLayout();
+window.addEventListener("resize", syncDeviceLayout);
+window.visualViewport?.addEventListener("resize", syncDeviceLayout);
+
 function loadPlayerProfile() {
   try {
     return JSON.parse(window.sessionStorage.getItem("tartarusPlayerProfile") || "{}");
@@ -365,9 +377,11 @@ function setApiStatus(mode) {
 
 function clearEmpty() {
   messages.querySelector(".empty-state")?.remove();
+  document.documentElement.classList.add("has-conversation");
 }
 
 function renderEmptyState() {
+  document.documentElement.classList.remove("has-conversation");
   messages.innerHTML = `
     <div class="empty-state">
       <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
