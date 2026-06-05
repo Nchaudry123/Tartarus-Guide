@@ -1,7 +1,6 @@
 const form = document.getElementById("chatForm");
 const input = document.getElementById("questionInput");
 const messages = document.getElementById("messages");
-const suggestions = document.getElementById("suggestions");
 const categoryList = document.getElementById("categoryList");
 const recentList = document.getElementById("recentList");
 const menuToggle = document.getElementById("menuToggle");
@@ -484,11 +483,9 @@ messages.addEventListener("scroll", () => {
   autoStickToBottom = isNearMessagesBottom();
 });
 
-[suggestions, categoryList].forEach((group) => {
-  group.addEventListener("click", (event) => {
-    const button = event.target.closest("button[data-prompt]");
-    if (button) ask(button.dataset.prompt);
-  });
+categoryList?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-prompt]");
+  if (button) ask(button.dataset.prompt);
 });
 
 function setMenu(open) {

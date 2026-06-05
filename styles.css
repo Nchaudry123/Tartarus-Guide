@@ -451,7 +451,7 @@ textarea:focus-visible {
 .rag-status.is-live span { background: var(--cyan); box-shadow: 0 0 18px rgba(85,247,255,.9); }
 
 .category-list, .recent-list { display: grid; gap: .86rem; }
-.category-list button, .recent-list button, .suggestions button {
+.category-list button, .recent-list button {
   min-width: 0;
   border: 0;
   background: white;
@@ -476,8 +476,8 @@ textarea:focus-visible {
   padding: .85rem 1.75rem .85rem 1rem;
   clip-path: polygon(0 0, calc(100% - 1.15rem) 0, 100% 50%, calc(100% - 1.15rem) 100%, 0 100%);
 }
-.category-list button:hover, .recent-list button:hover, .suggestions button:hover { transform: translateY(-2px); background: var(--ice); }
-.category-list button:active, .recent-list button:active, .suggestions button:active { transform: translateY(0) scale(.99); }
+.category-list button:hover, .recent-list button:hover { transform: translateY(-2px); background: var(--ice); }
+.category-list button:active, .recent-list button:active { transform: translateY(0) scale(.99); }
 .recent-list p { color: rgba(223,252,255,.72); font-weight: 700; }
 .recent-head {
   display: flex;
@@ -505,7 +505,7 @@ textarea:focus-visible {
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: .85rem;
+  gap: .55rem;
 }
 .hero {
   display: block;
@@ -523,14 +523,6 @@ textarea:focus-visible {
 .hero h1 span { display: block; color: var(--cyan); }
 .subtitle { margin: .55rem 0 0; color: rgba(255,255,255,.92); font-size: 1.08rem; font-weight: 900; }
 .mode-card { display: none; }
-.suggestions {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: .65rem;
-  flex: 0 0 auto;
-}
-.suggestions button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .chat-window {
   min-height: 0;
   flex: 1 1 auto;
@@ -1102,20 +1094,6 @@ footer span {
   .hero h1 { font-size: clamp(3.9rem, 16vw, 6.2rem); }
   .subtitle { margin-top: .45rem; font-size: 1rem; }
   .mode-card { display: none; }
-  .suggestions {
-    display: flex;
-    gap: .55rem;
-    overflow-x: auto;
-    padding: 0 .05rem .2rem;
-    scrollbar-width: none;
-    scroll-snap-type: x proximity;
-  }
-  .suggestions::-webkit-scrollbar { display: none; }
-  .suggestions button {
-    flex: 0 0 auto;
-    min-width: 10rem;
-    scroll-snap-align: start;
-  }
   .chat-window, .chat-stage { min-height: 0; }
   .chat-window {
     border-color: rgba(85,247,255,.22);
@@ -1199,20 +1177,6 @@ footer span {
     margin-top: .28rem;
     font-size: .86rem;
     line-height: 1.18;
-  }
-  .suggestions {
-    gap: .45rem;
-    padding: .6rem .7rem .65rem;
-    scroll-padding-inline: .7rem;
-    background: rgba(2,7,32,.58);
-    border-block: 1px solid rgba(85,247,255,.14);
-  }
-  .suggestions button {
-    min-width: 8.4rem;
-    min-height: 2.55rem;
-    padding: .62rem .78rem;
-    font-size: .8rem;
-    box-shadow: 4px 5px 0 rgba(0,0,0,.18);
   }
   .chat-window {
     flex: 1 1 auto;
@@ -1446,39 +1410,6 @@ footer span {
   line-height: 1.15;
 }
 
-:root.is-mobile .suggestions {
-  flex: 0 0 auto;
-  display: flex;
-  gap: .45rem;
-  max-width: 100vw;
-  overflow-x: auto;
-  padding: .52rem .65rem .58rem;
-  background: rgba(2,7,32,.64);
-  border-block: 1px solid rgba(85,247,255,.16);
-  scrollbar-width: none;
-  scroll-padding-inline: .65rem;
-  scroll-snap-type: x proximity;
-}
-
-:root.is-mobile .suggestions::-webkit-scrollbar {
-  display: none;
-}
-
-:root.is-mobile .suggestions button {
-  flex: 0 0 auto;
-  min-width: 8rem;
-  max-width: 10.5rem;
-  min-height: 2.4rem;
-  padding: .56rem .72rem;
-  font-size: .76rem;
-  line-height: 1.08;
-  white-space: normal;
-  overflow-wrap: normal;
-  box-shadow: 3px 4px 0 rgba(0,0,0,.18);
-  scroll-snap-align: start;
-  clip-path: polygon(0 0, calc(100% - .75rem) 0, 100% 50%, calc(100% - .75rem) 100%, 0 100%);
-}
-
 :root.is-mobile .chat-window {
   flex: 1 1 auto;
   min-height: 0;
@@ -1649,16 +1580,11 @@ footer span {
   display: none;
 }
 
-:root.is-mobile.has-conversation .suggestions {
-  display: none;
-}
-
 :root.is-mobile.has-conversation .messages {
   padding-top: .8rem;
 }
 
-:root.is-mobile.keyboard-open .hero,
-:root.is-mobile.keyboard-open .suggestions {
+:root.is-mobile.keyboard-open .hero {
   display: none;
 }
 
