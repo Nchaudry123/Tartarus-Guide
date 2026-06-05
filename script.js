@@ -20,6 +20,7 @@ const chatHistory = [];
 let playerProfile = loadPlayerProfile();
 
 let apiAvailable = false;
+let autoStickToBottom = true;
 
 function loadPlayerProfile() {
   try {
@@ -96,6 +97,7 @@ async function typeText(node, value) {
   const text = String(value || "");
   if (!motionEnabled() || text.length > 1200) {
     node.textContent = text;
+    scrollMessagesToBottom({ behavior: "auto" });
     return;
   }
 
@@ -103,7 +105,7 @@ async function typeText(node, value) {
   const chunkSize = text.length > 420 ? 4 : 2;
   for (let index = 0; index < text.length; index += chunkSize) {
     node.textContent += text.slice(index, index + chunkSize);
-    if (index % 24 === 0) scrollMessagesToBottom();
+    if (index % 36 === 0) scrollMessagesToBottom({ behavior: "auto" });
     await new Promise((resolve) => window.setTimeout(resolve, 10));
   }
 }
@@ -190,7 +192,7 @@ function addUserMessage(text) {
   node.className = "message user-message";
   node.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
   messages.appendChild(node);
-  scrollMessagesToBottom();
+  scrollMessagesToBottom({ force: true });
 }
 
 function addLoading() {
@@ -204,7 +206,7 @@ function addLoading() {
     </div>
   `;
   messages.appendChild(node);
-  scrollMessagesToBottom();
+  scrollMessagesToBottom({ force: true });
 }
 
 async function addAssistantMessage(response) {
@@ -262,9 +264,18 @@ async function addAssistantMessage(response) {
   scrollMessagesToBottom();
 }
 
-function scrollMessagesToBottom() {
+function isNearMessagesBottom() {
+  return messages.scrollHeight - messages.scrollTop - messages.clientHeight < 180;
+}
+
+function scrollMessagesToBottom(options = {}) {
+  const { force = false, behavior = "smooth" } = options;
+  if (!force && !autoStickToBottom && !isNearMessagesBottom()) return;
   requestAnimationFrame(() => {
-    messages.scrollTop = messages.scrollHeight;
+    messages.scrollTo({
+      top: messages.scrollHeight,
+      behavior: motionEnabled() ? behavior : "auto",
+    });
   });
 }
 
@@ -414,6 +425,10 @@ input.addEventListener("keydown", (event) => {
 input.addEventListener("input", () => {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+});
+
+messages.addEventListener("scroll", () => {
+  autoStickToBottom = isNearMessagesBottom();
 });
 
 [suggestions, categoryList].forEach((group) => {
