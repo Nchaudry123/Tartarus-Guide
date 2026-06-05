@@ -572,6 +572,11 @@ function normalizeRagResponse(
   companion?: NonNullable<ChatResponse["companion"]>,
 ): ChatResponse {
   const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const rawAnswer = asString(value.answer);
+  const answer =
+    rawAnswer && /^(unknown|unclear|not sure|n\/a)$/i.test(rawAnswer.trim())
+      ? "I don’t have a confirmed answer for that yet. Give me the enemy, floor, boss, or date you’re looking at and I’ll narrow it down without guessing."
+      : rawAnswer;
   const sections = Array.isArray(value.sections)
     ? value.sections
         .map((section) => {
@@ -602,7 +607,7 @@ function normalizeRagResponse(
   const confidence = typeof value.confidence === "number" ? Math.max(0, Math.min(1, value.confidence)) : 0.55;
 
   return {
-    answer: asString(value.answer) ?? "I found source context, but the guide terminal could not format a complete answer.",
+    answer: answer ?? "I found related material, but I need one more detail to give a useful answer instead of guessing.",
     sections,
     tables,
     sources: fallbackSources,
@@ -891,6 +896,7 @@ Rules:
 - Answer like a modern chat assistant in a normal back-and-forth conversation: lead with the direct guidance, then explain briefly.
 - Never say "retrieved", "database", "guide context", "provided context", "according to IGN", "based on documents", or similar mechanics-facing phrases.
 - Never apologize for missing guide context in the answer. If exact source support is thin, answer with a useful next step and put the missing detail in missingInfo.
+- Never use "Unknown", "N/A", or a vague one-word answer. If the exact answer is not supported, say what detail you need or what the player should check next.
 - Use structured facts and guide chunks for exact weaknesses, dates, floors, fusions, rewards, and boss mechanics.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
 - You may give general coaching when the user is vague, but mark uncertainty naturally and ask one useful follow-up.

@@ -549,6 +549,7 @@ textarea:focus-visible {
   -webkit-overflow-scrolling: touch;
   display: flex;
   flex-direction: column;
+  justify-content: flex-start;
   gap: 1.05rem;
   padding: 1.6rem max(1.15rem, calc((100% - 66rem) / 2));
   scroll-behavior: smooth;
@@ -672,7 +673,7 @@ textarea:focus-visible {
   filter: brightness(1.45) saturate(1.25) drop-shadow(0 0 10px rgba(0,123,255,.62));
 }
 .assistant-message .bubble {
-  width: min(100%, 56rem);
+  width: min(100%, 64rem);
   border: 1px solid rgba(85,247,255,.18);
   border-left: 4px solid var(--cyan);
   background: linear-gradient(135deg, rgba(2,7,32,.88), rgba(12,28,78,.86));
@@ -925,6 +926,44 @@ footer span {
 }
 .chat-form button:hover { filter: brightness(1.08); box-shadow: 0 0 22px rgba(7,92,255,.36); }
 .chat-form button:active { transform: scale(.97); }
+
+:root.has-conversation .chat-stage {
+  gap: .45rem;
+}
+
+:root.has-conversation .hero {
+  display: flex;
+  align-items: end;
+  min-height: 0;
+}
+
+:root.has-conversation .hero h1 {
+  font-size: clamp(2.65rem, 4.2vw, 4.45rem);
+  line-height: .82;
+}
+
+:root.has-conversation .hero h1 span {
+  display: inline;
+  margin-left: .12em;
+}
+
+:root.has-conversation .subtitle {
+  margin-top: .25rem;
+  font-size: .98rem;
+}
+
+:root.has-conversation .messages {
+  padding-block: 1.05rem;
+  padding-inline: max(1rem, calc((100% - 76rem) / 2));
+}
+
+:root.has-conversation .assistant-message .bubble {
+  width: min(100%, 68rem);
+}
+
+:root.has-conversation .empty-state {
+  margin: 0 auto;
+}
 
 @keyframes drift { 50% { transform: translateX(18px); opacity: .75; } }
 @keyframes shard { 50% { translate: 10px -16px; opacity: 1; } }
