@@ -484,18 +484,22 @@ button { cursor: pointer; }
 }
 .assistant-avatar {
   flex: 0 0 auto;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 3.25rem;
+  height: 3.25rem;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(85,247,255,.58);
+  border: 1px solid rgba(85,247,255,.62);
   border-radius: 999px;
-  color: var(--cyan);
-  background: rgba(85,247,255,.08);
-  box-shadow: 0 0 24px rgba(85,247,255,.16);
-  font-family: Georgia, serif;
-  font-size: .9rem;
-  font-weight: 900;
+  background: radial-gradient(circle, rgba(85,247,255,.12), rgba(3,18,74,.44) 58%, rgba(2,7,32,.18));
+  box-shadow: 0 0 24px rgba(85,247,255,.22), inset 0 0 12px rgba(85,247,255,.12);
+  overflow: hidden;
+}
+.assistant-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(1.45) saturate(1.25) drop-shadow(0 0 10px rgba(0,123,255,.62));
 }
 .assistant-message .bubble {
   width: min(100%, 56rem);

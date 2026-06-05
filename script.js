@@ -180,7 +180,7 @@ function addLoading() {
   node.className = "loading";
   node.id = "loading";
   node.innerHTML = `
-    <span class="assistant-avatar">III</span>
+    <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble typing" aria-label="Assistant is thinking">
       <i></i><i></i><i></i>
     </div>
@@ -221,7 +221,7 @@ async function addAssistantMessage(response) {
   const node = document.createElement("article");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
-    <span class="assistant-avatar">III</span>
+    <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble">
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
