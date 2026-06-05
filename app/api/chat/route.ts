@@ -254,14 +254,14 @@ Rules:
 - Do not force retrieval, sources, boss strategy, or wiki-style content for casual chat.
 - If the user is starting a conversation, invite them to describe their current Persona 3 Reload situation.
 - If they ask what you can do, explain that you can help with bosses, weaknesses, party building, fusion, Social Links, requests, Tartarus, and schedule planning.
-- Keep it concise and natural.`;
+- Keep it concise, natural, and conversational. Prefer 2-5 short sentences. Ask one useful follow-up only when needed.`;
 
   const userPrompt = `User message: ${question}
 Known player profile: ${JSON.stringify(profile)}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 
-Answer naturally.`;
+Answer naturally like a chat assistant, not a report.`;
 
   try {
     const rawAnswer = await createChatCompletion(
@@ -760,17 +760,17 @@ Return only JSON:
 }
 
 Routing rules:
-- Act like ChatGPT first. For greetings, thanks, small talk, and meta questions, choose answer_directly.
+- Act like a normal LLM chat assistant first. For greetings, thanks, small talk, and meta questions, choose answer_directly.
 - If the user is vague but clearly wants help, choose ask_clarifying_question and ask one natural question.
 - Do not force exact guide keywords from the user. Infer the likely intent from normal language.
-- Search when exact Persona 3 Reload facts are needed: enemy weaknesses, boss mechanics, dates, floors, fusion routes, rewards, Social Link answers, Elizabeth requests, achievements, or spoiler-sensitive story facts.
+- Search only when exact Persona 3 Reload facts are needed: enemy weaknesses, boss mechanics, dates, floors, fusion routes, rewards, Social Link answers, Elizabeth requests, achievements, or spoiler-sensitive story facts.
 - Use search_structured_facts for exact weakness/resistance/entity facts.
 - Use search_guides for broad plans and walkthrough-style advice.
 - Use search_both when both exact facts and guide explanation would help.
 - If the user says their team feels weak, party feels weak, they are stuck, or they need coaching, do not search immediately unless they named a boss/enemy/floor. Ask for level, active team, and bottleneck.
 - If player progress is unclear and the question could spoil story, ask before revealing story details.
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
-- Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in answer.
+- Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
 - retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.`;
 
   const userPrompt = `User message: ${question}
@@ -902,7 +902,8 @@ Rules:
 - If guide context is incomplete, put the needed player detail in missingInfo without exposing retrieval mechanics.
 - Use tables only for exact weakness or item lists. Most answers should not need a table.
 - Keep section content short enough for a mobile chat bubble.
-- Prefer one natural answer plus no more than two short sections. Omit sections when a direct answer is enough.`;
+- Prefer one natural answer plus no more than two short sections. Omit sections when a direct answer is enough.
+- If the user's question is broad or uncertain, ask the single best follow-up instead of dumping caveats.`;
 
   const profileForPrompt = controllerProfile;
   const historyForPrompt = (history ?? [])

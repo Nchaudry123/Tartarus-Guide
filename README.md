@@ -224,7 +224,7 @@ For Groq chat generation, set:
 
 ```bash
 CHAT_BASE_URL=https://api.groq.com/openai/v1
-CHAT_MODEL=llama-3.1-8b-instant
+CHAT_MODEL=llama-3.3-70b-versatile
 CHAT_API_KEY=your-groq-api-key
 ```
 
@@ -295,7 +295,7 @@ EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 EMBEDDING_DIMENSIONS=384
 CHAT_API_KEY=...
 CHAT_BASE_URL=https://api.groq.com/openai/v1
-CHAT_MODEL=llama-3.1-8b-instant
+CHAT_MODEL=llama-3.3-70b-versatile
 USE_MOCK_CHAT=false
 ALLOWED_ORIGINS=https://nchaudry123.github.io
 ```
