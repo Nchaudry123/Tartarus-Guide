@@ -21,18 +21,42 @@ let playerProfile = loadPlayerProfile();
 
 let apiAvailable = false;
 let autoStickToBottom = true;
+let stableMobileHeight = window.innerHeight;
 
 function syncDeviceLayout() {
   const isMobile =
     window.matchMedia("(max-width: 760px)").matches ||
     (window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 900);
+  const viewport = window.visualViewport;
+  const viewportHeight = viewport?.height || window.innerHeight;
+  const viewportOffsetTop = viewport?.offsetTop || 0;
+  const keyboardOffset = isMobile
+    ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
+    : 0;
+  const keyboardOpen = isMobile && document.activeElement === input && keyboardOffset > 120;
+
+  if (isMobile && !keyboardOpen) {
+    stableMobileHeight = window.innerHeight;
+  }
+
   document.documentElement.classList.toggle("is-mobile", isMobile);
-  document.documentElement.style.setProperty("--app-height", `${window.visualViewport?.height || window.innerHeight}px`);
+  document.documentElement.classList.toggle("keyboard-open", keyboardOpen);
+  document.documentElement.style.setProperty("--app-height", `${isMobile ? stableMobileHeight : window.innerHeight}px`);
+  document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
+
+  if (isMobile) window.scrollTo(0, 0);
 }
 
 syncDeviceLayout();
 window.addEventListener("resize", syncDeviceLayout);
 window.visualViewport?.addEventListener("resize", syncDeviceLayout);
+window.visualViewport?.addEventListener("scroll", syncDeviceLayout);
+window.addEventListener("orientationchange", () => {
+  window.setTimeout(() => {
+    stableMobileHeight = window.innerHeight;
+    syncDeviceLayout();
+  }, 260);
+});
 
 function loadPlayerProfile() {
   try {
@@ -439,6 +463,18 @@ input.addEventListener("keydown", (event) => {
 input.addEventListener("input", () => {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+});
+
+input.addEventListener("focus", () => {
+  window.setTimeout(() => {
+    syncDeviceLayout();
+    scrollMessagesToBottom({ force: true, behavior: "auto" });
+  }, 80);
+});
+
+input.addEventListener("blur", () => {
+  document.documentElement.classList.remove("keyboard-open");
+  window.setTimeout(syncDeviceLayout, 80);
 });
 
 messages.addEventListener("scroll", () => {

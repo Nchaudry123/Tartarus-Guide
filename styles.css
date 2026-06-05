@@ -1255,8 +1255,14 @@ footer span {
 :root.is-mobile,
 :root.is-mobile body {
   width: 100%;
-  height: var(--app-height, 100dvh);
+  height: 100%;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+:root.is-mobile body {
+  position: fixed;
+  inset: 0;
 }
 
 :root.is-mobile .app-shell {
@@ -1519,7 +1525,7 @@ footer span {
   border: 1px solid rgba(85,247,255,.46);
   background: rgba(223,252,255,.08);
   color: var(--ice);
-  font-size: .96rem;
+  font-size: 16px;
   line-height: 1.28;
   caret-color: var(--cyan);
   box-shadow: inset 0 0 0 1px rgba(2,7,32,.56);
@@ -1567,6 +1573,35 @@ footer span {
 
 :root.is-mobile.has-conversation .messages {
   padding-top: .8rem;
+}
+
+:root.is-mobile.keyboard-open .hero,
+:root.is-mobile.keyboard-open .suggestions {
+  display: none;
+}
+
+:root.is-mobile.keyboard-open .chat-window {
+  border-top: 0;
+}
+
+:root.is-mobile.keyboard-open .messages {
+  padding-top: .7rem;
+  padding-bottom: calc(5rem + var(--keyboard-offset, 0px));
+}
+
+:root.is-mobile.keyboard-open .chat-form {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--keyboard-offset, 0px);
+  z-index: 18;
+  padding-bottom: .58rem;
+  transform: translateZ(0);
+}
+
+:root.is-mobile.keyboard-open .chat-form textarea {
+  min-height: 3.2rem;
+  max-height: 6.5rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
