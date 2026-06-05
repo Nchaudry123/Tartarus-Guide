@@ -1586,16 +1586,16 @@ footer span {
 
 :root.is-mobile.keyboard-open .messages {
   padding-top: .7rem;
-  padding-bottom: calc(5rem + var(--keyboard-offset, 0px));
+  padding-bottom: 5.35rem;
 }
 
 :root.is-mobile.keyboard-open .chat-form {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: var(--keyboard-offset, 0px);
+  bottom: 0;
   z-index: 18;
-  padding-bottom: .58rem;
+  padding-bottom: calc(.58rem + env(safe-area-inset-bottom));
   transform: translateZ(0);
 }
 
