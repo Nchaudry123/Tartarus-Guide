@@ -98,6 +98,7 @@ function detectIntent(question: string): CompanionIntent {
 function isCasualMessage(question: string): boolean {
   const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
   if (/^(hi|hello|hey|yo|sup|what's up|whats up|good morning|good afternoon|good evening)$/.test(text)) return true;
+  if (/^(hi|hello|hey|yo)\b(?:\s+(there|again|tartarus|guide|buddy|man|friend))?$/.test(text)) return true;
   if (/^(thanks|thank you|ty|appreciate it|cool|nice|ok|okay|got it)$/.test(text)) return true;
   if (/\b(who are you|what can you do|how do you work|how are you)\b/.test(text)) return true;
   return false;
@@ -216,12 +217,8 @@ function casualFallbackResponse(question: string, profileUpdates: PlayerProfile 
     companion: {
       intent: "General Discussion",
       profileUpdates,
-      followUpQuestions: ["What are you working on right now: a boss, Tartarus, fusion, Social Links, or daily planning?"],
-      suggestedPrompts: [
-        "My team feels weak",
-        "Help me plan today",
-        "What should I fuse next?",
-      ],
+      followUpQuestions: [],
+      suggestedPrompts: [],
     },
   }, "rag");
 }
@@ -280,12 +277,8 @@ Answer naturally like a chat assistant, not a report.`;
     const normalized = normalizeRagResponse(extractJson(rawAnswer), [], {
       intent: "General Discussion",
       profileUpdates,
-      followUpQuestions: ["What are you working on right now: a boss, Tartarus, fusion, Social Links, or daily planning?"],
-      suggestedPrompts: [
-        "My team feels weak",
-        "Help me plan today",
-        "What should I fuse next?",
-      ],
+      followUpQuestions: [],
+      suggestedPrompts: [],
     });
     return withMode({ ...normalized, sources: [] }, "rag");
   } catch (error) {
@@ -498,6 +491,19 @@ function asStringArray(value: unknown, maxItems = 3): string[] {
     : [];
 }
 
+function sanitizeSuggestedPrompts(value: unknown, maxItems = 3): string[] {
+  return asStringArray(value, maxItems + 3)
+    .filter((prompt) => {
+      const normalized = prompt.toLowerCase().trim();
+      if (prompt.endsWith("?")) return false;
+      if (/^(what|which|where|when|who|how|do you|are you|is your|tell me)\b/.test(normalized)) return false;
+      if (/\b(x|y|z|n\/a|unknown|specific boss|specific enemy)\b/i.test(prompt)) return false;
+      if (normalized.length < 4 || normalized.length > 80) return false;
+      return true;
+    })
+    .slice(0, maxItems);
+}
+
 function sanitizeIntent(value: unknown, fallback: CompanionIntent): CompanionIntent {
   const intents: CompanionIntent[] = [
     "Enemy Weakness",
@@ -561,7 +567,7 @@ function normalizeControllerDecision(raw: unknown, fallback: CompanionAnalysis):
     answer: asString(value.answer),
     followUpQuestions: asStringArray(value.followUpQuestions, 3),
     profileUpdates,
-    suggestedPrompts: asStringArray(value.suggestedPrompts, 4),
+    suggestedPrompts: sanitizeSuggestedPrompts(value.suggestedPrompts, 3),
     spoilerCaution: typeof value.spoilerCaution === "boolean" ? value.spoilerCaution : fallback.spoilerCaution,
   };
 }
@@ -646,6 +652,47 @@ function compactText(value: string, maxLength = 520): string {
     .replace(/\s+/g, " ")
     .trim();
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
+}
+
+function exactWeaknessQuestion(question: string, intent: CompanionIntent): boolean {
+  return intent === "Enemy Weakness" || /\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel|affinity)\b/i.test(question);
+}
+
+function hasStructuredAffinitySupport(
+  facts: Array<{ fact_type: string; value: string }>,
+): boolean {
+  return facts.some((fact) =>
+    ["weakness", "resistance", "nullifies", "drains", "repels"].includes(fact.fact_type) && Boolean(fact.value.trim()),
+  );
+}
+
+function likelyExactSubject(question: string): string | null {
+  const phrases =
+    question
+      .match(/[A-Z][a-z0-9']+(?:\s+[A-Z][a-z0-9']+)*/g)
+      ?.map((phrase) => phrase.trim())
+      .filter((phrase) => !/^(Persona|Persona 3|Persona 3 Reload|Reload|Tartarus Guide)$/i.test(phrase)) ?? [];
+
+  const multiword = phrases.find((phrase) => phrase.split(/\s+/).length > 1);
+  return multiword ?? phrases[0] ?? null;
+}
+
+function exactSubjectSources(
+  question: string,
+  context: {
+    chunks: Array<{ source_title: string; source_url: string; source_domain: string; source_credibility_rank?: number; chunk_text: string; section_title: string | null }>;
+    sources: ChatResponse["sources"];
+  },
+): ChatResponse["sources"] {
+  const subject = likelyExactSubject(question);
+  if (!subject) return [];
+  const needle = subject.toLowerCase();
+  const exactChunkUrls = new Set(
+    context.chunks
+      .filter((chunk) => `${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(needle))
+      .map((chunk) => chunk.source_url),
+  );
+  return context.sources.filter((source) => exactChunkUrls.has(source.url));
 }
 
 function formatAssistantContext(context: {
@@ -776,7 +823,8 @@ Routing rules:
 - If player progress is unclear and the question could spoil story, ask before revealing story details.
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
 - Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
-- retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.`;
+- retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.
+- suggestedPrompts must be optional first-person user replies, never assistant questions. Good: "I'm stuck on Priestess", "My party is Yukari and Junpei", "I'm level 18". Bad: "Which boss are you fighting?", "Name the blocker".`;
 
   const userPrompt = `User message: ${question}
 
@@ -867,6 +915,33 @@ async function directRagResponse(
   }
 
   const context = await buildContext(controller.retrievalQuery || analysis.retrievalQuery);
+  if (exactWeaknessQuestion(question, controller.intent) && !hasStructuredAffinitySupport(context.facts)) {
+    const matchingSources = exactSubjectSources(question, context);
+    return withMode({
+      answer:
+        "I don’t have a confirmed weakness for that enemy yet, so I’m not going to guess. Treat it like an unknown affinity check: use Analyze first, then test single-target elements before spending big SP.",
+      sections: [
+        {
+          title: "Safe Battle Plan",
+          content:
+            "Open defensively, avoid committing to one element until Analyze or a test hit confirms the affinity, then knock it down and chain an All-Out Attack if the weakness appears.",
+        },
+      ],
+      sources: matchingSources,
+      confidence: matchingSources.length ? 0.45 : 0.32,
+      missingInfo:
+        "Tell me the floor, block, or exact Shadow variant if you have it, and I can narrow the lookup without inventing a weakness.",
+      companion: {
+        ...companion,
+        suggestedPrompts: sanitizeSuggestedPrompts([
+          "I'm on Thebel Block",
+          "I want a safe unknown-shadow opener",
+          "Help me prepare Personas for coverage",
+        ]),
+      },
+    }, "rag");
+  }
+
   if (!context.facts.length && !context.chunks.length) {
     return withMode({
       answer:

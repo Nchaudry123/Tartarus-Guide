@@ -1,6 +1,31 @@
 import { normalizeName, supabase } from "../db/client";
 import type { FactMatch, FactType } from "../types/schema";
 
+const entityStopWords = new Set([
+  "what",
+  "which",
+  "where",
+  "when",
+  "who",
+  "how",
+  "weak",
+  "weakness",
+  "weaknesses",
+  "resist",
+  "resistance",
+  "beat",
+  "boss",
+  "enemy",
+  "persona",
+  "reload",
+  "guide",
+  "help",
+  "strategy",
+  "with",
+  "does",
+  "need",
+]);
+
 const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /weak|weakness|vulnerable/i, types: ["weakness"] },
   { pattern: /resist|resistance/i, types: ["resistance", "nullifies", "drains", "repels"] },
@@ -17,9 +42,22 @@ export function detectFactTypes(query: string): FactType[] {
   return [...new Set(matched)];
 }
 
-export async function searchFacts(query: string, limit = 12): Promise<FactMatch[]> {
+function likelyEntityTerms(query: string): string[] {
   const normalized = normalizeName(query);
-  const likelyTerms = normalized.split(" ").filter((term) => term.length >= 3);
+  const words = normalized
+    .split(" ")
+    .filter((term) => term.length >= 3 && !entityStopWords.has(term));
+  const phrases =
+    query
+      .match(/[A-Z][a-z0-9']+(?:\s+[A-Z][a-z0-9']+)*/g)
+      ?.map(normalizeName)
+      .filter((phrase) => phrase.split(" ").length > 1) ?? [];
+
+  return [...new Set([...phrases, ...words])].slice(0, 8);
+}
+
+export async function searchFacts(query: string, limit = 12): Promise<FactMatch[]> {
+  const likelyTerms = likelyEntityTerms(query);
   const factTypes = detectFactTypes(query);
 
   let entityQuery = supabase

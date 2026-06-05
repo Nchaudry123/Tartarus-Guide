@@ -102,18 +102,8 @@ function promptLabel(prompt) {
   const text = String(prompt || "").trim();
   const normalized = text.toLowerCase();
 
-  if (normalized.includes("current priority")) return "Set priority";
-  if (normalized.includes("free time")) return "Plan free time";
-  if (normalized.includes("what level") || normalized.includes("current level")) return "Share level";
-  if (normalized.includes("active team") || normalized.includes("party composition")) return "Share party";
-  if (normalized.includes("boss") || normalized.includes("enemy") || normalized.includes("floor")) return "Name the blocker";
-  if (normalized.includes("month") || normalized.includes("date")) return "Share date";
-  if (normalized.includes("social link")) return "Pick Social Link";
-  if (normalized.includes("fusion")) return "Fusion help";
-  if (normalized.includes("tartarus")) return "Tartarus route";
-
   const compact = text.replace(/[?!.]+$/g, "").replace(/^(what|which|where|when|who|how|do you|are you|is it)\s+/i, "");
-  return compact.length > 34 ? `${compact.slice(0, 31).trim()}...` : compact;
+  return compact.length > 42 ? `${compact.slice(0, 39).trim()}...` : compact;
 }
 
 function renderText(value) {
@@ -271,7 +261,7 @@ async function addAssistantMessage(response) {
         </footer>
       </details>`
     : "";
-  const prompts = (response.companion?.suggestedPrompts || response.companion?.followUpQuestions || [])
+  const prompts = (response.companion?.suggestedPrompts || [])
     .slice(0, 3)
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");

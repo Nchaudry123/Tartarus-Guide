@@ -169,7 +169,7 @@ function fetchUrlForSource(url) {
 }
 
 function readerUrl(url) {
-  return `https://r.jina.ai/http://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`;
+  return `https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`;
 }
 
 function pageToText(page) {
