@@ -28,7 +28,7 @@ export const config = {
   embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? "384"),
   chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.openai.com/v1",
   chatApiKey: required("CHAT_API_KEY"),
-  chatModel: process.env.CHAT_MODEL ?? "gpt-4.1-mini",
+  chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
   ingestUserAgent:
     process.env.INGEST_USER_AGENT ??
     "TartarusGuideRAG/0.1 (+local development)",
