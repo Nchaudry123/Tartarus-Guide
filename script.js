@@ -41,7 +41,8 @@ function syncDeviceLayout() {
 
   document.documentElement.classList.toggle("is-mobile", isMobile);
   document.documentElement.classList.toggle("keyboard-open", keyboardOpen);
-  document.documentElement.style.setProperty("--app-height", `${isMobile ? stableMobileHeight : window.innerHeight}px`);
+  const appHeight = keyboardOpen ? viewportHeight : isMobile ? stableMobileHeight : window.innerHeight;
+  document.documentElement.style.setProperty("--app-height", `${appHeight}px`);
   document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
 
   if (isMobile) window.scrollTo(0, 0);
@@ -264,10 +265,12 @@ async function addAssistantMessage(response) {
     )
     .join("");
   const sourceFooter = sourceLinks
-    ? `<footer>
-        <h3>Sources</h3>
-        ${sourceLinks}
-      </footer>`
+    ? `<details class="source-drawer">
+        <summary><span>Sources</span><strong>${(response.sources || []).length}</strong></summary>
+        <footer>
+          ${sourceLinks}
+        </footer>
+      </details>`
     : "";
   const prompts = (response.companion?.suggestedPrompts || response.companion?.followUpQuestions || [])
     .slice(0, 3)

@@ -595,15 +595,40 @@ textarea:focus-visible {
 .empty-state p { font-weight: 800; color: rgba(223,252,255,.82); }
 .empty-examples { display: flex; flex-wrap: wrap; justify-content: center; gap: .6rem; margin-top: 1.25rem; }
 .empty-examples button {
-  border: 1px solid rgba(85,247,255,.45);
-  background: rgba(85,247,255,.10);
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
   color: var(--ice);
   padding: .65rem .85rem;
   font-weight: 900;
   clip-path: polygon(0 0,94% 0,100% 34%,96% 100%,0 100%);
   transition: background .18s ease, transform .2s cubic-bezier(.16,1,.3,1), box-shadow .18s ease;
 }
-.empty-examples button:hover { transform: translateY(-2px); background: rgba(85,247,255,.18); }
+.empty-examples button::before,
+.empty-examples button::after,
+.followups button::before,
+.followups button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: inherit;
+  pointer-events: none;
+}
+.empty-examples button::before,
+.followups button::before {
+  z-index: -2;
+  background: rgba(85,247,255,.64);
+}
+.empty-examples button::after,
+.followups button::after {
+  z-index: -1;
+  inset: 2px;
+  background: rgba(85,247,255,.10);
+}
+.empty-examples button:hover { transform: translateY(-2px); }
+.empty-examples button:hover::after,
+.followups button:hover::after { background: rgba(85,247,255,.18); }
 .empty-examples button:active { transform: translateY(0) scale(.99); }
 
 .message {
@@ -759,6 +784,62 @@ footer span {
   font-weight: 900;
 }
 
+.source-drawer {
+  margin-top: 1rem;
+}
+.source-drawer summary {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  width: min(100%, 13rem);
+  min-height: 2.55rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: .8rem;
+  padding: .62rem 1rem .62rem .8rem;
+  color: var(--ice);
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  cursor: pointer;
+  list-style: none;
+  clip-path: polygon(0 0, calc(100% - .85rem) 0, 100% 50%, calc(100% - .85rem) 100%, 0 100%);
+}
+.source-drawer summary::-webkit-details-marker {
+  display: none;
+}
+.source-drawer summary::before,
+.source-drawer summary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: inherit;
+  pointer-events: none;
+}
+.source-drawer summary::before {
+  z-index: -2;
+  background: rgba(85,247,255,.72);
+}
+.source-drawer summary::after {
+  z-index: -1;
+  inset: 2px;
+  background: rgba(8,28,76,.92);
+}
+.source-drawer summary strong {
+  display: grid;
+  min-width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  color: var(--cyan);
+  border: 1px solid rgba(85,247,255,.45);
+  border-radius: 999px;
+  font-size: .78rem;
+  letter-spacing: 0;
+}
+.source-drawer footer {
+  margin-top: .72rem;
+}
+
 .loading {
   display: flex;
   align-items: center;
@@ -791,8 +872,10 @@ footer span {
   margin-top: .8rem;
 }
 .followups button {
-  border: 1px solid rgba(85,247,255,.45);
-  background: rgba(85,247,255,.08);
+  position: relative;
+  isolation: isolate;
+  border: 0;
+  background: transparent;
   color: var(--ice);
   max-width: min(100%, 14rem);
   min-height: 2.15rem;
@@ -808,7 +891,6 @@ footer span {
   transition: background .18s ease, transform .2s cubic-bezier(.16,1,.3,1), border-color .18s ease;
 }
 .followups button:hover {
-  background: rgba(85,247,255,.18);
   transform: translateY(-1px);
 }
 
@@ -1586,14 +1668,11 @@ footer span {
 
 :root.is-mobile.keyboard-open .messages {
   padding-top: .7rem;
-  padding-bottom: 5.35rem;
+  padding-bottom: .75rem;
 }
 
 :root.is-mobile.keyboard-open .chat-form {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  position: relative;
   z-index: 18;
   padding-bottom: calc(.58rem + env(safe-area-inset-bottom));
   transform: translateZ(0);
