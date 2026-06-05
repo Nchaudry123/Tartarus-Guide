@@ -631,19 +631,28 @@ footer span {
 .followups {
   display: flex;
   flex-wrap: wrap;
-  gap: .55rem;
-  margin-top: 1rem;
+  gap: .4rem;
+  margin-top: .8rem;
 }
 .followups button {
   border: 1px solid rgba(85,247,255,.45);
-  background: rgba(85,247,255,.1);
+  background: rgba(85,247,255,.08);
   color: var(--ice);
-  padding: .55rem .75rem;
+  max-width: min(100%, 14rem);
+  min-height: 2.15rem;
+  padding: .38rem .62rem;
+  font-size: .78rem;
   font-weight: 850;
-  text-align: left;
+  line-height: 1.12;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  clip-path: polygon(0 0, calc(100% - .65rem) 0, 100% 50%, calc(100% - .65rem) 100%, 0 100%);
 }
 .followups button:hover {
   background: rgba(85,247,255,.18);
+  transform: translateY(-1px);
 }
 
 .chat-form {
