@@ -120,6 +120,16 @@ Run ingestion:
 npm run ingest
 ```
 
+Discover and synchronize a broader, balanced IGN/Game8 corpus:
+
+```bash
+npm run ingest -- --max-pages=180 --skip-facts --sync
+```
+
+`--sync` removes stale chunks only after replacement chunks for that source
+have embedded successfully. Use `--dry-run` first to inspect page and candidate
+counts without changing Supabase.
+
 Refresh cached HTML:
 
 ```bash
@@ -131,6 +141,17 @@ Skip LLM fact extraction and only embed chunks:
 ```bash
 npm run ingest -- --skip-facts
 ```
+
+Audit live coverage or rebuild structured facts from cleaned chunks:
+
+```bash
+npm run ingest:audit
+npm run ingest:facts -- --clear-existing --max-fact-chunks=180
+```
+
+Game8 affinity tables are parsed deterministically. Explicit table values take
+precedence over nearby strategy prose so a summoned enemy's weakness is not
+incorrectly assigned to the page's boss.
 
 The pipeline:
 

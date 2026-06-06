@@ -11,8 +11,24 @@ const robotsCache: RobotsCache = new Map();
 
 const cachePathForUrl = (url: string): string => {
   const hash = createHash("sha256").update(url).digest("hex");
-  return path.join(config.rawCacheDir, `${hash}.html`);
+  return path.join(config.rawCacheDir, `${hash}.txt`);
 };
+
+const isIgnUrl = (url: string): boolean =>
+  new URL(url).hostname.replace(/^www\./, "") === "ign.com";
+
+const readerUrl = (url: string): string =>
+  `https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`;
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 30_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 async function getRobots(url: URL): Promise<ReturnType<typeof robotsParser>> {
   const robotsUrl = `${url.origin}/robots.txt`;
@@ -50,12 +66,21 @@ export async function fetchPage(source: SourceInput, force = false): Promise<str
   }
 
   await sleep(config.ingestDelayMs);
-  const response = await fetch(source.url, {
+  let response = await fetchWithTimeout(isIgnUrl(source.url) ? readerUrl(source.url) : source.url, {
     headers: {
       "user-agent": config.ingestUserAgent,
-      accept: "text/html,application/xhtml+xml",
+      accept: "text/html,text/markdown,text/plain,application/xhtml+xml",
     },
   });
+
+  if (!response.ok && isIgnUrl(source.url)) {
+    response = await fetchWithTimeout(source.url, {
+      headers: {
+        "user-agent": config.ingestUserAgent,
+        accept: "text/html,application/xhtml+xml",
+      },
+    });
+  }
 
   if (!response.ok) {
     console.warn(`Skipping ${source.url}: HTTP ${response.status}`);

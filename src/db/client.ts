@@ -29,6 +29,8 @@ export const config = {
   chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.openai.com/v1",
   chatApiKey: required("CHAT_API_KEY"),
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
+  factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "llama-3.1-8b-instant",
+  factExtractionDelayMs: Number(process.env.FACT_EXTRACTION_DELAY_MS ?? "15000"),
   ingestUserAgent:
     process.env.INGEST_USER_AGENT ??
     "TartarusGuideRAG/0.1 (+local development)",
@@ -48,11 +50,22 @@ export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function createEmbedding(input: string): Promise<number[]> {
-  if (config.embeddingProvider === "huggingface") {
-    return createHuggingFaceEmbedding(input);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      if (config.embeddingProvider === "huggingface") {
+        return await createHuggingFaceEmbedding(input);
+      }
+      return await createOpenAiCompatibleEmbedding(input);
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      const retryable = /\b(408|409|425|429|500|502|503|504)\b|abort|timeout|temporar/i.test(message);
+      if (!retryable || attempt === 5) throw error;
+      await sleep(Math.min(30_000, 1_500 * 2 ** (attempt - 1)));
+    }
   }
-
-  return createOpenAiCompatibleEmbedding(input);
+  throw lastError;
 }
 
 function assertEmbeddingDimensions(embedding: number[]): number[] {
@@ -175,7 +188,7 @@ async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]>
 
 export async function createChatCompletion(
   messages: Array<{ role: "system" | "user"; content: string }>,
-  options: { jsonObject?: boolean } = {},
+  options: { jsonObject?: boolean; model?: string; maxCompletionTokens?: number } = {},
 ): Promise<string> {
   const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
     method: "POST",
@@ -184,9 +197,12 @@ export async function createChatCompletion(
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: config.chatModel,
+      model: options.model ?? config.chatModel,
       messages,
       temperature: 0.1,
+      ...(options.maxCompletionTokens
+        ? { max_completion_tokens: options.maxCompletionTokens }
+        : {}),
       ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
     }),
   });

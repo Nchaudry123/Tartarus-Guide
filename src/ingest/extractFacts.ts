@@ -1,26 +1,129 @@
-import { createChatCompletion, normalizeName, supabase } from "../db/client";
-import { FactExtractionResponseSchema, type ExtractedFact, type SourceRecord, type TextChunk } from "../types/schema";
+import { z } from "zod";
+import { config, createChatCompletion, normalizeName, sleep, supabase } from "../db/client";
+import {
+  ExtractedFactSchema,
+  FactExtractionResponseSchema,
+  entityTypes,
+  factTypes,
+  type ExtractedFact,
+  type SourceRecord,
+  type TextChunk,
+} from "../types/schema";
 import { upsertSource } from "./embedChunks";
 
-export const factExtractionSystemPrompt = `You extract structured Persona 3 Reload guide facts from short source chunks.
+export const factExtractionSystemPrompt = `You extract structured Persona 3 Reload guide facts from short IGN or Game8 source excerpts.
 
 Rules:
-- Extract only factual game-guide information directly supported by the source chunk.
-- Do not infer unsupported weaknesses, dates, fusions, deadlines, or strategies.
-- Use null for a value only when the source explicitly says the detail is unknown or unavailable.
-- Never invent entity names, aliases, weaknesses, rewards, floor ranges, or answer choices.
+- Extract only factual game-guide information directly supported by the source excerpts.
+- The page title and section title may identify the subject, but never use outside knowledge.
+- Do not infer unsupported weaknesses, dates, fusions, deadlines, floors, rewards, or strategies.
+- Never convert a neutral affinity into a weakness or resistance.
+- Use null only when the source explicitly says the detail is unknown or unavailable.
 - Keep each fact atomic: one entity, one fact_type, one value.
 - Separate enemies, bosses, personas, requests, social links, locations, items, equipment, mechanics, party members, Tartarus floors, activities, and skills.
-- Capture aliases only when the chunk gives them.
-- Confidence must be 0 to 1 and should reflect how directly the chunk supports the fact.
+- Capture aliases only when an excerpt gives them.
+- Prefer concise values. Preserve exact dates, floor ranges, answer choices, item names, skills, and elements.
+- Confidence must be 0 to 1 and should reflect how directly the excerpt supports the fact.
+- entity_type must be exactly one of: ${entityTypes.join(", ")}.
+- fact_type must be exactly one of: ${factTypes.join(", ")}.
 - Return strict JSON only, with this shape: {"facts":[{"entity_name":"Dancing Hand","entity_type":"enemy","aliases":[],"fact_type":"weakness","value":"Fire","confidence":0.94,"notes":"Optional short caveat"}]}.`;
 
-const factExtractionUserPrompt = (chunk: TextChunk): string => `Source title: ${chunk.pageTitle}
-Source URL: ${chunk.source.url}
-Section: ${chunk.sectionTitle}
+const exactFactTypes = new Set([
+  "weakness",
+  "resistance",
+  "nullifies",
+  "drains",
+  "repels",
+  "fusion_recipe",
+  "deadline",
+  "reward",
+  "floor_range",
+  "answer_choice",
+]);
 
-Chunk:
-${chunk.text}`;
+const factSignalPattern =
+  /\b(weak|weakness|resist|resistance|nullif|drain|repel|affinit|located|location|floor|strategy|recommended|party|fuse|fusion|recipe|unlock|available|deadline|reward|prerequisite|schedule|answer|choice|effect|attack|skill|level)\b/i;
+
+function candidateScore(chunk: TextChunk): number {
+  const title = `${chunk.pageTitle} ${chunk.sectionTitle}`;
+  let score = 0;
+  if (!["overview", "guide"].includes(chunk.source.category)) score += 20;
+  if (factSignalPattern.test(title)) score += 25;
+  if (factSignalPattern.test(chunk.text)) score += 20;
+  if (/\b(boss|shadow|social link|request|persona|tartarus|classroom|exam)\b/i.test(title)) score += 15;
+  if (/\b(contents|navigation|related guides|popular articles|comment|advertisement)\b/i.test(title)) score -= 30;
+  return score;
+}
+
+export function isFactCandidate(chunk: TextChunk): boolean {
+  return chunk.text.length >= 160 && candidateScore(chunk) >= 35;
+}
+
+const RawFactResponseSchema = z.object({ facts: z.array(z.record(z.unknown())).default([]) });
+let activeFactExtractionModel: string | undefined;
+
+const entityTypeAliases: Record<string, string> = {
+  persona: "persona",
+  personas: "persona",
+  fusion: "persona",
+  character: "party_member",
+  partymember: "party_member",
+  sociallink: "social_link",
+  tartarusfloor: "tartarus_floor",
+};
+
+const factTypeAliases: Record<string, string> = {
+  fusion: "fusion_recipe",
+  recipe: "fusion_recipe",
+  result: "fusion_recipe",
+  level: "prerequisite",
+  requiredskill: "prerequisite",
+  baseskill: "prerequisite",
+  requiredpersona: "prerequisite",
+  requirement: "prerequisite",
+  requirements: "prerequisite",
+  unlock: "unlock_condition",
+  date: "schedule",
+  availability: "schedule",
+  answer: "answer_choice",
+  effect: "item_effect",
+};
+
+function enumKey(value: unknown): string {
+  return String(value ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizeRawFact(value: Record<string, unknown>): ExtractedFact | null {
+  const rawEntityType = enumKey(value.entity_type);
+  const rawFactType = enumKey(value.fact_type);
+  const normalized = {
+    ...value,
+    entity_type: entityTypeAliases[rawEntityType] ?? String(value.entity_type ?? "").toLowerCase().replace(/[\s-]+/g, "_"),
+    fact_type: factTypeAliases[rawFactType] ?? String(value.fact_type ?? "").toLowerCase().replace(/[\s-]+/g, "_"),
+    aliases: Array.isArray(value.aliases) ? value.aliases : [],
+    confidence: typeof value.confidence === "number" ? value.confidence : Number(value.confidence ?? 0.5),
+    notes: value.notes == null ? null : String(value.notes),
+    value: value.value == null ? null : String(value.value),
+    entity_name: String(value.entity_name ?? ""),
+  };
+  const parsed = ExtractedFactSchema.safeParse(normalized);
+  return parsed.success ? parsed.data : null;
+}
+
+function factExtractionUserPrompt(chunks: TextChunk[]): string {
+  const first = chunks[0];
+  return `Source title: ${first.pageTitle}
+Source URL: ${first.source.url}
+Category: ${first.source.category}
+
+${chunks
+  .map(
+    (chunk, index) => `Excerpt ${index + 1}
+Section: ${chunk.sectionTitle}
+${chunk.text}`,
+  )
+  .join("\n\n")}`;
+}
 
 async function upsertEntity(fact: ExtractedFact): Promise<string> {
   const normalizedName = normalizeName(fact.entity_name);
@@ -38,81 +141,374 @@ async function upsertEntity(fact: ExtractedFact): Promise<string> {
     .select("id")
     .single();
 
-  if (error) {
-    throw error;
-  }
+  if (error) throw error;
   return data.id as string;
 }
 
-async function insertFact(fact: ExtractedFact, entityId: string, source: SourceRecord): Promise<boolean> {
-  if (!fact.value) {
-    return false;
-  }
+async function insertOrRefreshFact(
+  fact: ExtractedFact,
+  entityId: string,
+  source: SourceRecord,
+): Promise<boolean> {
+  if (!fact.value) return false;
 
   const { data: existing, error: existingError } = await supabase
     .from("facts")
-    .select("id")
+    .select("id,confidence,notes")
     .eq("entity_id", entityId)
     .eq("source_id", source.id)
     .eq("fact_type", fact.fact_type)
     .ilike("value", fact.value)
     .maybeSingle();
 
-  if (existingError) {
-    throw existingError;
-  }
+  if (existingError) throw existingError;
   if (existing) {
+    const previousConfidence = Number(existing.confidence);
+    if (fact.confidence > previousConfidence || (!existing.notes && fact.notes)) {
+      const { error } = await supabase
+        .from("facts")
+        .update({
+          confidence: Math.max(previousConfidence, fact.confidence),
+          notes: fact.notes ?? existing.notes,
+        })
+        .eq("id", existing.id);
+      if (error) throw error;
+      return true;
+    }
     return false;
   }
 
-  const { error } = await supabase.from("facts").insert(
-    {
-      entity_id: entityId,
-      source_id: source.id,
-      fact_type: fact.fact_type,
-      value: fact.value,
-      confidence: fact.confidence,
-      notes: fact.notes ?? null,
-    },
-  );
+  const { error } = await supabase.from("facts").insert({
+    entity_id: entityId,
+    source_id: source.id,
+    fact_type: fact.fact_type,
+    value: fact.value,
+    confidence: fact.confidence,
+    notes: fact.notes ?? null,
+  });
+  if (error) throw error;
+  return true;
+}
 
-  if (error) {
-    throw error;
+function meaningfulTerms(value: string): string[] {
+  return normalizeName(value)
+    .split(" ")
+    .filter((term) => term.length >= 2 && !["the", "and", "with", "from", "none"].includes(term));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasAffinityEvidence(fact: ExtractedFact, chunks: TextChunk[]): boolean {
+  const labelByFactType: Partial<Record<ExtractedFact["fact_type"], string>> = {
+    weakness: "weak|weakness",
+    resistance: "resist|resistant|resistance",
+    nullifies: "null|nullifies|negates",
+    drains: "drain|drains",
+    repels: "repel|repels|reflects",
+  };
+  const label = labelByFactType[fact.fact_type];
+  if (!label || !fact.value) return true;
+
+  const value = escapeRegExp(fact.value.toLowerCase());
+  const names = [fact.entity_name, ...fact.aliases]
+    .map((name) => escapeRegExp(name.toLowerCase()))
+    .filter(Boolean)
+    .join("|");
+
+  return chunks.some((chunk) => {
+    const text = `${chunk.pageTitle} ${chunk.sectionTitle} ${chunk.text}`.toLowerCase();
+    const tableStatus = text.match(
+      new RegExp(
+        `\\b${value}\\s*:\\s*(weak|weakness|resist|resistant|resistance|null|nullifies|negates|drain|drains|repel|repels|reflects|normal|unknown)\\b`,
+        "i",
+      ),
+    )?.[1];
+    if (tableStatus) {
+      return new RegExp(`^(?:${label})$`, "i").test(tableStatus);
+    }
+    if (!names) return false;
+    const namedEvidence = [
+      new RegExp(`(?:${names}).{0,100}\\b(?:${label})(?:\\s+to)?\\b.{0,45}\\b${value}\\b`, "i"),
+      new RegExp(`\\b${value}\\b.{0,45}\\b(?:${label})\\b.{0,100}(?:${names})`, "i"),
+      new RegExp(`(?:${names}).{0,100}\\b(?:${label})\\b.{0,45}\\b${value}\\b`, "i"),
+    ];
+    return namedEvidence.some((pattern) => pattern.test(text));
+  });
+}
+
+const affinityStatusToFactType: Record<string, ExtractedFact["fact_type"] | undefined> = {
+  weak: "weakness",
+  weakness: "weakness",
+  resist: "resistance",
+  resistant: "resistance",
+  resistance: "resistance",
+  null: "nullifies",
+  nullifies: "nullifies",
+  negates: "nullifies",
+  drain: "drains",
+  drains: "drains",
+  repel: "repels",
+  repels: "repels",
+  reflects: "repels",
+};
+
+const affinityElements: Record<string, string> = {
+  slash: "Slash",
+  strike: "Strike",
+  pierce: "Pierce",
+  fire: "Fire",
+  ice: "Ice",
+  electric: "Electric",
+  electricity: "Electric",
+  wind: "Wind",
+  light: "Light",
+  dark: "Dark",
+};
+
+function subjectFromPageTitle(pageTitle: string): {
+  name: string;
+  type: ExtractedFact["entity_type"];
+} | null {
+  const suffixPatterns = [
+    /\s+boss guide(?::.*)?$/i,
+    /\s+weakness(?:es)? and how to beat.*$/i,
+    /\s+weakness(?:es)? and location.*$/i,
+    /\s+weakness(?:es)?(?::.*)?$/i,
+  ];
+  let name = pageTitle.trim();
+  for (const pattern of suffixPatterns) name = name.replace(pattern, "").trim();
+  if (
+    !name ||
+    name === pageTitle.trim() ||
+    /\b(list of|all |guide|persona 3 reload)\b/i.test(name)
+  ) {
+    return null;
+  }
+  return {
+    name,
+    type: /\bboss guide\b/i.test(pageTitle) ? "boss" : "enemy",
+  };
+}
+
+export function extractDeterministicAffinityFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const subject = subjectFromPageTitle(chunks[0]?.pageTitle ?? "");
+  if (!subject) return [];
+
+  const facts = new Map<string, ExtractedFact>();
+  const pairPattern =
+    /\b(Slash|Strike|Pierce|Fire|Ice|Electricity|Electric|Wind|Light|Dark)\s*:\s*(Weakness|Weak|Resistance|Resistant|Resist|Nullifies|Null|Negates|Drains|Drain|Repels|Repel|Reflects|Normal|Unknown)\b/gi;
+
+  for (const chunk of chunks) {
+    const text = `${chunk.sectionTitle}\n${chunk.text}`;
+    for (const match of text.matchAll(pairPattern)) {
+      const value = affinityElements[match[1].toLowerCase()];
+      const factType = affinityStatusToFactType[match[2].toLowerCase()];
+      if (!value || !factType) continue;
+      const key = `${factType}:${value}`;
+      facts.set(key, {
+        entity_name: subject.name,
+        entity_type: subject.type,
+        aliases: [],
+        fact_type: factType,
+        value,
+        confidence: 0.99,
+        notes: "Extracted directly from the source affinity table.",
+      });
+    }
+  }
+  return [...facts.values()];
+}
+
+function isSupportedFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
+  if (!fact.value || fact.confidence < 0.65) return false;
+  if (!hasAffinityEvidence(fact, chunks)) return false;
+
+  const sourceText = normalizeName(
+    chunks
+      .map((chunk) => `${chunk.pageTitle} ${chunk.sectionTitle} ${chunk.text}`)
+      .join(" "),
+  );
+  const entityNames = [fact.entity_name, ...fact.aliases].map(normalizeName).filter(Boolean);
+  if (!entityNames.some((name) => sourceText.includes(name))) return false;
+
+  if (exactFactTypes.has(fact.fact_type)) {
+    const terms = meaningfulTerms(fact.value);
+    if (terms.length > 0 && !terms.some((term) => sourceText.includes(term))) return false;
   }
   return true;
 }
 
-export async function extractFactsForChunk(chunk: TextChunk): Promise<ExtractedFact[]> {
-  const content = await createChatCompletion([
-    { role: "system", content: factExtractionSystemPrompt },
-    { role: "user", content: factExtractionUserPrompt(chunk) },
-  ], { jsonObject: true });
-
-  const json = JSON.parse(content) as unknown;
-  const parsed = FactExtractionResponseSchema.parse(json);
-  return parsed.facts.filter((fact) => fact.value !== null && fact.value.trim().length > 0);
-}
-
-export async function extractAndInsertFacts(chunks: TextChunk[]): Promise<number> {
-  let inserted = 0;
-  const sourceByUrl = new Map<string, SourceRecord>();
-
-  for (const chunk of chunks) {
-    let source = sourceByUrl.get(chunk.source.url);
-    if (!source) {
-      source = await upsertSource(chunk.source, chunk.pageTitle);
-      sourceByUrl.set(chunk.source.url, source);
-    }
-
-    const facts = await extractFactsForChunk(chunk);
-    for (const fact of facts) {
-      const entityId = await upsertEntity(fact);
-      const didInsert = await insertFact(fact, entityId, source);
-      if (didInsert) {
-        inserted += 1;
+async function extractFactsForChunks(chunks: TextChunk[]): Promise<ExtractedFact[]> {
+  const deterministicFacts = extractDeterministicAffinityFacts(chunks);
+  const models = activeFactExtractionModel
+    ? [activeFactExtractionModel]
+    : [...new Set([config.factExtractionModel, config.chatModel])];
+  let lastError: unknown;
+  for (const model of models) {
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const content = await createChatCompletion(
+          [
+            { role: "system", content: factExtractionSystemPrompt },
+            { role: "user", content: factExtractionUserPrompt(chunks) },
+          ],
+          {
+            jsonObject: true,
+            model,
+            maxCompletionTokens: 2_500,
+          },
+        );
+        const raw = RawFactResponseSchema.parse(JSON.parse(content) as unknown);
+        const normalized = raw.facts
+          .map(normalizeRawFact)
+          .filter((fact): fact is ExtractedFact => fact !== null);
+        const parsed = FactExtractionResponseSchema.parse({ facts: normalized });
+        activeFactExtractionModel = model;
+        const modelFacts = parsed.facts.filter((fact) => isSupportedFact(fact, chunks));
+        const facts = new Map<string, ExtractedFact>();
+        for (const fact of [...modelFacts, ...deterministicFacts]) {
+          const key = `${normalizeName(fact.entity_name)}:${fact.fact_type}:${normalizeName(fact.value ?? "")}`;
+          facts.set(key, fact);
+        }
+        return [...facts.values()];
+      } catch (error) {
+        lastError = error;
+        const message = String(error instanceof Error ? error.message : error);
+        if (/model_permission_blocked_project|model .* is blocked/i.test(message)) {
+          console.warn(`Fact extraction model ${model} is unavailable; trying the configured chat model.`);
+          break;
+        }
+        if (attempt < 3) {
+          const retrySeconds = Number(message.match(/try again in ([\d.]+)s/i)?.[1] ?? 0);
+          await sleep(Math.max(1_000 * retrySeconds + 500, 1_500 * attempt));
+        }
       }
     }
   }
+  if (deterministicFacts.length > 0) return deterministicFacts;
+  throw lastError;
+}
 
-  return inserted;
+function batchCandidates(chunks: TextChunk[], maxFactChunks: number): TextChunk[][] {
+  const candidates = chunks.filter(isFactCandidate).sort((a, b) => candidateScore(b) - candidateScore(a));
+  const categoryOrder = [
+    "enemies",
+    "bosses",
+    "social_links",
+    "requests",
+    "fusion",
+    "personas",
+    "tartarus",
+    "walkthrough",
+    "classroom",
+    "beginner_strategy",
+    "guide",
+    "overview",
+  ];
+  const categoryBuckets = new Map<string, TextChunk[]>();
+  for (const chunk of candidates) {
+    const bucket = categoryBuckets.get(chunk.source.category) ?? [];
+    bucket.push(chunk);
+    categoryBuckets.set(chunk.source.category, bucket);
+  }
+  const selected: TextChunk[] = [];
+  while (selected.length < maxFactChunks) {
+    let added = false;
+    for (const category of categoryOrder) {
+      const chunk = categoryBuckets.get(category)?.shift();
+      if (!chunk) continue;
+      selected.push(chunk);
+      added = true;
+      if (selected.length >= maxFactChunks) break;
+    }
+    if (!added) break;
+  }
+
+  const bySource = new Map<string, TextChunk[]>();
+  for (const chunk of selected) {
+    const group = bySource.get(chunk.source.url) ?? [];
+    group.push(chunk);
+    bySource.set(chunk.source.url, group);
+  }
+
+  const batches: TextChunk[][] = [];
+  for (const sourceChunks of bySource.values()) {
+    let batch: TextChunk[] = [];
+    let characters = 0;
+    for (const chunk of sourceChunks) {
+      if (batch.length >= 2 || characters + chunk.text.length > 5_500) {
+        batches.push(batch);
+        batch = [];
+        characters = 0;
+      }
+      batch.push(chunk);
+      characters += chunk.text.length;
+    }
+    if (batch.length) batches.push(batch);
+  }
+  return batches;
+}
+
+export async function extractAndInsertFacts(
+  chunks: TextChunk[],
+  options: { maxFactChunks?: number } = {},
+): Promise<number> {
+  const maxFactChunks = options.maxFactChunks ?? Number.POSITIVE_INFINITY;
+  const batches = batchCandidates(chunks, maxFactChunks);
+  let changed = 0;
+  let completed = 0;
+  const sourceByUrl = new Map<string, SourceRecord>();
+
+  const chunksBySource = new Map<string, TextChunk[]>();
+  for (const chunk of chunks) {
+    const sourceChunks = chunksBySource.get(chunk.source.url) ?? [];
+    sourceChunks.push(chunk);
+    chunksBySource.set(chunk.source.url, sourceChunks);
+  }
+  for (const sourceChunks of chunksBySource.values()) {
+    const deterministicFacts = extractDeterministicAffinityFacts(sourceChunks);
+    if (deterministicFacts.length === 0) continue;
+    const first = sourceChunks[0];
+    const source = await upsertSource(first.source, first.pageTitle);
+    sourceByUrl.set(first.source.url, source);
+    for (const fact of deterministicFacts) {
+      const entityId = await upsertEntity(fact);
+      if (await insertOrRefreshFact(fact, entityId, source)) changed += 1;
+    }
+  }
+
+  console.log(
+    `Loaded ${changed} direct affinity facts; extracting broader facts from ${Math.min(chunks.filter(isFactCandidate).length, maxFactChunks)} focused chunks in ${batches.length} batched model calls.`,
+  );
+
+  for (const batch of batches) {
+    const first = batch[0];
+    let source = sourceByUrl.get(first.source.url);
+    if (!source) {
+      source = await upsertSource(first.source, first.pageTitle);
+      sourceByUrl.set(first.source.url, source);
+    }
+
+    try {
+      const facts = await extractFactsForChunks(batch);
+      for (const fact of facts) {
+        const entityId = await upsertEntity(fact);
+        if (await insertOrRefreshFact(fact, entityId, source)) changed += 1;
+      }
+    } catch (error) {
+      console.warn(
+        `Fact extraction skipped ${first.pageTitle}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    completed += 1;
+    if (completed % 5 === 0 || completed === batches.length) {
+      console.log(`Fact extraction progress: ${completed}/${batches.length} calls, ${changed} facts changed.`);
+    }
+    if (completed < batches.length) await sleep(config.factExtractionDelayMs);
+  }
+
+  return changed;
 }

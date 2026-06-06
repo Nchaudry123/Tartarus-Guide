@@ -1,29 +1,60 @@
 import "dotenv/config";
 import { curatedSources } from "./urls";
+import { discoverSources } from "./discoverSources";
 import { fetchPages } from "./fetchPages";
 import { extractContent } from "./extractContent";
 import { chunkExtractedPage } from "./chunkText";
 import { embedAndInsertChunks } from "./embedChunks";
-import { extractAndInsertFacts } from "./extractFacts";
+import { extractAndInsertFacts, isFactCandidate } from "./extractFacts";
 
-const force = process.argv.includes("--force");
-const skipFacts = process.argv.includes("--skip-facts");
+const hasFlag = (flag: string): boolean => process.argv.includes(flag);
+const numberArg = (name: string, fallback: number): number => {
+  const value = process.argv.find((arg) => arg.startsWith(`${name}=`))?.split("=")[1];
+  return value ? Number(value) : fallback;
+};
+
+const force = hasFlag("--force");
+const sync = hasFlag("--sync");
+const skipFacts = hasFlag("--skip-facts");
+const noDiscover = hasFlag("--no-discover");
+const dryRun = hasFlag("--dry-run");
+const listSources = hasFlag("--list-sources");
+const maxPages = numberArg("--max-pages", 120);
+const maxFactChunks = numberArg("--max-fact-chunks", 180);
 
 async function main(): Promise<void> {
-  console.log(`Fetching ${curatedSources.length} curated sources${force ? " with cache refresh" : ""}...`);
-  const pages = await fetchPages(curatedSources, force);
-  console.log(`Fetched or loaded ${pages.length} pages.`);
+  const sources = noDiscover
+    ? curatedSources.slice(0, maxPages)
+    : await discoverSources(curatedSources, { maxPages, force });
 
+  if (listSources) {
+    for (const source of sources) {
+      console.log(
+        `${String(source.credibilityRank).padStart(2)} ${source.category.padEnd(18)} ${source.title} ${source.url}`,
+      );
+    }
+    return;
+  }
+
+  console.log(`Fetching ${sources.length} sources${force ? " with cache refresh" : ""}...`);
+  const pages = await fetchPages(sources, force);
   const extracted = pages.map(({ source, html }) => extractContent(source, html));
   const chunks = extracted.flatMap(chunkExtractedPage);
-  console.log(`Prepared ${chunks.length} retrieval chunks.`);
+  const candidateFacts = chunks.filter(isFactCandidate);
 
-  const insertedChunks = await embedAndInsertChunks(chunks);
-  console.log(`Inserted ${insertedChunks} new chunks.`);
+  console.log(
+    `Prepared ${chunks.length} retrieval chunks from ${pages.length} pages; ${candidateFacts.length} are fact candidates.`,
+  );
+  if (dryRun) return;
+
+  const chunkChanges = await embedAndInsertChunks(chunks, { sync });
+  console.log(
+    `Inserted ${chunkChanges.inserted} new chunks${sync ? ` and removed ${chunkChanges.deleted} stale chunks` : ""}.`,
+  );
 
   if (!skipFacts) {
-    const insertedFacts = await extractAndInsertFacts(chunks);
-    console.log(`Inserted or refreshed ${insertedFacts} facts.`);
+    const changedFacts = await extractAndInsertFacts(chunks, { maxFactChunks });
+    console.log(`Inserted or refreshed ${changedFacts} facts.`);
   }
 }
 
