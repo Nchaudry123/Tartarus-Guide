@@ -99,85 +99,16 @@ textarea:focus-visible {
 .entrance-screen.is-exiting .intro-flash {
   animation: exitFlash 680ms steps(1, end) both;
 }
-.entrance-screen.is-exiting .intro-wipes span {
-  animation: exitWipe 620ms cubic-bezier(.78,0,.12,1) both;
-}
-.entrance-screen.is-exiting .intro-wipes span:nth-child(2) { animation-delay: 50ms; }
-.entrance-screen.is-exiting .intro-wipes span:nth-child(3) { animation-delay: 90ms; }
-.entrance-screen.is-exiting .intro-wipes span:nth-child(4) { animation-delay: 130ms; }
-.entrance-art {
+.entrance-video {
   position: absolute;
   inset: 0;
-  background:
-    linear-gradient(90deg, rgba(255,255,255,.88) 0 18%, rgba(255,255,255,.02) 44%, rgba(2,7,32,.22)),
-    url("./assets/chat-config.jpeg") center / cover no-repeat;
-  filter: saturate(1.08) contrast(1.08);
-  transform: scale(1.2) translate3d(8vw, -4vh, 0) rotate(-3deg);
-  animation: introArtSnap 1200ms cubic-bezier(.16,1,.3,1) both, introArtIdle 5.2s ease-in-out 1300ms infinite;
-  backface-visibility: hidden;
-  will-change: transform, filter;
-}
-.entrance-art::before,
-.entrance-art::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.entrance-art::before {
-  background:
-    linear-gradient(106deg, rgba(2,7,32,.56) 0 26%, transparent 26.2% 100%),
-    linear-gradient(106deg, transparent 0 58%, rgba(2,7,32,.38) 58.2% 72%, transparent 72.2%);
-  transform: translateX(9vw);
-  animation: introMaskShift 1800ms cubic-bezier(.16,1,.3,1) both;
-}
-.entrance-art::after {
-  background: linear-gradient(90deg, transparent 0 42%, rgba(255,255,255,.52) 48%, transparent 54%);
-  transform: translateX(-120%);
-  opacity: .78;
-  animation: introLightSweep 1650ms cubic-bezier(.78,0,.12,1) 760ms both;
-  will-change: opacity, transform;
-}
-.intro-panels {
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  pointer-events: none;
-}
-.intro-panels span {
-  position: absolute;
-  display: block;
-  width: clamp(14rem, 28vw, 34rem);
-  height: clamp(18rem, 48vh, 38rem);
-  background: rgba(2, 7, 32, .62);
-  clip-path: polygon(22% 0, 100% 0, 78% 100%, 0 100%);
-  opacity: 0;
-  transform: translate3d(24vw, -8vh, 0) skewX(-5deg);
-  animation: panelDrop 960ms cubic-bezier(.16,1,.3,1) both;
-  backface-visibility: hidden;
-  will-change: opacity, transform;
-}
-.intro-panels span:nth-child(1) {
-  right: 6vw;
-  top: -8vh;
-  background: rgba(2, 7, 32, .72);
-  animation-delay: 360ms;
-}
-.intro-panels span:nth-child(2) {
-  right: 36vw;
-  top: 16vh;
-  width: clamp(8rem, 17vw, 20rem);
-  height: 72vh;
-  background: rgba(7, 92, 255, .30);
-  animation-delay: 460ms;
-}
-.intro-panels span:nth-child(3) {
-  left: -8vw;
-  bottom: -16vh;
-  width: clamp(12rem, 24vw, 28rem);
-  height: 48vh;
-  background: rgba(255, 255, 255, .78);
-  animation-delay: 560ms;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: #020720;
+  filter: saturate(1.08) contrast(1.06);
 }
 .intro-scan {
   position: absolute;
@@ -199,65 +130,6 @@ textarea:focus-visible {
   pointer-events: none;
   animation: introFlash 900ms steps(1, end) both;
 }
-.intro-wipes {
-  position: absolute;
-  inset: -18vh -18vw;
-  z-index: 3;
-  pointer-events: none;
-}
-.intro-wipes span {
-  position: absolute;
-  left: -16vw;
-  width: 142vw;
-  height: 24vh;
-  transform: translateX(-115%) rotate(-10deg);
-  box-shadow: 0 0 36px rgba(85,247,255,.18);
-  will-change: transform;
-}
-.intro-wipes span:nth-child(1) { top: 6vh; background: #fff; animation: wipeAcross 720ms cubic-bezier(.78,0,.12,1) 80ms both; }
-.intro-wipes span:nth-child(2) { top: 30vh; height: 32vh; background: #06124a; animation: wipeAcross 840ms cubic-bezier(.78,0,.12,1) 180ms both; }
-.intro-wipes span:nth-child(3) { top: 56vh; height: 20vh; background: #075cff; animation: wipeAcross 700ms cubic-bezier(.78,0,.12,1) 280ms both; }
-.intro-wipes span:nth-child(4) { top: 76vh; height: 18vh; background: rgba(255,255,255,.92); animation: wipeAcross 760ms cubic-bezier(.78,0,.12,1) 380ms both; }
-.intro-shards {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  pointer-events: none;
-}
-.intro-shards i {
-  position: absolute;
-  display: block;
-  width: clamp(1.5rem, 4vw, 4rem);
-  height: clamp(.8rem, 1.8vw, 1.6rem);
-  background: linear-gradient(90deg, #6d37ff, var(--pink));
-  clip-path: polygon(13% 0,100% 10%,76% 100%,0 78%);
-  opacity: 0;
-  animation: shardBurst 980ms cubic-bezier(.16,1,.3,1) both;
-  will-change: opacity, transform;
-}
-.intro-shards i:nth-child(1) { left: 16%; top: 20%; --dx: 15vw; --dy: -10vh; --r: 28deg; animation-delay: 220ms; }
-.intro-shards i:nth-child(2) { left: 74%; top: 16%; --dx: -10vw; --dy: 9vh; --r: -48deg; animation-delay: 320ms; background: var(--cyan); }
-.intro-shards i:nth-child(3) { left: 54%; top: 58%; --dx: 12vw; --dy: 12vh; --r: 70deg; animation-delay: 380ms; }
-.intro-shards i:nth-child(4) { left: 28%; top: 72%; --dx: -16vw; --dy: 7vh; --r: -18deg; animation-delay: 480ms; background: white; }
-.intro-shards i:nth-child(5) { left: 84%; top: 70%; --dx: 8vw; --dy: -8vh; --r: 35deg; animation-delay: 560ms; background: var(--cyan); }
-.intro-shards i:nth-child(6) { left: 44%; top: 30%; --dx: -7vw; --dy: -13vh; --r: 14deg; animation-delay: 660ms; }
-.intro-labels {
-  display: none;
-}
-.intro-labels span {
-  position: absolute;
-  color: rgba(0,0,0,.20);
-  font-family: Impact, "Arial Black", sans-serif;
-  font-size: clamp(5rem, 13vw, 16rem);
-  font-style: italic;
-  line-height: .8;
-  opacity: 0;
-  transform: translateX(-14vw) skewX(-10deg);
-  animation: labelSlam 780ms cubic-bezier(.16,1,.3,1) both;
-}
-.intro-labels span:nth-child(1) { left: -3vw; top: 5vh; animation-delay: 360ms; }
-.intro-labels span:nth-child(2) { right: -2vw; bottom: 4vh; animation-delay: 520ms; }
-.intro-labels span:nth-child(3) { left: 20vw; top: 46vh; color: rgba(255,255,255,.20); animation-delay: 680ms; }
 .entrance-copy {
   position: relative;
   z-index: 6;
@@ -993,49 +865,10 @@ footer span {
   29%, 36% { opacity: .86; }
   37%, 100% { opacity: 0; }
 }
-@keyframes wipeAcross {
-  0% { transform: translateX(-115%) rotate(-10deg); }
-  48% { transform: translateX(4%) rotate(-10deg); }
-  100% { transform: translateX(112%) rotate(-10deg); }
-}
-@keyframes introArtSnap {
-  0% { transform: scale(1.28) translate3d(15vw, -9vh, 0) rotate(-5deg); filter: brightness(1.35) saturate(1.4); }
-  18% { transform: scale(1.12) translate3d(-5vw, 3vh, 0) rotate(2deg); }
-  42% { transform: scale(1.2) translate3d(3vw, -2vh, 0) rotate(-2deg); }
-  100% { transform: scale(1.03) translate3d(0, 0, 0) rotate(0); filter: brightness(1) saturate(1.08) contrast(1.08); }
-}
-@keyframes introArtIdle {
-  50% { transform: scale(1.06) translate3d(-1.2vw, .6vh, 0); }
-}
-@keyframes introMaskShift {
-  0% { opacity: 0; transform: translateX(22vw); }
-  34% { opacity: 1; }
-  100% { opacity: 1; transform: translateX(0); }
-}
-@keyframes introLightSweep {
-  0% { transform: translateX(-120%) skewX(-14deg); }
-  55% { opacity: .95; }
-  100% { opacity: 0; transform: translateX(120%) skewX(-14deg); }
-}
-@keyframes panelDrop {
-  0% { opacity: 0; transform: translate3d(24vw, -8vh, 0) skewX(-5deg); }
-  58% { opacity: 1; transform: translate3d(-1vw, .5vh, 0) skewX(-5deg); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) skewX(-5deg); }
-}
 @keyframes introScanCut {
   0% { opacity: 0; transform: translateX(-120%) skewX(-18deg); }
   24%, 62% { opacity: .9; }
   100% { opacity: 0; transform: translateX(125%) skewX(-18deg); }
-}
-@keyframes shardBurst {
-  0% { opacity: 0; transform: translate3d(0,0,0) rotate(0deg) scale(.4); }
-  28% { opacity: 1; }
-  100% { opacity: .72; transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--r)) scale(1); }
-}
-@keyframes labelSlam {
-  0% { opacity: 0; transform: translateX(-18vw) skewX(-10deg) scaleX(1.25); }
-  55% { opacity: .85; transform: translateX(1vw) skewX(-10deg) scaleX(1); }
-  100% { opacity: .42; transform: translateX(0) skewX(-10deg) scaleX(1); }
 }
 @keyframes copyStagger {
   from { opacity: 0; transform: translateX(-5vw); }
@@ -1070,11 +903,6 @@ footer span {
   0%, 20% { opacity: 0; }
   21%, 36% { opacity: .94; }
   37%, 100% { opacity: 0; }
-}
-@keyframes exitWipe {
-  0% { transform: translateX(-112%) rotate(-10deg); }
-  56% { transform: translateX(-2%) rotate(-10deg); }
-  100% { transform: translateX(116%) rotate(-10deg); }
 }
 @keyframes appSnapIn {
   0% { opacity: .45; transform: translate3d(-8vw, 0, 0) skewX(-7deg) scaleX(1.05); filter: brightness(1.75) saturate(1.35); }
@@ -1150,15 +978,6 @@ footer span {
 @media (max-width: 560px) {
   .entrance-copy { align-self: end; padding-bottom: 15vh; }
   .entrance-copy h1 { font-size: clamp(4.8rem, 24vw, 7rem); }
-  .entrance-art {
-    background:
-      linear-gradient(180deg, rgba(2,7,32,.08), rgba(2,7,32,.64)),
-      url("./assets/chat-config.jpeg") 62% center / cover no-repeat;
-  }
-  .intro-labels span:nth-child(1) { top: 7vh; }
-  .intro-labels span:nth-child(2) { bottom: 20vh; right: -18vw; }
-  .intro-labels span:nth-child(3) { left: -8vw; top: 38vh; }
-  .intro-wipes span { height: 18vh; }
   html, body {
     height: 100%;
     overflow: hidden;
