@@ -416,7 +416,9 @@ textarea:focus-visible {
 .messages {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   display: flex;
@@ -427,12 +429,15 @@ textarea:focus-visible {
   scroll-behavior: smooth;
   scroll-padding-block: 1.25rem;
   scrollbar-gutter: stable;
+  container-type: inline-size;
 }
 .empty-state {
   margin: auto;
-  width: min(100%, 42rem);
-  max-width: 42rem;
-  padding: clamp(.8rem, 2.1vh, 1.6rem) 0;
+  box-sizing: border-box;
+  width: min(calc(100% - 1rem), 48rem);
+  max-width: 100%;
+  min-width: 0;
+  padding: clamp(.8rem, 2.1vh, 1.6rem) clamp(.25rem, 2cqw, 1rem);
   text-align: center;
 }
 .seal {
@@ -459,27 +464,42 @@ textarea:focus-visible {
   font-style: italic;
   line-height: .9;
 }
+.empty-state h2 {
+  max-width: 100%;
+  font-size: clamp(2.25rem, 5cqw, 4rem);
+  overflow-wrap: normal;
+  text-wrap: balance;
+}
 .empty-state p {
   margin: clamp(.45rem, 1.15vh, .85rem) auto 0;
-  max-width: 40rem;
+  max-width: min(100%, 42rem);
   font-weight: 800;
   color: rgba(223,252,255,.82);
+  overflow-wrap: anywhere;
+  text-wrap: balance;
 }
 .empty-examples {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+  width: 100%;
+  min-width: 0;
   gap: .6rem;
   margin-top: clamp(.65rem, 1.5vh, 1rem);
 }
 .empty-examples button {
   position: relative;
   isolation: isolate;
+  flex: 1 1 11rem;
+  max-width: 15rem;
+  min-width: 0;
   border: 0;
   background: transparent;
   color: var(--ice);
   padding: .65rem .85rem;
   font-weight: 900;
+  white-space: normal;
+  overflow-wrap: anywhere;
   clip-path: polygon(0 0,94% 0,100% 34%,96% 100%,0 100%);
   transition: background .18s ease, transform .2s cubic-bezier(.16,1,.3,1), box-shadow .18s ease;
 }
