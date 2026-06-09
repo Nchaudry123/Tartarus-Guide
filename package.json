@@ -10,7 +10,10 @@
     "ingest": "tsx src/ingest/runIngestion.ts",
     "ingest:lite": "node scripts/ingest-lite.mjs",
     "ingest:facts": "tsx src/ingest/backfillFacts.ts",
+    "ingest:fusion": "tsx src/ingest/importFusionTool.ts",
     "ingest:audit": "tsx src/ingest/auditIndex.ts",
+    "ingest:coverage": "tsx src/ingest/coverageReport.ts",
+    "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit"
   },

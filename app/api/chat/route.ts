@@ -66,6 +66,7 @@ type ControllerDecision = {
   action: ControllerAction;
   intent: CompanionIntent;
   retrievalQuery: string;
+  retrievalQueries: string[];
   answer: string | null;
   followUpQuestions: string[];
   profileUpdates: PlayerProfile;
@@ -81,16 +82,19 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
+  if (/\b(story|spoiler|plot|ending|final boss|character dies|what happens)\b/.test(text)) return "Story Guidance";
   if (/\b(team feels weak|party feels weak|my team is weak|my party is weak|underleveled|under-leveled|team|party|build|members|composition|gear|equipment)\b/.test(text)) return "Team Building";
   if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
+  if (/\b(social link|s-link|romance|hang out|confidant)\b/.test(text)) return "Social Links";
+  if (/\btartarus\b/.test(text) && /\b(climb|floor|block|how far|how high|route|explore|grind|border)\b/.test(text)) return "Tartarus Navigation";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
   if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
   if (/\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion)\b/.test(text)) return "Fusion Advice";
-  if (/\b(social link|s-link|rank|romance|hang out|confidant)\b/.test(text)) return "Social Links";
-  if (/\b(day|schedule|calendar|month|night|after school|full moon|free time)\b/.test(text)) return "Daily Schedule Planning";
+  if (/\b(today|schedule|calendar|month|night|after school|free evening|free evenings|free time|daily plan|use my time)\b/.test(text)) return "Daily Schedule Planning";
+  if (/\b(rank)\b/.test(text)) return "Social Links";
+  if (/\b(day|date)\b/.test(text)) return "Daily Schedule Planning";
   if (/\b(tartarus|floor|block|gatekeeper|border|explore|grind|shadows)\b/.test(text)) return "Tartarus Navigation";
   if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) return "Quest Help";
-  if (/\b(story|spoiler|plot|ending|character dies|what happens)\b/.test(text)) return "Story Guidance";
   if (/\b(achievement|trophy|platinum|completion|complete|100%)\b/.test(text)) return "Achievement Hunting";
   return "General Discussion";
 }
@@ -141,10 +145,17 @@ function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): 
 }
 
 function analyzeCompanionRequest(question: string, profile?: PlayerProfile): CompanionAnalysis {
-  const intent = detectIntent(question);
+  let intent = detectIntent(question);
   const profileUpdates = extractProfileUpdates(question);
   const mergedProfile = mergeProfile(profile, profileUpdates);
   const text = question.toLowerCase().trim();
+  if (
+    intent === "General Discussion" &&
+    mergedProfile.activeParty?.length &&
+    /\b(healer|healing|heal|support|damage|survive|survivability|sp|party member)\b/.test(text)
+  ) {
+    intent = "Team Building";
+  }
   const vagueSignals = [
     "i'm stuck",
     "im stuck",
@@ -564,6 +575,10 @@ function normalizeControllerDecision(raw: unknown, fallback: CompanionAnalysis):
     action: sanitizeControllerAction(value.action, fallbackAction),
     intent: sanitizeIntent(value.intent, fallback.intent),
     retrievalQuery: asString(value.retrievalQuery) ?? fallback.retrievalQuery,
+    retrievalQueries: uniqueStrings([
+      ...asStringArray(value.retrievalQueries, 4),
+      asString(value.retrievalQuery) ?? fallback.retrievalQuery,
+    ]).slice(0, 4),
     answer: asString(value.answer),
     followUpQuestions: asStringArray(value.followUpQuestions, 3),
     profileUpdates,
@@ -639,6 +654,37 @@ function responseFromPlainText(
   };
 }
 
+function responseText(response: ChatResponse): string {
+  return [
+    response.answer,
+    ...(response.sections ?? []).flatMap((section) => [section.title, section.content]),
+    ...(response.tables ?? []).flatMap((table) => [table.title, ...table.columns, ...table.rows.flat()]),
+  ].join(" ");
+}
+
+const affinityTerms = ["Slash", "Strike", "Pierce", "Fire", "Ice", "Electric", "Wind", "Light", "Dark"];
+const tartarusBlocks = ["Thebel", "Arqa", "Yabbashah", "Tziah", "Harabah", "Adamah"];
+
+function hasUnsupportedAffinityClaim(
+  response: ChatResponse,
+  question: string,
+  facts: Array<{ fact_type: string; value: string; entity: { name: string } }>,
+): boolean {
+  const supported = new Set(
+    facts
+      .filter(
+        (fact) =>
+          factMatchesQuestionSubject(question, fact.entity.name) &&
+          ["weakness", "resistance", "nullifies", "drains", "repels"].includes(fact.fact_type),
+      )
+      .map((fact) => fact.value.toLowerCase()),
+  );
+  if (!supported.size) return false;
+  const text = responseText(response);
+  const mentioned = affinityTerms.filter((term) => new RegExp(`\\b${term}\\b`, "i").test(text));
+  return mentioned.some((term) => !supported.has(term.toLowerCase()));
+}
+
 function compactText(value: string, maxLength = 520): string {
   const text = value
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
@@ -654,15 +700,76 @@ function compactText(value: string, maxLength = 520): string {
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text;
 }
 
+function relevantExcerpt(value: string, queries: string[], maxLength = 900): string {
+  const cleaned = compactText(value, 12000);
+  if (cleaned.length <= maxLength) return cleaned;
+
+  const stopWords = new Set([
+    "persona",
+    "reload",
+    "guide",
+    "strategy",
+    "party",
+    "roles",
+    "level",
+    "normal",
+  ]);
+  const terms = [
+    ...new Set(
+      queries
+        .join(" ")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]+/g, " ")
+        .split(/\s+/)
+        .filter((term) => term.length >= 3 && !stopWords.has(term)),
+    ),
+  ];
+  const sentences = cleaned.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const ranked = sentences
+    .map((sentence, index) => {
+      const lower = sentence.toLowerCase();
+      const score = terms.reduce((total, term) => total + (lower.includes(term) ? 1 : 0), 0);
+      return { sentence, index, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  if (!ranked.length) return compactText(cleaned, maxLength);
+
+  const selectedIndexes = new Set<number>();
+  for (const item of ranked) {
+    selectedIndexes.add(item.index);
+    if (item.index > 0) selectedIndexes.add(item.index - 1);
+    if (
+      [...selectedIndexes]
+        .sort((a, b) => a - b)
+        .map((index) => sentences[index])
+        .join(" ").length >= maxLength
+    ) {
+      break;
+    }
+  }
+
+  const excerpt = [...selectedIndexes]
+    .sort((a, b) => a - b)
+    .map((index) => sentences[index])
+    .join(" ");
+  return compactText(excerpt, maxLength);
+}
+
 function exactWeaknessQuestion(question: string, intent: CompanionIntent): boolean {
   return intent === "Enemy Weakness" || /\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel|affinity)\b/i.test(question);
 }
 
 function hasStructuredAffinitySupport(
-  facts: Array<{ fact_type: string; value: string }>,
+  question: string,
+  facts: Array<{ fact_type: string; value: string; entity: { name: string } }>,
 ): boolean {
-  return facts.some((fact) =>
-    ["weakness", "resistance", "nullifies", "drains", "repels"].includes(fact.fact_type) && Boolean(fact.value.trim()),
+  return facts.some(
+    (fact) =>
+      factMatchesQuestionSubject(question, fact.entity.name) &&
+      ["weakness", "resistance", "nullifies", "drains", "repels"].includes(fact.fact_type) &&
+      Boolean(fact.value.trim()),
   );
 }
 
@@ -675,6 +782,220 @@ function likelyExactSubject(question: string): string | null {
 
   const multiword = phrases.find((phrase) => phrase.split(/\s+/).length > 1);
   return multiword ?? phrases[0] ?? null;
+}
+
+function factMatchesQuestionSubject(question: string, entityName: string): boolean {
+  const subject = likelyExactSubject(question)?.toLowerCase();
+  if (!subject) return true;
+  const entity = entityName.toLowerCase();
+  return subject === entity || subject.includes(entity) || entity.includes(subject);
+}
+
+function exactAffinityFacts(
+  question: string,
+  facts: Array<{
+    fact_type: string;
+    value: string;
+    confidence: number;
+    entity: { name: string };
+    source: { title: string; url: string; domain: string };
+  }>,
+) {
+  return facts.filter(
+    (fact) =>
+      factMatchesQuestionSubject(question, fact.entity.name) &&
+      ["weakness", "resistance", "nullifies", "drains", "repels"].includes(fact.fact_type) &&
+      Boolean(fact.value.trim()),
+  );
+}
+
+function joinNatural(values: string[]): string {
+  if (values.length <= 1) return values[0] ?? "";
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
+}
+
+function structuredAffinityResponse(
+  question: string,
+  facts: Array<{
+    fact_type: string;
+    value: string;
+    confidence: number;
+    entity: { name: string };
+    source: { title: string; url: string; domain: string };
+  }>,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  const matches = exactAffinityFacts(question, facts);
+  if (!matches.length) return null;
+
+  const entityName = matches[0].entity.name;
+  const byType = new Map<string, string[]>();
+  for (const fact of matches) {
+    byType.set(fact.fact_type, uniqueStrings([...(byType.get(fact.fact_type) ?? []), fact.value]));
+  }
+
+  const clauses = [
+    byType.get("weakness")?.length ? `is weak to ${joinNatural(byType.get("weakness")!)}` : undefined,
+    byType.get("resistance")?.length ? `resists ${joinNatural(byType.get("resistance")!)}` : undefined,
+    byType.get("nullifies")?.length ? `nullifies ${joinNatural(byType.get("nullifies")!)}` : undefined,
+    byType.get("drains")?.length ? `drains ${joinNatural(byType.get("drains")!)}` : undefined,
+    byType.get("repels")?.length ? `repels ${joinNatural(byType.get("repels")!)}` : undefined,
+  ].filter((clause): clause is string => Boolean(clause));
+
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  for (const fact of matches) {
+    sourceMap.set(fact.source.url, {
+      title: fact.source.title,
+      url: fact.source.url,
+      domain: fact.source.domain,
+    });
+  }
+
+  const weaknesses = byType.get("weakness") ?? [];
+  const requestedBlock = tartarusBlocks.find((block) => new RegExp(`\\b${block}\\b`, "i").test(question));
+  const sourceBlock = tartarusBlocks.find((block) =>
+    matches.some((fact) => new RegExp(`\\b${block}\\b`, "i").test(`${fact.source.title} ${fact.source.url}`)),
+  );
+  const locationCorrection =
+    requestedBlock && sourceBlock && requestedBlock.toLowerCase() !== sourceBlock.toLowerCase()
+      ? `${entityName} is indexed in ${sourceBlock}, not ${requestedBlock}. The ${sourceBlock} version`
+      : entityName;
+  const response = withMode({
+    answer: `${locationCorrection} ${joinNatural(clauses)}.`,
+    sections: weaknesses.length
+      ? [
+          {
+            title: "Quick Strategy",
+            content: `Open with ${joinNatural(weaknesses)} damage to knock it down, then capitalize with an All-Out Attack. Avoid leaning on resisted affinities if you can cover the weakness instead.`,
+          },
+        ]
+      : [],
+    sources: [...sourceMap.values()],
+    confidence: Math.max(...matches.map((fact) => fact.confidence)),
+    missingInfo: "No additional detail is needed for the confirmed affinity.",
+    companion,
+  }, "rag");
+
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: matches.length,
+      chunkCount: 0,
+    };
+  }
+  return response;
+}
+
+function structuredFusionResponse(
+  question: string,
+  facts: Array<{
+    fact_type: string;
+    value: string;
+    confidence: number;
+    notes?: string | null;
+    entity: { name: string };
+    source: { title: string; url: string; domain: string };
+  }>,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  const normalizedQuestion = question.toLowerCase();
+  const recipeFacts = facts.filter((fact) => fact.fact_type === "fusion_recipe");
+  if (!recipeFacts.length) return null;
+
+  const asksForResult =
+    /\b(what|which)\b.*\b(make|makes|create|creates|result|become|fuse into)\b/i.test(question) ||
+    /\b(make|makes|create|creates)\b.*\b(what|which)\b/i.test(question);
+  if (asksForResult) {
+    const matches = recipeFacts.filter((fact) => {
+      const ingredients = fact.value
+        .split(/\s*(?:\+|,\s*|\band\b)\s*/i)
+        .map((ingredient) => ingredient.replace(/\s*\([^)]*\)\s*/g, "").trim())
+        .filter(Boolean);
+      return ingredients.length >= 2 && ingredients.every((ingredient) => normalizedQuestion.includes(ingredient.toLowerCase()));
+    });
+    if (matches.length) {
+      const best = matches.sort(
+        (a, b) =>
+          Number(Boolean(b.notes?.includes("Special fusion recipe"))) -
+            Number(Boolean(a.notes?.includes("Special fusion recipe"))) ||
+          b.confidence - a.confidence,
+      )[0];
+      const source = {
+        title: best.source.title,
+        url: best.source.url,
+        domain: best.source.domain,
+      };
+      const special = best.notes?.includes("Special fusion recipe");
+      const response = withMode({
+        answer: `${best.value} fuses into ${best.entity.name}.`,
+        sections: special
+          ? [{ title: "Fusion Type", content: "This is a fixed special fusion recipe." }]
+          : [],
+        sources: [source],
+        confidence: best.confidence,
+        missingInfo: "No additional detail is needed for this recipe.",
+        companion,
+      }, "rag");
+      if (debug) {
+        response.diagnostics = {
+          retrievalQueries: queries,
+          factCount: matches.length,
+          chunkCount: 0,
+        };
+      }
+      return response;
+    }
+  }
+
+  const subject = likelyExactSubject(question);
+  if (!subject || !/\b(fuse|fusion|recipe|make)\b/i.test(question)) return null;
+  const targetRecipes = recipeFacts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
+  if (!targetRecipes.length) return null;
+
+  const selected = targetRecipes
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.notes?.includes("Special fusion recipe"))) -
+          Number(Boolean(a.notes?.includes("Special fusion recipe"))) ||
+        b.confidence - a.confidence ||
+        a.value.localeCompare(b.value),
+    )
+    .slice(0, 4);
+  const target = selected[0].entity.name;
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  for (const fact of selected) {
+    sourceMap.set(fact.source.url, {
+      title: fact.source.title,
+      url: fact.source.url,
+      domain: fact.source.domain,
+    });
+  }
+  const response = withMode({
+    answer: selected[0].notes?.includes("Special fusion recipe")
+      ? `${target} uses the fixed special recipe ${selected[0].value}.`
+      : `You can fuse ${target} with ${selected[0].value}.`,
+    sections:
+      selected.length > 1
+        ? [{ title: "Other Recipes", content: selected.slice(1).map((fact) => fact.value).join("\n") }]
+        : [],
+    sources: [...sourceMap.values()],
+    confidence: Math.max(...selected.map((fact) => fact.confidence)),
+    missingInfo: "Fusion results use base Persona levels; your compendium and current levels can affect convenience.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: selected.length,
+      chunkCount: 0,
+    };
+  }
+  return response;
 }
 
 function exactSubjectSources(
@@ -696,6 +1017,7 @@ function exactSubjectSources(
 }
 
 function formatAssistantContext(context: {
+  queries: string[];
   facts: Array<{
     entity: { name: string; type: string };
     fact_type: string;
@@ -706,7 +1028,7 @@ function formatAssistantContext(context: {
   chunks: Array<{ source_title: string; source_url: string; section_title: string | null; chunk_text: string }>;
 }): string {
   const facts = context.facts
-    .slice(0, 8)
+    .slice(0, 6)
     .map(
       (fact, index) =>
         `[Fact ${index + 1}] ${fact.entity.name} (${fact.entity.type}) - ${fact.fact_type}: ${fact.value} (confidence ${fact.confidence}, source: ${fact.source.url})`,
@@ -714,10 +1036,10 @@ function formatAssistantContext(context: {
     .join("\n");
 
   const chunks = context.chunks
-    .slice(0, 5)
+    .slice(0, 4)
     .map(
       (chunk, index) =>
-        `[Guide ${index + 1}] ${chunk.source_title} / ${chunk.section_title ?? "Untitled"} (${chunk.source_url})\n${compactText(chunk.chunk_text, 900)}`,
+        `[Guide ${index + 1}] ${chunk.source_title} / ${chunk.section_title ?? "Untitled"} (${chunk.source_url})\n${relevantExcerpt(chunk.chunk_text, context.queries, 900)}`,
     )
     .join("\n\n");
 
@@ -796,6 +1118,7 @@ Return only JSON:
   "action": "answer_directly" | "ask_clarifying_question" | "search_guides" | "search_structured_facts" | "search_both",
   "intent": "Enemy Weakness" | "Boss Help" | "Team Building" | "Fusion Advice" | "Social Links" | "Daily Schedule Planning" | "Tartarus Navigation" | "Quest Help" | "Story Guidance" | "Achievement Hunting" | "General Discussion",
   "retrievalQuery": "string",
+  "retrievalQueries": ["up to four focused search strings"],
   "answer": "string or null",
   "followUpQuestions": ["string"],
   "profileUpdates": {
@@ -824,6 +1147,10 @@ Routing rules:
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
 - Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
 - retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.
+- retrievalQueries should decompose the need into focused searches. Put the exact named entity first, then mechanics, location/date, or strategy searches only when useful.
+- Do not search for generic words alone. Preserve exact enemy, boss, Persona, Social Link, request, floor, item, and date names from the user.
+- For exact affinities, include one query with the exact entity plus "weakness resistance affinity".
+- For bosses, include the exact boss plus "mechanics strategy recommended party", and a second query for any named phase or attack.
 - suggestedPrompts must be optional first-person user replies, never assistant questions. Good: "I'm stuck on Priestess", "My party is Yukari and Junpei", "I'm level 18". Bad: "Which boss are you fighting?", "Name the blocker".`;
 
   const userPrompt = `User message: ${question}
@@ -857,10 +1184,189 @@ Decide the next action.`;
   }
 }
 
+function explicitSpoilerPermission(question: string): boolean {
+  return /\b(spoilers? (?:are|is) fine|spoil(?:er)? me|tell me the spoiler|full spoilers?|I don't mind spoilers)\b/i.test(question);
+}
+
+function deterministicControllerDecision(
+  question: string,
+  analysis: CompanionAnalysis,
+  playerProfile: PlayerProfile | undefined,
+): ControllerDecision | null {
+  const profile = mergeProfile(playerProfile, analysis.profileUpdates);
+  const subject = likelyExactSubject(question);
+  const base = {
+    intent: analysis.intent,
+    answer: null,
+    profileUpdates: analysis.profileUpdates,
+    suggestedPrompts: [] as string[],
+    spoilerCaution: analysis.spoilerCaution,
+  };
+
+  if (analysis.intent === "Story Guidance" && !explicitSpoilerPermission(question)) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: "That answer is a major story spoiler. Do you want just the name, or the full ending explanation?",
+      followUpQuestions: ["Do you want just the name, or the full ending explanation?"],
+      suggestedPrompts: ["Just give me the name", "Full spoilers are fine"],
+    };
+  }
+
+  if (exactWeaknessQuestion(question, analysis.intent)) {
+    const query = `${subject ?? question} weakness resistance affinity`;
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: query,
+      retrievalQueries: [query],
+      followUpQuestions: [],
+    };
+  }
+
+  if (analysis.intent === "Team Building") {
+    if ((!profile.currentLevel || !profile.activeParty?.length) && analysis.followUpQuestions.length) {
+      return {
+        ...base,
+        action: "ask_clarifying_question",
+        retrievalQuery: "",
+        retrievalQueries: [],
+        answer: analysis.followUpQuestions[0],
+        followUpQuestions: analysis.followUpQuestions,
+        suggestedPrompts: ["I'm level 24 with Yukari and Junpei", "We're running out of SP"],
+      };
+    }
+    const profileQuery = [
+      profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
+      profile.activeParty?.join(" "),
+      profile.difficulty,
+      profile.playstyle,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const issueQuery = /\b(sp|mana|magic points|running out)\b/i.test(question)
+      ? "Tartarus Clocks restore HP SP Twilight Fragments"
+      : /\b(die|dying|damage|survive|survivability|defense|armor)\b/i.test(question)
+        ? "Persona 3 Reload survivability armor healing buffs debuffs party strategy"
+        : "Persona 3 Reload party roles strategy equipment";
+    const partyQuery = `Persona 3 Reload party roles ${profileQuery}`.trim();
+    return {
+      ...base,
+      action: "search_guides",
+      retrievalQuery: issueQuery,
+      retrievalQueries: uniqueStrings([issueQuery, partyQuery]),
+      followUpQuestions: analysis.followUpQuestions,
+    };
+  }
+
+  if (analysis.intent === "Boss Help" && analysis.followUpQuestions.length) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: analysis.followUpQuestions[0],
+      followUpQuestions: analysis.followUpQuestions,
+      suggestedPrompts: ["I'm fighting Priestess", "It's a Tartarus gatekeeper"],
+    };
+  }
+
+  if (
+    analysis.intent === "Fusion Advice" &&
+    /\b(what persona should i fuse|what should i fuse|fuse next|fusion advice)\b/i.test(question) &&
+    !profile.currentLevel
+  ) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: "What level are you, and what role do you need most: damage, healing, support, or elemental coverage?",
+      followUpQuestions: ["What level are you, and what role should the new Persona fill?"],
+      suggestedPrompts: ["I'm level 24 and need healing", "I need better elemental coverage"],
+    };
+  }
+
+  if (
+    analysis.intent === "Tartarus Navigation" &&
+    /\b(next full moon|how far|how high|which floor)\b/i.test(question) &&
+    !profile.currentMonth
+  ) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: "What in-game date are you on, and what is the highest Tartarus floor you have reached?",
+      followUpQuestions: ["What in-game date and Tartarus floor are you currently on?"],
+      suggestedPrompts: ["I'm in June on floor 42", "The next full moon is in a week"],
+    };
+  }
+
+  if (analysis.isAmbiguous && analysis.followUpQuestions.length) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: analysis.followUpQuestions[0],
+      followUpQuestions: analysis.followUpQuestions,
+      suggestedPrompts: [],
+    };
+  }
+
+  if (analysis.intent === "Daily Schedule Planning" && !profile.currentMonth) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: "What in-game month and date are you on, and are you prioritizing Social Links, stats, or Tartarus?",
+      followUpQuestions: ["What in-game month and date are you on?"],
+      suggestedPrompts: ["I'm in July and prioritizing Social Links", "I need more social stats"],
+    };
+  }
+
+  const routeByIntent: Partial<Record<CompanionIntent, ControllerAction>> = {
+    "Boss Help": "search_both",
+    "Fusion Advice": "search_both",
+    "Social Links": "search_both",
+    "Daily Schedule Planning": "search_guides",
+    "Tartarus Navigation": "search_guides",
+    "Quest Help": "search_both",
+    "Story Guidance": "search_guides",
+    "Achievement Hunting": "search_guides",
+  };
+  const action = routeByIntent[analysis.intent];
+  if (!action) return null;
+
+  const query = compactText(
+    [
+      question,
+      profile.currentMonth ? `month ${profile.currentMonth}` : undefined,
+      profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
+      profile.activeParty?.length ? `party ${profile.activeParty.join(" ")}` : undefined,
+    ]
+      .filter(Boolean)
+      .join(" "),
+    240,
+  );
+  return {
+    ...base,
+    action,
+    retrievalQuery: query,
+    retrievalQueries: [query],
+    followUpQuestions: analysis.followUpQuestions,
+  };
+}
+
 async function directRagResponse(
   question: string,
   playerProfile?: PlayerProfile,
   history: ChatRequest["history"] = [],
+  debug = false,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
@@ -871,12 +1377,14 @@ async function directRagResponse(
     return casualChatResponse(question, playerProfile, history);
   }
 
-  const [{ buildContext }, { createChatCompletion }] = await Promise.all([
+  const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
   ]);
 
-  const controller = await decideCompanionAction(question, analysis, playerProfile, history, createChatCompletion);
+  const controller =
+    deterministicControllerDecision(question, analysis, playerProfile) ??
+    (await decideCompanionAction(question, analysis, playerProfile, history, createChatCompletion));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const controllerFollowUps = controller.followUpQuestions.length ? controller.followUpQuestions : analysis.followUpQuestions;
   const companion = {
@@ -914,12 +1422,42 @@ async function directRagResponse(
     }, "rag");
   }
 
-  const context = await buildContext(controller.retrievalQuery || analysis.retrievalQuery);
-  if (exactWeaknessQuestion(question, controller.intent) && !hasStructuredAffinitySupport(context.facts)) {
+  const retrievalQueries = uniqueStrings([
+    ...controller.retrievalQueries,
+    controller.retrievalQuery,
+  ]).slice(0, 2);
+  const context = await buildPlannedContext({
+    queries: retrievalQueries,
+    includeFacts: controller.action !== "search_guides",
+    includeChunks: controller.action !== "search_structured_facts",
+    factLimit: 12,
+    chunkLimit: 7,
+  });
+  if (controller.intent === "Fusion Advice" || /\b(fuse|fusion|recipe)\b/i.test(question)) {
+    const fusionResponse = structuredFusionResponse(
+      question,
+      context.facts,
+      companion,
+      debug,
+      context.queries,
+    );
+    if (fusionResponse) return fusionResponse;
+  }
+  if (exactWeaknessQuestion(question, controller.intent)) {
+    const exactResponse = structuredAffinityResponse(
+      question,
+      context.facts,
+      companion,
+      debug,
+      context.queries,
+    );
+    if (exactResponse) return exactResponse;
+  }
+  if (exactWeaknessQuestion(question, controller.intent) && !hasStructuredAffinitySupport(question, context.facts)) {
     const matchingSources = exactSubjectSources(question, context);
     return withMode({
       answer:
-        "I don’t have a confirmed weakness for that enemy yet, so I’m not going to guess. Treat it like an unknown affinity check: use Analyze first, then test single-target elements before spending big SP.",
+        "I do not have a confirmed weakness for that exact enemy variant yet, so I will not guess. Use Analyze first, then test single-target elements before spending big SP.",
       sections: [
         {
           title: "Safe Battle Plan",
@@ -973,10 +1511,13 @@ Rules:
 - Never apologize for missing guide context in the answer. If exact source support is thin, answer with a useful next step and put the missing detail in missingInfo.
 - Never use "Unknown", "N/A", or a vague one-word answer. If the exact answer is not supported, say what detail you need or what the player should check next.
 - Use structured facts and guide chunks for exact weaknesses, dates, floors, fusions, rewards, and boss mechanics.
+- Treat the supplied facts and excerpts as the only evidence for game-specific mechanics. If a mechanic, reward, unlock, skill effect, affinity, date, floor, or resource cost is not supported there, omit it.
+- Never fill evidence gaps with plausible-sounding Persona knowledge. A shorter grounded answer is better than a detailed invented answer.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
-- You may give general coaching when the user is vague, but mark uncertainty naturally and ask one useful follow-up.
+- You may give general coaching when the user is vague, but keep it principle-based, mark uncertainty naturally, and ask one useful follow-up.
 - Be practical, concise, and strategy-first. Give next actions, party/fusion/social priority ideas when relevant.
 - If the user gave profile details, personalize the advice around them.
+- When the active party is known, explicitly address that party and the user's stated bottleneck. Do not recommend replacing a member unless the evidence supports why.
 - If the request risks story spoilers, avoid revealing plot specifics unless the user explicitly asks.
 - Do not assume party members, Personas, skills, months, or bosses are available just because they appear in guide context. If the player's progress is unclear, say "if unlocked" or ask what is available.
 - Do not invent exact weaknesses, fusions, dates, floors, rewards, or boss mechanics.
@@ -1004,7 +1545,7 @@ Spoiler caution: ${controller.spoilerCaution ? "Avoid story specifics unless ask
 
 ${formatAssistantContext(context)}
 
-Answer as a companion. Use the guide material for exact claims, but do not mention sources or backend mechanics inside the prose.`;
+Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
@@ -1025,10 +1566,31 @@ Answer as a companion. Use the guide material for exact claims, but do not menti
     } catch {
       normalized = responseFromPlainText(rawAnswer, context.sources, responseCompanion);
     }
-    return withMode(
-      normalized,
-      "rag",
-    );
+    if (
+      exactWeaknessQuestion(question, controller.intent) &&
+      hasUnsupportedAffinityClaim(normalized, question, context.facts)
+    ) {
+      const correctionPrompt = `${userPrompt}
+
+Your previous draft contained an affinity element that is not present in the structured facts. Regenerate the JSON answer using only explicitly supported weakness, resistance, nullify, drain, or repel values. Do not recommend an unsupported element as if it were confirmed.`;
+      const correctedRaw = await createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: correctionPrompt },
+        ],
+        { jsonObject: true },
+      );
+      normalized = normalizeRagResponse(extractJson(correctedRaw), context.sources, responseCompanion);
+    }
+    const response = withMode(normalized, "rag");
+    if (debug) {
+      response.diagnostics = {
+        retrievalQueries: context.queries,
+        factCount: context.facts.length,
+        chunkCount: context.chunks.length,
+      };
+    }
+    return response;
   } catch (error) {
     console.error(error);
     return extractiveRagResponse(question, context, analysis);
@@ -1063,7 +1625,7 @@ export async function POST(request: Request) {
   try {
     const rag =
       (await externalRagResponse(question, body.conversationId)) ??
-      (await directRagResponse(question, body.playerProfile, body.history));
+      (await directRagResponse(question, body.playerProfile, body.history, body.debug));
     return NextResponse.json(rag ?? withMode(mockResponse(question), "mock"), { headers: corsHeaders(request) });
   } catch (error) {
     console.error(error);

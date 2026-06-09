@@ -1,0 +1,166 @@
+[
+  {
+    "id": "casual-greeting",
+    "category": "conversation",
+    "question": "hey",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["hey", "hi", "hello"]
+  },
+  {
+    "id": "vague-stuck",
+    "category": "conversation",
+    "question": "I'm stuck.",
+    "expectedIntent": "General Discussion",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "vague-team",
+    "category": "team",
+    "question": "My team feels weak.",
+    "expectedIntent": "Team Building",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "team-with-profile",
+    "category": "team",
+    "question": "I'm level 24 on Normal using Yukari, Junpei, and Akihiko. We keep running out of SP.",
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["SP", "Tartarus", "Persona", "item"]
+  },
+  {
+    "id": "exact-enemy-affinity",
+    "category": "enemy",
+    "question": "What is Dancing Hand weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "requiredDomains": ["ign.com", "game8.co"],
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "enemy-location-qualified",
+    "category": "enemy",
+    "question": "What are the weaknesses and resistances of the Dancing Hand in Thebel?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "priestess-boss",
+    "category": "boss",
+    "question": "How should I prepare for the Priestess full moon boss?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Priestess", "party", "prepare", "strategy"]
+  },
+  {
+    "id": "unnamed-boss",
+    "category": "boss",
+    "question": "How do I beat this boss?",
+    "expectedIntent": "Boss Help",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "fusion-specific",
+    "category": "fusion",
+    "question": "How can I fuse Jack Frost?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "fusion-vague",
+    "category": "fusion",
+    "question": "What Persona should I fuse next?",
+    "expectedIntent": "Fusion Advice",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "social-link-specific",
+    "category": "social_links",
+    "question": "When can I start the Emperor Social Link?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "social-link-priority",
+    "category": "social_links",
+    "question": "I'm in June. Which Social Links should I prioritize?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true
+  },
+  {
+    "id": "daily-plan-vague",
+    "category": "schedule",
+    "question": "What should I do today?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "daily-plan-context",
+    "category": "schedule",
+    "question": "I'm in July and want to maximize Social Links. How should I use free evenings?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true
+  },
+  {
+    "id": "tartarus-route",
+    "category": "tartarus",
+    "question": "How far should I climb in Tartarus before the next full moon?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldClarify": true
+  },
+  {
+    "id": "request-specific",
+    "category": "requests",
+    "question": "What do I need for Elizabeth request 15?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "achievement",
+    "category": "achievements",
+    "question": "What should I watch out for on a platinum run?",
+    "expectedIntent": "Achievement Hunting",
+    "shouldUseSources": true
+  },
+  {
+    "id": "spoiler-sensitive",
+    "category": "story",
+    "question": "Who is the final boss?",
+    "expectedIntent": "Story Guidance",
+    "shouldClarify": true
+  },
+  {
+    "id": "explicit-spoiler",
+    "category": "story",
+    "question": "Spoilers are fine. Explain the ending and final boss.",
+    "expectedIntent": "Story Guidance",
+    "shouldUseSources": true
+  },
+  {
+    "id": "context-followup",
+    "category": "memory",
+    "question": "What about my healer?",
+    "history": [
+      { "role": "user", "content": "I'm level 30 using Yukari, Akihiko, and Mitsuru." },
+      { "role": "assistant", "content": "That party has strong elemental coverage. What is giving you trouble?" },
+      { "role": "user", "content": "We keep taking too much damage in Tartarus." }
+    ],
+    "playerProfile": {
+      "currentLevel": "30",
+      "difficulty": "Normal",
+      "activeParty": ["Yukari", "Akihiko", "Mitsuru"]
+    },
+    "expectedIntent": "Team Building",
+    "mustIncludeAny": ["Yukari", "heal", "support"]
+  }
+]

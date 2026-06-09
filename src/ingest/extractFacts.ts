@@ -44,7 +44,7 @@ const exactFactTypes = new Set([
 const factSignalPattern =
   /\b(weak|weakness|resist|resistance|nullif|drain|repel|affinit|located|location|floor|strategy|recommended|party|fuse|fusion|recipe|unlock|available|deadline|reward|prerequisite|schedule|answer|choice|effect|attack|skill|level)\b/i;
 
-function candidateScore(chunk: TextChunk): number {
+export function candidateScore(chunk: TextChunk): number {
   const title = `${chunk.pageTitle} ${chunk.sectionTitle}`;
   let score = 0;
   if (!["overview", "guide"].includes(chunk.source.category)) score += 20;
@@ -256,8 +256,14 @@ const affinityStatusToFactType: Record<string, ExtractedFact["fact_type"] | unde
 
 const affinityElements: Record<string, string> = {
   slash: "Slash",
+  "slash attack": "Slash",
+  "slash attacks": "Slash",
   strike: "Strike",
+  "strike attack": "Strike",
+  "strike attacks": "Strike",
   pierce: "Pierce",
+  "pierce attack": "Pierce",
+  "pierce attacks": "Pierce",
   fire: "Fire",
   ice: "Ice",
   electric: "Electric",
@@ -266,6 +272,61 @@ const affinityElements: Record<string, string> = {
   light: "Light",
   dark: "Dark",
 };
+
+function affinityValues(value: string): string[] {
+  if (!value || /^(?:-|none|n\/a)$/i.test(value.trim())) return [];
+  const matches = value.match(
+    /Slash(?:\s+Attacks?)?|Strike(?:\s+Attacks?)?|Pierce(?:\s+Attacks?)?|Fire|Ice|Electricity|Electric|Wind|Light|Dark/gi,
+  );
+  return [
+    ...new Set(
+      (matches ?? [])
+        .map((match) => affinityElements[match.toLowerCase()])
+        .filter((element): element is string => Boolean(element)),
+    ),
+  ];
+}
+
+function extractIgnEnemyTableFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const facts = new Map<string, ExtractedFact>();
+  const tablePattern =
+    /Table data:\s*(?:Enemy|Shadow)\s*\|\s*Level\s*\|\s*Weak to\s*\|\s*Resistant Against\s*\|\|\s*([\s\S]*?)(?=\n\[|$)/gi;
+
+  for (const chunk of chunks) {
+    for (const table of chunk.text.matchAll(tablePattern)) {
+      for (const rawRow of table[1].split(/\s*\|\|\s*/)) {
+        const columns = rawRow.split(/\s*\|\s*/).map((column) => column.trim());
+        if (columns.length < 4) continue;
+        const [entityName, level, weaknesses, resistances] = columns;
+        if (!entityName || !/^\d{1,3}$/.test(level)) continue;
+
+        const shared = {
+          entity_name: entityName,
+          entity_type: "enemy" as const,
+          aliases: [],
+          confidence: 0.99,
+          notes: "Extracted directly from the IGN enemy affinity table.",
+        };
+        for (const value of affinityValues(weaknesses)) {
+          facts.set(`${normalizeName(entityName)}:weakness:${value}`, {
+            ...shared,
+            fact_type: "weakness",
+            value,
+          });
+        }
+        for (const value of affinityValues(resistances)) {
+          facts.set(`${normalizeName(entityName)}:resistance:${value}`, {
+            ...shared,
+            fact_type: "resistance",
+            value,
+          });
+        }
+      }
+    }
+  }
+
+  return [...facts.values()];
+}
 
 function subjectFromPageTitle(pageTitle: string): {
   name: string;
@@ -294,9 +355,16 @@ function subjectFromPageTitle(pageTitle: string): {
 
 export function extractDeterministicAffinityFacts(chunks: TextChunk[]): ExtractedFact[] {
   const subject = subjectFromPageTitle(chunks[0]?.pageTitle ?? "");
-  if (!subject) return [];
-
   const facts = new Map<string, ExtractedFact>();
+  for (const fact of extractIgnEnemyTableFacts(chunks)) {
+    facts.set(
+      `${normalizeName(fact.entity_name)}:${fact.fact_type}:${fact.value}`,
+      fact,
+    );
+  }
+
+  if (!subject) return [...facts.values()];
+
   const pairPattern =
     /\b(Slash|Strike|Pierce|Fire|Ice|Electricity|Electric|Wind|Light|Dark)\s*:\s*(Weakness|Weak|Resistance|Resistant|Resist|Nullifies|Null|Negates|Drains|Drain|Repels|Repel|Reflects|Normal|Unknown)\b/gi;
 
@@ -306,7 +374,7 @@ export function extractDeterministicAffinityFacts(chunks: TextChunk[]): Extracte
       const value = affinityElements[match[1].toLowerCase()];
       const factType = affinityStatusToFactType[match[2].toLowerCase()];
       if (!value || !factType) continue;
-      const key = `${factType}:${value}`;
+      const key = `${normalizeName(subject.name)}:${factType}:${value}`;
       facts.set(key, {
         entity_name: subject.name,
         entity_type: subject.type,
@@ -319,6 +387,52 @@ export function extractDeterministicAffinityFacts(chunks: TextChunk[]): Extracte
     }
   }
   return [...facts.values()];
+}
+
+export function extractDeterministicPersonaFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const pageTitle = chunks[0]?.pageTitle ?? "";
+  const arcana = pageTitle.match(/^All (.+?) Personas\b/i)?.[1]?.trim();
+  if (!arcana) return [];
+
+  const facts = new Map<string, ExtractedFact>();
+  const personaPattern =
+    /(?:\bPersona:\s*|\|\|\s*)([^|]+?)\s*\(lvl\s*(\d{1,3})\)/gi;
+
+  for (const chunk of chunks) {
+    if (!/\bAll .+ Personas\b/i.test(chunk.sectionTitle)) continue;
+    for (const match of chunk.text.matchAll(personaPattern)) {
+      const name = match[1].trim().replace(/\s+/g, " ");
+      const level = Number(match[2]);
+      if (!name || !Number.isInteger(level) || level < 1 || level > 99) continue;
+
+      const shared = {
+        entity_name: name,
+        entity_type: "persona" as const,
+        aliases: [],
+        confidence: 0.99,
+        notes: "Extracted directly from the source Persona table.",
+      };
+      facts.set(`${normalizeName(name)}:tip:arcana`, {
+        ...shared,
+        fact_type: "tip",
+        value: `Arcana: ${arcana}`,
+      });
+      facts.set(`${normalizeName(name)}:prerequisite:level`, {
+        ...shared,
+        fact_type: "prerequisite",
+        value: `Base level: ${level}`,
+      });
+    }
+  }
+
+  return [...facts.values()];
+}
+
+function extractDeterministicFacts(chunks: TextChunk[]): ExtractedFact[] {
+  return [
+    ...extractDeterministicAffinityFacts(chunks),
+    ...extractDeterministicPersonaFacts(chunks),
+  ];
 }
 
 function isSupportedFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
@@ -341,10 +455,20 @@ function isSupportedFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
 }
 
 async function extractFactsForChunks(chunks: TextChunk[]): Promise<ExtractedFact[]> {
-  const deterministicFacts = extractDeterministicAffinityFacts(chunks);
+  const deterministicFacts = extractDeterministicFacts(chunks);
+  if (chunks[0]?.source.category === "personas" && deterministicFacts.length > 0) {
+    return deterministicFacts;
+  }
   const models = activeFactExtractionModel
     ? [activeFactExtractionModel]
-    : [...new Set([config.factExtractionModel, config.chatModel])];
+    : [
+        ...new Set([
+          config.factExtractionModel,
+          "qwen/qwen3-32b",
+          "meta-llama/llama-4-scout-17b-16e-instruct",
+          config.chatModel,
+        ]),
+      ];
   let lastError: unknown;
   for (const model of models) {
     for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -377,7 +501,7 @@ async function extractFactsForChunks(chunks: TextChunk[]): Promise<ExtractedFact
         lastError = error;
         const message = String(error instanceof Error ? error.message : error);
         if (/model_permission_blocked_project|model .* is blocked/i.test(message)) {
-          console.warn(`Fact extraction model ${model} is unavailable; trying the configured chat model.`);
+          console.warn(`Fact extraction model ${model} is unavailable; trying the next extraction model.`);
           break;
         }
         if (attempt < 3) {
@@ -400,9 +524,9 @@ function batchCandidates(chunks: TextChunk[], maxFactChunks: number): TextChunk[
     "requests",
     "fusion",
     "personas",
+    "classroom",
     "tartarus",
     "walkthrough",
-    "classroom",
     "beginner_strategy",
     "guide",
     "overview",
@@ -439,7 +563,7 @@ function batchCandidates(chunks: TextChunk[], maxFactChunks: number): TextChunk[
     let characters = 0;
     for (const chunk of sourceChunks) {
       if (batch.length >= 2 || characters + chunk.text.length > 5_500) {
-        batches.push(batch);
+        if (batch.length) batches.push(batch);
         batch = [];
         characters = 0;
       }
@@ -453,10 +577,13 @@ function batchCandidates(chunks: TextChunk[], maxFactChunks: number): TextChunk[
 
 export async function extractAndInsertFacts(
   chunks: TextChunk[],
-  options: { maxFactChunks?: number } = {},
+  options: { maxFactChunks?: number; categories?: string[] } = {},
 ): Promise<number> {
   const maxFactChunks = options.maxFactChunks ?? Number.POSITIVE_INFINITY;
-  const batches = batchCandidates(chunks, maxFactChunks);
+  const eligibleChunks = options.categories?.length
+    ? chunks.filter((chunk) => options.categories?.includes(chunk.source.category))
+    : chunks;
+  const batches = batchCandidates(eligibleChunks, maxFactChunks);
   let changed = 0;
   let completed = 0;
   const sourceByUrl = new Map<string, SourceRecord>();
@@ -468,7 +595,7 @@ export async function extractAndInsertFacts(
     chunksBySource.set(chunk.source.url, sourceChunks);
   }
   for (const sourceChunks of chunksBySource.values()) {
-    const deterministicFacts = extractDeterministicAffinityFacts(sourceChunks);
+    const deterministicFacts = extractDeterministicFacts(sourceChunks);
     if (deterministicFacts.length === 0) continue;
     const first = sourceChunks[0];
     const source = await upsertSource(first.source, first.pageTitle);
@@ -480,7 +607,7 @@ export async function extractAndInsertFacts(
   }
 
   console.log(
-    `Loaded ${changed} direct affinity facts; extracting broader facts from ${Math.min(chunks.filter(isFactCandidate).length, maxFactChunks)} focused chunks in ${batches.length} batched model calls.`,
+    `Loaded ${changed} direct affinity facts; extracting broader facts from ${Math.min(eligibleChunks.filter(isFactCandidate).length, maxFactChunks)} focused chunks in ${batches.length} batched model calls.`,
   );
 
   for (const batch of batches) {

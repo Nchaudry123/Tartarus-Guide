@@ -149,6 +149,63 @@ npm run ingest:audit
 npm run ingest:facts -- --clear-existing --max-fact-chunks=180
 ```
 
+Generate a stricter report that checks both page coverage and structured-fact
+coverage:
+
+```bash
+npm run ingest:coverage
+```
+
+Target only categories that need more exact facts:
+
+```bash
+npm run ingest:facts -- --categories=enemies,bosses,social_links,personas,classroom --max-fact-chunks=120
+```
+
+Import the structured Persona 3 Reload compendium and fusion recipes from the
+community fusion calculator:
+
+```bash
+npm run ingest:fusion
+```
+
+This imports Persona levels, Arcana, stats, skills, affinities, heart items,
+unlock conditions, normal fusion recipes, and special recipes into the existing
+`entities` and `facts` tables. The import owns only its attributed calculator
+source, so it can be rerun safely without deleting IGN or Game8 records.
+
+Preview counts without writing to Supabase, or add compact vector summaries:
+
+```bash
+npm run ingest:fusion -- --dry-run
+npm run ingest:fusion -- --embed-summaries
+```
+
+The dataset revision is pinned with `FUSION_DATA_REVISION` so production imports
+remain reproducible.
+
+Use a dedicated extraction model for bulk indexing so the stronger chat model
+remains available for user-facing reasoning:
+
+```bash
+FACT_EXTRACTION_MODEL=qwen/qwen3-32b
+CHAT_MODEL=llama-3.3-70b-versatile
+```
+
+Run the production-path conversational and grounding evaluation against a
+local or deployed API:
+
+```bash
+npm run eval:accuracy -- --url=http://127.0.0.1:3000/api/chat
+npm run eval:accuracy -- --url=https://your-project.vercel.app/api/chat --category=enemy
+```
+
+The evaluator waits four seconds between cases by default so burst traffic does
+not distort results on rate-limited model tiers. Override it with
+`--delay-ms=0` for providers with higher throughput.
+
+Detailed reports are written to `evals/results/` and ignored by Git.
+
 Game8 affinity tables are parsed deterministically. Explicit table values take
 precedence over nearby strategy prose so a summoned enemy's weakness is not
 incorrectly assigned to the page's boss.
@@ -188,16 +245,19 @@ Ask a question from the terminal:
 npm run ask -- "What is Dancing Hand weak to?"
 ```
 
-The retrieval flow:
+The conversational retrieval flow:
 
-1. Normalizes the query.
-2. Detects likely fact intent.
-3. Searches structured facts first.
-4. Searches vector chunks second.
-5. Builds a compact context package.
-6. Generates an answer using only retrieved context.
-7. Includes source URLs.
-8. Says when information is missing.
+1. Sends the user message and recent conversation to Groq for intent analysis.
+2. Groq decides whether it can answer conversationally, needs clarification,
+   or needs structured facts, guide chunks, or both.
+3. Groq produces focused retrieval queries while preserving exact game names.
+4. Supabase returns relevant structured facts and vector chunks from the
+   IGN/Game8 guide index.
+5. The strongest evidence is deduplicated and reranked by relevance,
+   confidence, and source quality.
+6. Groq combines the evidence with player context into one natural answer.
+7. Exact affinity claims are checked against structured facts before the
+   response is returned.
 
 Answers are intended to sound like a veteran Persona 3 Reload player: direct, practical, strategy-first, and light on filler.
 

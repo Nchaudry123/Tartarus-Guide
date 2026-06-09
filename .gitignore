@@ -1,5 +1,8 @@
 .env
+.DS_Store
+.codex-docs/
 .cache/
 .next/
 node_modules/
 dist/
+evals/results/

@@ -19,8 +19,10 @@ const skipFacts = hasFlag("--skip-facts");
 const noDiscover = hasFlag("--no-discover");
 const dryRun = hasFlag("--dry-run");
 const listSources = hasFlag("--list-sources");
-const maxPages = numberArg("--max-pages", 120);
-const maxFactChunks = numberArg("--max-fact-chunks", 180);
+const maxPages = numberArg("--max-pages", 200);
+const maxFactChunks = numberArg("--max-fact-chunks", 450);
+const categoriesArg = process.argv.find((arg) => arg.startsWith("--categories="))?.split("=")[1];
+const categories = categoriesArg?.split(",").map((value) => value.trim()).filter(Boolean);
 
 async function main(): Promise<void> {
   const sources = noDiscover
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
   );
 
   if (!skipFacts) {
-    const changedFacts = await extractAndInsertFacts(chunks, { maxFactChunks });
+    const changedFacts = await extractAndInsertFacts(chunks, { maxFactChunks, categories });
     console.log(`Inserted or refreshed ${changedFacts} facts.`);
   }
 }

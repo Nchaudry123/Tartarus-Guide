@@ -101,8 +101,8 @@ export async function discoverSources(
   seeds: SourceInput[],
   options: { maxPages?: number; force?: boolean; maxDiscoveryPages?: number } = {},
 ): Promise<SourceInput[]> {
-  const maxPages = Math.max(seeds.length, options.maxPages ?? 120);
-  const maxDiscoveryPages = options.maxDiscoveryPages ?? Math.min(seeds.length + 24, 48);
+  const maxPages = Math.max(seeds.length, options.maxPages ?? 200);
+  const maxDiscoveryPages = options.maxDiscoveryPages ?? Math.min(seeds.length + 64, 96);
   const byUrl = new Map(seeds.map((source) => [source.url, source]));
   const queue = [...seeds];
   const visited = new Set<string>();
@@ -125,7 +125,7 @@ export async function discoverSources(
         ) {
           discovered.category = source.category;
         }
-        if (sourceQualityScore(discovered) < 20) continue;
+        if (sourceQualityScore(discovered) < 12) continue;
         byUrl.set(discovered.url, discovered);
         if (sourceQualityScore(discovered) >= 40) {
           queue.push(discovered);
