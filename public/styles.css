@@ -586,6 +586,15 @@ textarea:focus-visible {
   box-shadow: 0 18px 42px rgba(0,0,0,.22);
   transition: border-color .2s ease, box-shadow .2s ease;
 }
+.assistant-name {
+  display: block;
+  margin-bottom: .48rem;
+  color: var(--cyan);
+  font-size: .68rem;
+  font-weight: 950;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
 .guide-card { display: contents; }
 .guide-head { display: none; }
 .confidence { display: none; }
@@ -831,6 +840,14 @@ footer span {
 }
 .chat-form button:hover { filter: brightness(1.08); box-shadow: 0 0 22px rgba(7,92,255,.36); }
 .chat-form button:active { transform: scale(.97); }
+.chat-form button:disabled {
+  cursor: wait;
+  filter: saturate(.55) brightness(.78);
+  box-shadow: none;
+}
+.chat-form.is-sending textarea {
+  border-color: rgba(85,247,255,.42);
+}
 
 :root.has-conversation .chat-stage {
   gap: .45rem;
