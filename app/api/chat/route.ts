@@ -89,7 +89,12 @@ function detectIntent(question: string): CompanionIntent {
   if (/\btartarus\b/.test(text) && /\b(climb|floor|block|how far|how high|route|explore|grind|border)\b/.test(text)) return "Tartarus Navigation";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
   if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
-  if (/\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion)\b/.test(text)) return "Fusion Advice";
+  if (
+    /\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion|compendium)\b/.test(text) ||
+    /\b(worth (?:getting|fusing|using)|good to (?:get|fuse|use)|should i (?:get|fuse|use)|is .{1,40} (?:good|worth it|viable)|best (?:magic|physical|support|healing) option)\b/.test(text)
+  ) {
+    return "Fusion Advice";
+  }
   if (/\b(today|schedule|calendar|month|night|after school|free evening|free evenings|free time|daily plan|use my time)\b/.test(text)) return "Daily Schedule Planning";
   if (/\b(rank)\b/.test(text)) return "Social Links";
   if (/\b(day|date)\b/.test(text)) return "Daily Schedule Planning";
@@ -97,6 +102,124 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) return "Quest Help";
   if (/\b(achievement|trophy|platinum|completion|complete|100%)\b/.test(text)) return "Achievement Hunting";
   return "General Discussion";
+}
+
+function isShortContextReply(question: string): boolean {
+  const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
+  const wordCount = text.split(/\s+/).filter(Boolean).length;
+  return (
+    wordCount <= 5 &&
+    (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team)$/.test(
+      text,
+    ) ||
+      /^(what about|how about|and|but)\b/.test(text))
+  );
+}
+
+function normalizeConversationHistory(
+  question: string,
+  history: ChatRequest["history"] = [],
+): NonNullable<ChatRequest["history"]> {
+  const normalized = (history ?? [])
+    .filter(
+      (message): message is NonNullable<ChatRequest["history"]>[number] =>
+        Boolean(message?.content?.trim()) && (message.role === "user" || message.role === "assistant"),
+    )
+    .slice(-10);
+  const last = normalized.at(-1);
+  if (
+    last?.role === "user" &&
+    last.content.trim().toLowerCase() === question.trim().toLowerCase()
+  ) {
+    normalized.pop();
+  }
+  return normalized;
+}
+
+function contextualizeQuestion(
+  question: string,
+  history: NonNullable<ChatRequest["history"]>,
+): {
+  analysisQuestion: string;
+  previousTopic?: string;
+  previousAssistant?: string;
+  shortReply: boolean;
+} {
+  const shortReply = isShortContextReply(question);
+  if (!shortReply) return { analysisQuestion: question, shortReply: false };
+
+  const previousAssistant = [...history]
+    .reverse()
+    .find((message) => message.role === "assistant")?.content;
+  const previousTopic = [...history]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "user" &&
+        !isShortContextReply(message.content) &&
+        message.content.trim().toLowerCase() !== question.trim().toLowerCase(),
+    )?.content;
+
+  if (!previousTopic) return { analysisQuestion: question, shortReply: true };
+  const isBareAnswer = /^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|maybe)$/i.test(
+    question.trim().replace(/[.!?]+$/g, ""),
+  );
+  return {
+    analysisQuestion: isBareAnswer
+      ? previousTopic
+      : `${previousTopic}\nThe user's follow-up request is: ${question}`,
+    previousTopic,
+    previousAssistant,
+    shortReply: true,
+  };
+}
+
+function rejectedClarificationResponse(
+  question: string,
+  conversation: ReturnType<typeof contextualizeQuestion>,
+  analysis: CompanionAnalysis,
+): ChatResponse | null {
+  const negative = /^(no|nope|nah|not really)$/i.test(
+    question.trim().replace(/[.!?]+$/g, ""),
+  );
+  if (!negative || !conversation.previousAssistant) return null;
+
+  const previous = conversation.previousAssistant.toLowerCase();
+  let answer: string | null = null;
+  let suggestedPrompts: string[] = [];
+
+  if (/\bwhat level\b|\bactive team\b|\bactive party\b/.test(previous)) {
+    answer =
+      "No problem—we can keep it general. What feels weakest right now: damage, survivability, or running out of SP?";
+    suggestedPrompts = ["Our damage is low", "We keep getting knocked out", "We run out of SP"];
+  } else if (/\bmonth\b|\bdate\b|\bwhat day\b/.test(previous)) {
+    answer =
+      "That’s fine. Tell me the activity or decision you’re weighing, and I’ll give you a spoiler-safe rule of thumb without needing the exact date.";
+    suggestedPrompts = ["I need a Social Link priority", "I need a Tartarus routine"];
+  } else if (/\bwhich boss\b|\bgatekeeper\b/.test(previous)) {
+    answer =
+      "All right. Describe what’s happening in the fight—big damage, status effects, adds, or an attack you can’t survive—and we’ll diagnose it from there.";
+    suggestedPrompts = ["We keep getting wiped", "A status effect is stopping us"];
+  } else if (/\bspoiler\b/.test(previous)) {
+    answer =
+      "Understood. I’ll keep it spoiler-free. Tell me the gameplay decision you’re trying to make, and I’ll stay on your side of the story.";
+    suggestedPrompts = [];
+  }
+
+  if (!answer) return null;
+  return withMode({
+    answer,
+    sections: [],
+    sources: [],
+    confidence: 0.76,
+    missingInfo: "A gameplay symptom or goal will help narrow the next recommendation.",
+    companion: {
+      intent: analysis.intent,
+      profileUpdates: analysis.profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts,
+    },
+  }, "rag");
 }
 
 function isCasualMessage(question: string): boolean {
@@ -247,7 +370,7 @@ async function casualChatResponse(
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const systemPrompt = `You are Tartarus Guide, a friendly Persona 3 Reload expert companion.
+  const systemPrompt = `You are SEES Navigator, the conversational voice of Tartarus Guide and a friendly Persona 3 Reload expert companion.
 
 Return only JSON:
 {
@@ -259,9 +382,11 @@ Return only JSON:
 
 Rules:
 - Act like a normal chat assistant first. Greetings should receive a friendly greeting, not a guide answer.
+- Your personality is calm, tactically sharp, encouraging, and lightly witty. Sound human, never theatrical or robotic.
 - Do not force retrieval, sources, boss strategy, or wiki-style content for casual chat.
 - If the user is starting a conversation, invite them to describe their current Persona 3 Reload situation.
 - If they ask what you can do, explain that you can help with bosses, weaknesses, party building, fusion, Social Links, requests, Tartarus, and schedule planning.
+- Do not use emoji.
 - Keep it concise, natural, and conversational. Prefer 2-5 short sentences. Ask one useful follow-up only when needed.`;
 
   const userPrompt = `User message: ${question}
@@ -1016,6 +1141,51 @@ function exactSubjectSources(
   return context.sources.filter((source) => exactChunkUrls.has(source.url));
 }
 
+function relevantResponseSources(
+  question: string,
+  intent: CompanionIntent,
+  context: {
+    facts: Array<{
+      entity: { name: string };
+      source: { url: string };
+    }>;
+    chunks: Array<{
+      source_url: string;
+      section_title: string | null;
+      chunk_text: string;
+    }>;
+    sources: ChatResponse["sources"];
+  },
+): ChatResponse["sources"] {
+  const subject = likelyExactSubject(question);
+  const relevantUrls = new Set<string>();
+
+  if (subject) {
+    for (const fact of context.facts) {
+      if (factMatchesQuestionSubject(question, fact.entity.name)) {
+        relevantUrls.add(fact.source.url);
+      }
+    }
+    const needle = subject.toLowerCase();
+    for (const chunk of context.chunks) {
+      if (`${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(needle)) {
+        relevantUrls.add(chunk.source_url);
+      }
+    }
+  }
+
+  const exactMatches = context.sources.filter((source) => relevantUrls.has(source.url));
+  if (exactMatches.length) return exactMatches.slice(0, 4);
+
+  if (intent === "Fusion Advice") {
+    const fusionFactUrls = new Set(context.facts.map((fact) => fact.source.url));
+    const fusionSources = context.sources.filter((source) => fusionFactUrls.has(source.url));
+    if (fusionSources.length) return fusionSources.slice(0, 3);
+  }
+
+  return context.sources.slice(0, 4);
+}
+
 function formatAssistantContext(context: {
   queries: string[];
   facts: Array<{
@@ -1372,9 +1542,13 @@ async function directRagResponse(
     return null;
   }
 
-  const analysis = analyzeCompanionRequest(question, playerProfile);
-  if (isCasualMessage(question)) {
-    return casualChatResponse(question, playerProfile, history);
+  const normalizedHistory = normalizeConversationHistory(question, history);
+  const conversation = contextualizeQuestion(question, normalizedHistory);
+  const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
+  const clarificationRecovery = rejectedClarificationResponse(question, conversation, analysis);
+  if (clarificationRecovery) return clarificationRecovery;
+  if (isCasualMessage(question) && !conversation.previousTopic) {
+    return casualChatResponse(question, playerProfile, normalizedHistory);
   }
 
   const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
@@ -1383,8 +1557,8 @@ async function directRagResponse(
   ]);
 
   const controller =
-    deterministicControllerDecision(question, analysis, playerProfile) ??
-    (await decideCompanionAction(question, analysis, playerProfile, history, createChatCompletion));
+    deterministicControllerDecision(conversation.analysisQuestion, analysis, playerProfile) ??
+    (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, createChatCompletion));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const controllerFollowUps = controller.followUpQuestions.length ? controller.followUpQuestions : analysis.followUpQuestions;
   const companion = {
@@ -1433,9 +1607,12 @@ async function directRagResponse(
     factLimit: 12,
     chunkLimit: 7,
   });
-  if (controller.intent === "Fusion Advice" || /\b(fuse|fusion|recipe)\b/i.test(question)) {
+  if (
+    controller.intent === "Fusion Advice" ||
+    /\b(fuse|fusion|recipe|persona|worth|good to get|should i get)\b/i.test(conversation.analysisQuestion)
+  ) {
     const fusionResponse = structuredFusionResponse(
-      question,
+      conversation.analysisQuestion,
       context.facts,
       companion,
       debug,
@@ -1443,9 +1620,9 @@ async function directRagResponse(
     );
     if (fusionResponse) return fusionResponse;
   }
-  if (exactWeaknessQuestion(question, controller.intent)) {
+  if (exactWeaknessQuestion(conversation.analysisQuestion, controller.intent)) {
     const exactResponse = structuredAffinityResponse(
-      question,
+      conversation.analysisQuestion,
       context.facts,
       companion,
       debug,
@@ -1453,8 +1630,11 @@ async function directRagResponse(
     );
     if (exactResponse) return exactResponse;
   }
-  if (exactWeaknessQuestion(question, controller.intent) && !hasStructuredAffinitySupport(question, context.facts)) {
-    const matchingSources = exactSubjectSources(question, context);
+  if (
+    exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
+    !hasStructuredAffinitySupport(conversation.analysisQuestion, context.facts)
+  ) {
+    const matchingSources = exactSubjectSources(conversation.analysisQuestion, context);
     return withMode({
       answer:
         "I do not have a confirmed weakness for that exact enemy variant yet, so I will not guess. Use Analyze first, then test single-target elements before spending big SP.",
@@ -1493,7 +1673,7 @@ async function directRagResponse(
     }, "rag");
   }
 
-  const systemPrompt = `You are Tartarus Guide: a Persona 3 Reload expert companion, strategic coach, and spoiler-aware veteran.
+  const systemPrompt = `You are SEES Navigator, the conversational voice of Tartarus Guide: a Persona 3 Reload expert companion, strategic coach, and spoiler-aware veteran.
 
 Return only JSON with this shape:
 {
@@ -1506,7 +1686,10 @@ Return only JSON with this shape:
 
 Rules:
 - Sound like a helpful Persona 3 Reload expert, not a search engine or wiki reader.
+- Your personality is calm, confident, tactically sharp, supportive, and occasionally dryly witty. Use contractions and match the user's energy without overdoing a character voice.
 - Answer like a modern chat assistant in a normal back-and-forth conversation: lead with the direct guidance, then explain briefly.
+- Treat short replies as part of the ongoing conversation. Acknowledge what the user accepted or rejected, return to the active topic, and never repeat a clarification they just answered.
+- Ask at most one focused question per turn. If the user rejects a framing with "no" or "not really," offer the most useful interpretation of their original topic instead of asking the same menu-style question again.
 - Never say "retrieved", "database", "guide context", "provided context", "according to IGN", "based on documents", or similar mechanics-facing phrases.
 - Never apologize for missing guide context in the answer. If exact source support is thin, answer with a useful next step and put the missing detail in missingInfo.
 - Never use "Unknown", "N/A", or a vague one-word answer. If the exact answer is not supported, say what detail you need or what the player should check next.
@@ -1528,12 +1711,20 @@ Rules:
 - If the user's question is broad or uncertain, ask the single best follow-up instead of dumping caveats.`;
 
   const profileForPrompt = controllerProfile;
-  const historyForPrompt = (history ?? [])
+  const historyForPrompt = normalizedHistory
     .slice(-6)
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
-  const userPrompt = `User question: ${question}
+  const userPrompt = `Current user message: ${question}
+Resolved conversation topic: ${conversation.previousTopic ?? question}
+Previous assistant message: ${conversation.previousAssistant ?? "None."}
+Contextual request for analysis: ${conversation.analysisQuestion}
+Short follow-up reply: ${
+    conversation.shortReply
+      ? "Yes. Interpret it as an answer to the previous assistant message, then continue the resolved topic without repeating that question."
+      : "No."
+  }
 
 Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
@@ -1546,6 +1737,11 @@ Spoiler caution: ${controller.spoilerCaution ? "Avoid story specifics unless ask
 ${formatAssistantContext(context)}
 
 Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
+  const responseSources = relevantResponseSources(
+    conversation.analysisQuestion,
+    controller.intent,
+    context,
+  );
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
@@ -1562,13 +1758,13 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
     };
     let normalized: ChatResponse;
     try {
-      normalized = normalizeRagResponse(extractJson(rawAnswer), context.sources, responseCompanion);
+      normalized = normalizeRagResponse(extractJson(rawAnswer), responseSources, responseCompanion);
     } catch {
-      normalized = responseFromPlainText(rawAnswer, context.sources, responseCompanion);
+      normalized = responseFromPlainText(rawAnswer, responseSources, responseCompanion);
     }
     if (
-      exactWeaknessQuestion(question, controller.intent) &&
-      hasUnsupportedAffinityClaim(normalized, question, context.facts)
+      exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
+      hasUnsupportedAffinityClaim(normalized, conversation.analysisQuestion, context.facts)
     ) {
       const correctionPrompt = `${userPrompt}
 
@@ -1580,7 +1776,7 @@ Your previous draft contained an affinity element that is not present in the str
         ],
         { jsonObject: true },
       );
-      normalized = normalizeRagResponse(extractJson(correctedRaw), context.sources, responseCompanion);
+      normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
     const response = withMode(normalized, "rag");
     if (debug) {

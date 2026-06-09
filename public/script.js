@@ -13,10 +13,13 @@ const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
+const sendButton = form?.querySelector('button[type="submit"]');
+const chatHistoryKey = "tartarusChatHistoryV2";
 
 const recent = [];
-const chatHistory = [];
+const chatHistory = loadChatHistory();
 let playerProfile = loadPlayerProfile();
+let isSending = false;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -66,13 +69,37 @@ function loadPlayerProfile() {
   }
 }
 
+function loadChatHistory() {
+  try {
+    const history = JSON.parse(window.sessionStorage.getItem(chatHistoryKey) || "[]");
+    return Array.isArray(history)
+      ? history
+          .filter(
+            (message) =>
+              message &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string" &&
+              message.content.trim(),
+          )
+          .slice(-12)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChatHistory() {
+  window.sessionStorage.setItem(chatHistoryKey, JSON.stringify(chatHistory));
+}
+
 function savePlayerProfile() {
   window.sessionStorage.setItem("tartarusPlayerProfile", JSON.stringify(playerProfile));
 }
 
 function rememberTurn(role, content) {
   chatHistory.push({ role, content });
-  chatHistory.splice(0, Math.max(0, chatHistory.length - 10));
+  chatHistory.splice(0, Math.max(0, chatHistory.length - 12));
+  saveChatHistory();
 }
 
 function mergeProfileUpdates(updates) {
@@ -271,6 +298,7 @@ async function addAssistantMessage(response) {
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble">
+      <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
@@ -307,7 +335,14 @@ function scrollMessagesToBottom(options = {}) {
   });
 }
 
-async function requestAnswer(question) {
+function setSending(sending) {
+  isSending = sending;
+  form?.classList.toggle("is-sending", sending);
+  form?.setAttribute("aria-busy", String(sending));
+  if (sendButton) sendButton.disabled = sending;
+}
+
+async function requestAnswer(question, history = chatHistory.slice(-8)) {
   if (apiAvailable) {
     try {
       const response = await fetch(chatApiUrl, {
@@ -315,7 +350,7 @@ async function requestAnswer(question) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           question,
-          history: chatHistory.slice(-8),
+          history,
           playerProfile,
         }),
       });
@@ -339,11 +374,20 @@ async function requestAnswer(question) {
             : "N/A",
       };
     } catch {
-      setApiStatus(false);
+      setApiStatus("error");
     }
   }
 
-  return mockAnswer(question);
+  return {
+    answer:
+      "I lost the connection for a moment. Your message is still here, so try sending it once more and I’ll pick the conversation back up.",
+    sections: [],
+    sources: [],
+    retrievalMode: "error",
+    companion: {
+      suggestedPrompts: [question],
+    },
+  };
 }
 
 async function checkApiStatus() {
@@ -428,7 +472,9 @@ function updateRecent(question) {
 
 async function ask(question) {
   const trimmed = question.trim();
-  if (!trimmed) return;
+  if (!trimmed || isSending) return;
+  const priorHistory = chatHistory.slice(-8);
+  setSending(true);
   setMenu(false);
   addUserMessage(trimmed);
   rememberTurn("user", trimmed);
@@ -436,8 +482,14 @@ async function ask(question) {
   input.value = "";
   input.style.height = "";
   addLoading();
-  const response = await requestAnswer(trimmed);
-  window.setTimeout(() => addAssistantMessage(response), 250);
+  try {
+    const response = await requestAnswer(trimmed, priorHistory);
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    await addAssistantMessage(response);
+  } finally {
+    setSending(false);
+    if (!document.documentElement.classList.contains("is-mobile")) input.focus();
+  }
 }
 
 form.addEventListener("submit", (event) => {
@@ -505,6 +557,8 @@ messages.addEventListener("click", (event) => {
 
 clearChat?.addEventListener("click", () => {
   recent.splice(0);
+  chatHistory.splice(0);
+  saveChatHistory();
   if (recentList) recentList.innerHTML = "<p>Your last questions will appear here.</p>";
   renderEmptyState();
   setMenu(false);
