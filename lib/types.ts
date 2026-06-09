@@ -20,6 +20,7 @@ export type ChatRequest = {
   conversationId?: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   playerProfile?: PlayerProfile;
+  debug?: boolean;
 };
 
 export type PlayerProfile = {
@@ -45,6 +46,11 @@ export type ChatResponse = {
     profileUpdates?: PlayerProfile;
     followUpQuestions?: string[];
     suggestedPrompts?: string[];
+  };
+  diagnostics?: {
+    retrievalQueries?: string[];
+    factCount?: number;
+    chunkCount?: number;
   };
 };
 

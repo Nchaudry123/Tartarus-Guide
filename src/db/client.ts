@@ -26,10 +26,10 @@ export const config = {
   embeddingApiKey: required("EMBEDDING_API_KEY"),
   embeddingModel: process.env.EMBEDDING_MODEL ?? "sentence-transformers/all-MiniLM-L6-v2",
   embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? "384"),
-  chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.openai.com/v1",
+  chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.groq.com/openai/v1",
   chatApiKey: required("CHAT_API_KEY"),
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
-  factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "llama-3.1-8b-instant",
+  factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "qwen/qwen3-32b",
   factExtractionDelayMs: Number(process.env.FACT_EXTRACTION_DELAY_MS ?? "15000"),
   ingestUserAgent:
     process.env.INGEST_USER_AGENT ??
@@ -159,18 +159,22 @@ async function fetchWithTimeout(
 }
 
 async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]> {
-  const response = await fetch(`${config.embeddingBaseUrl}/embeddings`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.embeddingApiKey}`,
-      "content-type": "application/json",
+  const response = await fetchWithTimeout(
+    `${config.embeddingBaseUrl}/embeddings`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config.embeddingApiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.embeddingModel,
+        input,
+        dimensions: config.embeddingDimensions,
+      }),
     },
-    body: JSON.stringify({
-      model: config.embeddingModel,
-      input,
-      dimensions: config.embeddingDimensions,
-    }),
-  });
+    30_000,
+  );
 
   if (!response.ok) {
     throw new Error(`Embedding request failed: ${response.status} ${await response.text()}`);
@@ -190,25 +194,53 @@ export async function createChatCompletion(
   messages: Array<{ role: "system" | "user"; content: string }>,
   options: { jsonObject?: boolean; model?: string; maxCompletionTokens?: number } = {},
 ): Promise<string> {
-  const response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.chatApiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: options.model ?? config.chatModel,
-      messages,
-      temperature: 0.1,
-      ...(options.maxCompletionTokens
-        ? { max_completion_tokens: options.maxCompletionTokens }
-        : {}),
-      ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
-    }),
+  const body = JSON.stringify({
+    model: options.model ?? config.chatModel,
+    messages,
+    temperature: 0.1,
+    ...(options.maxCompletionTokens
+      ? { max_completion_tokens: options.maxCompletionTokens }
+      : {}),
+    ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
   });
+  let response: Response | undefined;
+  let errorText = "";
 
-  if (!response.ok) {
-    throw new Error(`Chat request failed: ${response.status} ${await response.text()}`);
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    response = await fetchWithTimeout(
+      `${config.chatBaseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.chatApiKey}`,
+          "content-type": "application/json",
+        },
+        body,
+      },
+      45_000,
+    );
+
+    if (response.ok) break;
+    errorText = await response.text();
+    if (response.status !== 429 || attempt === 2) {
+      throw new Error(`Chat request failed: ${response.status} ${errorText}`);
+    }
+
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const messageDelay = errorText.match(/try again in ([\d.]+)(ms|s)/i);
+    const parsedDelayMs = messageDelay
+      ? Number(messageDelay[1]) * (messageDelay[2].toLowerCase() === "s" ? 1_000 : 1)
+      : 0;
+    const retryDelayMs = Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1_000
+      : parsedDelayMs;
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(Math.max(retryDelayMs, 500), 15_000)),
+    );
+  }
+
+  if (!response?.ok) {
+    throw new Error(`Chat request failed after retries: ${response?.status ?? "unknown"} ${errorText}`);
   }
 
   const json = (await response.json()) as {

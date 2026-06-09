@@ -44,6 +44,29 @@ function searchTerms(query: string): string[] {
   return [...new Set([...phrases, ...unique])].slice(0, 7);
 }
 
+function rerankScore(chunk: ChunkMatch, terms: string[]): number {
+  const title = chunk.source_title.toLowerCase();
+  const section = (chunk.section_title ?? "").toLowerCase();
+  const text = chunk.chunk_text.toLowerCase();
+  const haystack = `${title} ${section} ${text}`;
+  const termHits = terms.filter((term) => haystack.includes(term)).length;
+  const headingHits = terms.filter((term) => `${title} ${section}`.includes(term)).length;
+  const exactPhraseHit = terms.some((term) => term.includes(" ") && haystack.includes(term));
+
+  let penalty = 0;
+  if (/about ign.*guide writers|find in guide|top guide sections/.test(`${title} ${section}`)) penalty += 0.22;
+  if (/adclick\.g\.doubleclick|markdown content:|url source:/.test(text)) penalty += 0.3;
+  if (termHits === 0) penalty += 0.18;
+
+  return (
+    (chunk.similarity ?? 0) +
+    Math.min(0.2, termHits * 0.035) +
+    Math.min(0.16, headingHits * 0.055) +
+    (exactPhraseHit ? 0.12 : 0) -
+    penalty
+  );
+}
+
 async function keywordFallback(query: string, limit: number): Promise<ChunkMatch[]> {
   const terms = searchTerms(query);
   if (!terms.length) return [];
@@ -103,31 +126,46 @@ async function keywordFallback(query: string, limit: number): Promise<ChunkMatch
 }
 
 export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch[]> {
-  const keywordMatches = await keywordFallback(query, limit);
-
-  const embedding = await createEmbedding(query);
-  const { data, error } = await supabase.rpc("match_chunks", {
-    query_embedding: `[${embedding.join(",")}]`,
-    match_count: limit,
-    similarity_threshold: 0.38,
+  const terms = searchTerms(query);
+  const keywordPromise = keywordFallback(query, limit).catch((error) => {
+    console.error("Keyword retrieval failed:", error);
+    return [] as ChunkMatch[];
   });
+  const vectorPromise = createEmbedding(query)
+    .then((embedding) =>
+      supabase.rpc("match_chunks", {
+        query_embedding: `[${embedding.join(",")}]`,
+        match_count: limit,
+        similarity_threshold: 0.38,
+      }),
+    )
+    .then(({ data, error }) => {
+      if (error) throw error;
+      return (data ?? []) as ChunkMatch[];
+    })
+    .catch((error) => {
+      console.error("Vector retrieval failed:", error);
+      return [] as ChunkMatch[];
+    });
 
-  if (error) {
-    throw error;
-  }
+  const [keywordMatches, vectorMatches] = await Promise.all([keywordPromise, vectorPromise]);
 
   const merged = new Map<string, ChunkMatch>();
   for (const chunk of keywordMatches) merged.set(chunk.id, chunk);
-  for (const chunk of ((data ?? []) as ChunkMatch[])) {
+  for (const chunk of vectorMatches) {
     const existing = merged.get(chunk.id);
     merged.set(chunk.id, existing && (existing.similarity ?? 0) > (chunk.similarity ?? 0) ? existing : chunk);
   }
 
   return [...merged.values()]
+    .map((chunk) => ({ chunk, score: rerankScore(chunk, terms) }))
     .sort((a, b) => {
-      const aRank = a.source_credibility_rank ?? 99;
-      const bRank = b.source_credibility_rank ?? 99;
-      return (b.similarity ?? 0) - (a.similarity ?? 0) || aRank - bRank;
+      const scoreDifference = b.score - a.score;
+      if (scoreDifference !== 0) return scoreDifference;
+      const aRank = a.chunk.source_credibility_rank ?? 99;
+      const bRank = b.chunk.source_credibility_rank ?? 99;
+      return aRank - bRank;
     })
-    .slice(0, limit);
+    .slice(0, limit)
+    .map(({ chunk, score }) => ({ ...chunk, similarity: Math.max(0, Math.min(1, score)) }));
 }
