@@ -1,5 +1,6 @@
 import { normalizeName, supabase } from "../db/client";
 import type { FactMatch, FactType } from "../types/schema";
+import { analyzeRetrievalQuery } from "./queryAnalysis";
 
 const entityStopWords = new Set([
   "what",
@@ -68,7 +69,8 @@ function likelyEntityTerms(query: string): string[] {
 }
 
 export async function searchFacts(query: string, limit = 12): Promise<FactMatch[]> {
-  const likelyTerms = likelyEntityTerms(query);
+  const analysis = analyzeRetrievalQuery(query);
+  const likelyTerms = [...new Set([...analysis.entityCandidates, ...likelyEntityTerms(query)])].slice(0, 10);
   const factTypes = detectFactTypes(query);
   const normalizedQuery = normalizeName(query);
 
@@ -164,6 +166,12 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
     if (!entityName) return 0;
     if (normalizedQuery === entityName) return 120;
     if (normalizedQuery.includes(entityName)) return 100 + entityName.split(" ").length * 5;
+    if (analysis.phrases.some((phrase) => phrase === entityName)) return 115;
+
+    const aliasMatch = fact.entity.aliases
+      ?.map(normalizeName)
+      .some((alias) => alias.length >= 3 && normalizedQuery.includes(alias));
+    if (aliasMatch) return 90;
 
     const entityTerms = entityName.split(" ").filter(Boolean);
     const matchedTerms = entityTerms.filter((term) => normalizedQuery.split(" ").includes(term));
@@ -171,6 +179,7 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
   };
 
   return [...new Map(rows.map((row) => [row.id, row])).values()]
+    .filter((fact) => entityRelevance(fact) > 0 || ingredientPairRelevance(fact) > 0)
     .sort(
       (a, b) =>
         ingredientPairRelevance(b) - ingredientPairRelevance(a) ||

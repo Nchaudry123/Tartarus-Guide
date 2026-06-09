@@ -1,74 +1,57 @@
 import { createEmbedding, supabase } from "../db/client";
 import type { ChunkMatch } from "../types/schema";
+import {
+  analyzeRetrievalQuery,
+  isRetrievalBoilerplate,
+  lexicalCoverage,
+  type RetrievalQueryAnalysis,
+} from "./queryAnalysis";
 
 function escapePostgrestPattern(value: string): string {
   return value.replace(/[%_]/g, (match) => `\\${match}`);
 }
 
-function searchTerms(query: string): string[] {
-  const stopWords = new Set([
-    "about",
-    "answer",
-    "beat",
-    "current",
-    "does",
-    "enemy",
-    "feel",
-    "feels",
-    "guide",
-    "help",
-    "need",
-    "persona",
-    "reload",
-    "strategy",
-    "weak",
-    "weakness",
-    "what",
-    "which",
-    "with",
-  ]);
-
-  const terms = query
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .split(/\s+/)
-    .map((term) => term.trim())
-    .filter((term) => term.length >= 3 && !stopWords.has(term));
-
-  const unique = [...new Set(terms)];
-  const phrases = query
-    .match(/[A-Z][a-z0-9']+(?:\s+[A-Z][a-z0-9']+)*/g)
-    ?.map((phrase) => phrase.toLowerCase())
-    .filter((phrase) => phrase.split(/\s+/).length > 1) ?? [];
-
-  return [...new Set([...phrases, ...unique])].slice(0, 7);
-}
-
-function rerankScore(chunk: ChunkMatch, terms: string[]): number {
+function rerankScore(
+  chunk: ChunkMatch,
+  analysis: RetrievalQueryAnalysis,
+  reciprocalRankScore: number,
+): number {
   const title = chunk.source_title.toLowerCase();
   const section = (chunk.section_title ?? "").toLowerCase();
   const text = chunk.chunk_text.toLowerCase();
   const haystack = `${title} ${section} ${text}`;
-  const termHits = terms.filter((term) => haystack.includes(term)).length;
-  const headingHits = terms.filter((term) => `${title} ${section}`.includes(term)).length;
-  const exactPhraseHit = terms.some((term) => term.includes(" ") && haystack.includes(term));
+  const termHits = analysis.terms.filter((term) => haystack.includes(term)).length;
+  const headingHits = analysis.terms.filter((term) => `${title} ${section}`.includes(term)).length;
+  const exactPhraseHits = analysis.phrases.filter((phrase) => haystack.includes(phrase)).length;
+  const exactHeadingEntity = analysis.entityCandidates.some(
+    (entity) => entity.includes(" ") && `${title} ${section}`.includes(entity),
+  );
+  const coverage = lexicalCoverage(haystack, analysis);
 
   let penalty = 0;
-  if (/about ign.*guide writers|find in guide|top guide sections/.test(`${title} ${section}`)) penalty += 0.22;
-  if (/adclick\.g\.doubleclick|markdown content:|url source:/.test(text)) penalty += 0.3;
-  if (termHits === 0) penalty += 0.18;
+  if (isRetrievalBoilerplate(`${title} ${section} ${text}`)) penalty += 0.45;
+  if (termHits === 0) penalty += 0.25;
+  if (chunk.chunk_text.length > 9_000) penalty += 0.08;
+  if (analysis.floor && !new RegExp(`\\b${analysis.floor}\\b`).test(haystack)) penalty += 0.06;
 
   return (
-    (chunk.similarity ?? 0) +
-    Math.min(0.2, termHits * 0.035) +
-    Math.min(0.16, headingHits * 0.055) +
-    (exactPhraseHit ? 0.12 : 0) -
+    reciprocalRankScore +
+    (chunk.similarity ?? 0) * 0.42 +
+    coverage * 0.18 +
+    Math.min(0.12, termHits * 0.025) +
+    Math.min(0.14, headingHits * 0.045) +
+    Math.min(0.2, exactPhraseHits * 0.1) +
+    (exactHeadingEntity ? 0.2 : 0) -
     penalty
   );
 }
 
-async function keywordFallback(query: string, limit: number): Promise<ChunkMatch[]> {
-  const terms = searchTerms(query);
+async function keywordFallback(
+  query: string,
+  limit: number,
+  analysis = analyzeRetrievalQuery(query),
+): Promise<ChunkMatch[]> {
+  const terms = [...analysis.phrases, ...analysis.terms].slice(0, 10);
   if (!terms.length) return [];
 
   const exactPhrases = terms.filter((term) => term.includes(" "));
@@ -126,8 +109,8 @@ async function keywordFallback(query: string, limit: number): Promise<ChunkMatch
 }
 
 export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch[]> {
-  const terms = searchTerms(query);
-  const keywordPromise = keywordFallback(query, limit).catch((error) => {
+  const analysis = analyzeRetrievalQuery(query);
+  const keywordPromise = keywordFallback(query, limit * 2, analysis).catch((error) => {
     console.error("Keyword retrieval failed:", error);
     return [] as ChunkMatch[];
   });
@@ -135,8 +118,8 @@ export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch
     .then((embedding) =>
       supabase.rpc("match_chunks", {
         query_embedding: `[${embedding.join(",")}]`,
-        match_count: limit,
-        similarity_threshold: 0.38,
+        match_count: limit * 2,
+        similarity_threshold: 0.34,
       }),
     )
     .then(({ data, error }) => {
@@ -150,22 +133,54 @@ export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch
 
   const [keywordMatches, vectorMatches] = await Promise.all([keywordPromise, vectorPromise]);
 
-  const merged = new Map<string, ChunkMatch>();
-  for (const chunk of keywordMatches) merged.set(chunk.id, chunk);
-  for (const chunk of vectorMatches) {
-    const existing = merged.get(chunk.id);
-    merged.set(chunk.id, existing && (existing.similarity ?? 0) > (chunk.similarity ?? 0) ? existing : chunk);
-  }
+  const merged = new Map<string, { chunk: ChunkMatch; reciprocalRankScore: number }>();
+  const addRanked = (chunks: ChunkMatch[], weight: number) => {
+    chunks.forEach((chunk, index) => {
+      const rankScore = weight / (60 + index + 1);
+      const existing = merged.get(chunk.id);
+      const preferred =
+        existing && (existing.chunk.similarity ?? 0) > (chunk.similarity ?? 0)
+          ? existing.chunk
+          : chunk;
+      merged.set(chunk.id, {
+        chunk: preferred,
+        reciprocalRankScore: (existing?.reciprocalRankScore ?? 0) + rankScore,
+      });
+    });
+  };
+  addRanked(keywordMatches, 1.1);
+  addRanked(vectorMatches, 1);
 
-  return [...merged.values()]
-    .map((chunk) => ({ chunk, score: rerankScore(chunk, terms) }))
+  const hasSpecificTerms = analysis.entityCandidates.length > 0;
+  const ranked = [...merged.values()]
+    .map(({ chunk, reciprocalRankScore }) => ({
+      chunk,
+      score: rerankScore(chunk, analysis, reciprocalRankScore),
+      coverage: lexicalCoverage(
+        `${chunk.source_title} ${chunk.section_title ?? ""} ${chunk.chunk_text}`,
+        analysis,
+      ),
+    }))
+    .filter(({ chunk, score, coverage }) => {
+      if (isRetrievalBoilerplate(chunk.chunk_text)) return false;
+      if (!hasSpecificTerms) return score >= 0.16;
+      return coverage > 0 || (chunk.similarity ?? 0) >= 0.48;
+    })
     .sort((a, b) => {
       const scoreDifference = b.score - a.score;
       if (scoreDifference !== 0) return scoreDifference;
       const aRank = a.chunk.source_credibility_rank ?? 99;
       const bRank = b.chunk.source_credibility_rank ?? 99;
       return aRank - bRank;
-    })
+    });
+
+  if (!ranked.length) {
+    return vectorMatches
+      .filter((chunk) => !isRetrievalBoilerplate(chunk.chunk_text))
+      .slice(0, Math.min(limit, 3));
+  }
+
+  return ranked
     .slice(0, limit)
     .map(({ chunk, score }) => ({ ...chunk, similarity: Math.max(0, Math.min(1, score)) }));
 }

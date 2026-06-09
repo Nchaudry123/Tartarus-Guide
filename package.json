@@ -15,6 +15,7 @@
     "ingest:coverage": "tsx src/ingest/coverageReport.ts",
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
+    "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit"
   },
