@@ -50,6 +50,13 @@
           <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Requests</button>
           <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus</button>
         </nav>
+        <section class="memory-panel" aria-labelledby="memoryPanelTitle">
+          <div>
+            <p id="memoryPanelTitle">Player Memory</p>
+            <span id="memorySummary">No profile saved</span>
+          </div>
+          <button type="button" id="openMemory" aria-haspopup="dialog">Edit</button>
+        </section>
       </aside>
 
       <section class="chat-stage">
@@ -83,6 +90,62 @@
         </section>
       </section>
     </main>
+
+    <dialog class="memory-dialog" id="memoryDialog" aria-labelledby="memoryDialogTitle">
+      <form method="dialog" id="memoryForm">
+        <header>
+          <div>
+            <p>Navigator Memory</p>
+            <h2 id="memoryDialogTitle">Your Player Profile</h2>
+          </div>
+          <button class="memory-close" type="button" id="closeMemory" aria-label="Close player profile">×</button>
+        </header>
+        <p class="memory-intro">These details stay on this device and help the guide tailor party, schedule, and progression advice.</p>
+        <div class="memory-fields">
+          <label>
+            <span>Current month</span>
+            <select name="currentMonth">
+              <option value="">Not set</option>
+              <option>April</option><option>May</option><option>June</option><option>July</option>
+              <option>August</option><option>September</option><option>October</option>
+              <option>November</option><option>December</option><option>January</option>
+            </select>
+          </label>
+          <label>
+            <span>Player level</span>
+            <input name="currentLevel" type="number" min="1" max="99" inputmode="numeric" placeholder="e.g. 31" />
+          </label>
+          <label>
+            <span>Difficulty</span>
+            <select name="difficulty">
+              <option value="">Not set</option>
+              <option>Peaceful</option><option>Easy</option><option>Normal</option>
+              <option>Hard</option><option>Merciless</option>
+            </select>
+          </label>
+          <label>
+            <span>Playstyle</span>
+            <select name="playstyle">
+              <option value="">Not set</option>
+              <option>Balanced</option><option>Physical</option><option>Magic</option>
+              <option>Defensive</option><option>Aggressive</option><option>Completionist</option>
+            </select>
+          </label>
+          <label class="memory-wide">
+            <span>Active party</span>
+            <input name="activeParty" type="text" placeholder="Yukari, Akihiko, Mitsuru" />
+          </label>
+          <label class="memory-wide">
+            <span>Current goal</span>
+            <input name="currentGoal" type="text" maxlength="140" placeholder="Prepare for the next full moon boss" />
+          </label>
+        </div>
+        <footer>
+          <button class="memory-clear" type="button" id="clearMemory">Clear profile</button>
+          <button class="memory-save" type="submit">Save profile</button>
+        </footer>
+      </form>
+    </dialog>
 
     <script src="./script.js"></script>
   </body>

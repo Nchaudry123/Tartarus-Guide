@@ -322,6 +322,7 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     mergedProfile.activeParty?.length ? `active party: ${mergedProfile.activeParty.join(", ")}` : undefined,
     mergedProfile.recentBoss ? `recent boss: ${mergedProfile.recentBoss}` : undefined,
     mergedProfile.playstyle ? `preferred playstyle: ${mergedProfile.playstyle}` : undefined,
+    mergedProfile.currentGoal ? `current goal: ${mergedProfile.currentGoal}` : undefined,
   ];
 
   return {
@@ -676,6 +677,7 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   const difficulty = asString(raw.difficulty);
   const recentBoss = asString(raw.recentBoss);
   const playstyle = asString(raw.playstyle);
+  const currentGoal = asString(raw.currentGoal);
   const activeParty = asStringArray(raw.activeParty, 4);
   const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
 
@@ -684,6 +686,7 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   if (difficulty) updates.difficulty = difficulty;
   if (recentBoss) updates.recentBoss = recentBoss;
   if (playstyle) updates.playstyle = playstyle;
+  if (currentGoal) updates.currentGoal = currentGoal;
   if (activeParty.length) updates.activeParty = activeParty;
   if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
 
