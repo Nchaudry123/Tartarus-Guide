@@ -11,10 +11,12 @@ const chatModeLabel = document.getElementById("chatModeLabel");
 const modeCardText = document.getElementById("modeCardText");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
+const memorySummary = document.getElementById("memorySummary");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 const sendButton = form?.querySelector('button[type="submit"]');
 const chatHistoryKey = "tartarusChatHistoryV2";
+const playerProfileKey = "tartarusPlayerProfileV2";
 
 const recent = [];
 const chatHistory = loadChatHistory();
@@ -63,7 +65,11 @@ window.addEventListener("orientationchange", () => {
 
 function loadPlayerProfile() {
   try {
-    return JSON.parse(window.sessionStorage.getItem("tartarusPlayerProfile") || "{}");
+    const saved =
+      window.localStorage.getItem(playerProfileKey) ||
+      window.sessionStorage.getItem("tartarusPlayerProfile") ||
+      "{}";
+    return JSON.parse(saved);
   } catch {
     return {};
   }
@@ -93,7 +99,9 @@ function saveChatHistory() {
 }
 
 function savePlayerProfile() {
-  window.sessionStorage.setItem("tartarusPlayerProfile", JSON.stringify(playerProfile));
+  window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
+  window.sessionStorage.removeItem("tartarusPlayerProfile");
+  renderMemorySummary();
 }
 
 function rememberTurn(role, content) {
@@ -115,6 +123,55 @@ function mergeProfileUpdates(updates) {
   };
   savePlayerProfile();
 }
+
+function cleanProfile(profile) {
+  return Object.fromEntries(
+    Object.entries(profile || {}).filter(([, value]) => {
+      if (Array.isArray(value)) return value.length > 0;
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    }),
+  );
+}
+
+function renderMemorySummary() {
+  if (!memorySummary) return;
+  const details = [
+    playerProfile.currentMonth,
+    playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "",
+    playerProfile.difficulty,
+    playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
+  ].filter(Boolean);
+  memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
+}
+
+function populateMemoryForm() {
+  const memoryForm = document.getElementById("memoryForm");
+  if (!memoryForm) return;
+  const fields = memoryForm.elements;
+  fields.currentMonth.value = playerProfile.currentMonth || "";
+  fields.currentLevel.value = playerProfile.currentLevel || "";
+  fields.difficulty.value = playerProfile.difficulty || "";
+  fields.playstyle.value = playerProfile.playstyle || "";
+  fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
+  fields.currentGoal.value = playerProfile.currentGoal || "";
+}
+
+function openMemoryDialog() {
+  const memoryDialog = document.getElementById("memoryDialog");
+  if (!memoryDialog) return;
+  populateMemoryForm();
+  if (typeof memoryDialog.showModal === "function") memoryDialog.showModal();
+  else memoryDialog.setAttribute("open", "");
+}
+
+function closeMemoryDialog() {
+  const memoryDialog = document.getElementById("memoryDialog");
+  if (!memoryDialog) return;
+  if (typeof memoryDialog.close === "function") memoryDialog.close();
+  else memoryDialog.removeAttribute("open");
+}
+
+renderMemorySummary();
 
 function escapeHtml(value) {
   return String(value)
@@ -564,5 +621,48 @@ clearChat?.addEventListener("click", () => {
   setMenu(false);
   input.focus();
 });
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("#openMemory")) {
+    openMemoryDialog();
+    return;
+  }
+  if (event.target.closest("#closeMemory")) {
+    closeMemoryDialog();
+    return;
+  }
+  if (event.target.id === "memoryDialog") closeMemoryDialog();
+}, true);
+
+document.addEventListener("submit", (event) => {
+  const memoryForm = event.target.closest("#memoryForm");
+  if (!memoryForm) return;
+  event.preventDefault();
+  const data = new FormData(memoryForm);
+  playerProfile = cleanProfile({
+    ...playerProfile,
+    currentMonth: data.get("currentMonth"),
+    currentLevel: data.get("currentLevel"),
+    difficulty: data.get("difficulty"),
+    playstyle: data.get("playstyle"),
+    activeParty: String(data.get("activeParty") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .slice(0, 4),
+    currentGoal: data.get("currentGoal"),
+  });
+  savePlayerProfile();
+  closeMemoryDialog();
+}, true);
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#clearMemory")) return;
+  playerProfile = {};
+  window.localStorage.removeItem(playerProfileKey);
+  window.sessionStorage.removeItem("tartarusPlayerProfile");
+  populateMemoryForm();
+  renderMemorySummary();
+}, true);
 
 checkApiStatus();

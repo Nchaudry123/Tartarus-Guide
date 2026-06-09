@@ -31,6 +31,7 @@ export type PlayerProfile = {
   recentBoss?: string;
   currentSocialLinks?: string[];
   playstyle?: string;
+  currentGoal?: string;
 };
 
 export type ChatResponse = {
