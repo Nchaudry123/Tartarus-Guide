@@ -162,5 +162,285 @@
     },
     "expectedIntent": "Team Building",
     "mustIncludeAny": ["Yukari", "heal", "support"]
+  },
+  {
+    "id": "conversation-thanks",
+    "category": "conversation",
+    "question": "Thanks, that helped.",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "maxAnswerCharacters": 600
+  },
+  {
+    "id": "conversation-game-opinion",
+    "category": "conversation",
+    "question": "Do you like Persona 3 Reload?",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "team-physical-focus",
+    "category": "team",
+    "question": "I prefer physical damage. Who fits a physical-heavy party?",
+    "expectedIntent": "Team Building",
+    "shouldClarify": true,
+    "maxSources": 5
+  },
+  {
+    "id": "team-healer-choice",
+    "category": "team",
+    "question": "Should Yukari or Ken be my main healer?",
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Yukari", "Ken"],
+    "maxSources": 5
+  },
+  {
+    "id": "team-hard-difficulty",
+    "category": "team",
+    "question": "I'm level 38 on Hard using Mitsuru, Akihiko, and Koromaru. How should I balance this party?",
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Mitsuru", "Akihiko", "Koromaru", "support"],
+    "maxSources": 6
+  },
+  {
+    "id": "enemy-table-request",
+    "category": "enemy",
+    "question": "Give me the affinities for Dancing Hand, including resistances.",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "mustUseStructuredFacts": true,
+    "minSources": 1,
+    "maxSources": 5,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "enemy-unknown-location",
+    "category": "enemy",
+    "question": "What is the hand Shadow weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldClarify": true,
+    "maxSources": 4
+  },
+  {
+    "id": "enemy-floor-context",
+    "category": "enemy",
+    "question": "I'm on floor 22. What should I bring for the Shadows here?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["floor", "Persona", "element", "party"],
+    "maxSources": 6
+  },
+  {
+    "id": "boss-emperor-empress",
+    "category": "boss",
+    "question": "How do I handle the Emperor and Empress fight?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Emperor", "Empress"],
+    "minSources": 1,
+    "maxSources": 6
+  },
+  {
+    "id": "boss-hanged-man",
+    "category": "boss",
+    "question": "What party and Personas should I bring for the Hanged Man full moon operation?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Hanged Man", "party", "Persona"],
+    "maxSources": 6
+  },
+  {
+    "id": "boss-level-check",
+    "category": "boss",
+    "question": "Am I ready for the next full moon boss?",
+    "expectedIntent": "Boss Help",
+    "shouldClarify": true,
+    "shouldUseSources": false
+  },
+  {
+    "id": "fusion-satan-value",
+    "category": "fusion",
+    "question": "Is Satan worth fusing?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Satan", "skill", "level", "stats"],
+    "mustNotInclude": ["early-game Persona"],
+    "maxSources": 4
+  },
+  {
+    "id": "fusion-satan-affinity",
+    "category": "fusion",
+    "question": "What are Satan's affinities in Persona 3 Reload?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustUseStructuredFacts": true,
+    "minSources": 1,
+    "maxSources": 4
+  },
+  {
+    "id": "fusion-level-budget",
+    "category": "fusion",
+    "question": "I'm level 25 and need a good Ice Persona. What should I fuse?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Ice", "level", "Persona"],
+    "maxSources": 5
+  },
+  {
+    "id": "fusion-inheritance",
+    "category": "fusion",
+    "question": "How does skill inheritance work when I fuse Personas?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["skill", "inherit", "fusion"],
+    "maxSources": 5
+  },
+  {
+    "id": "fusion-compendium",
+    "category": "fusion",
+    "question": "When should I register Personas in the Compendium?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Compendium", "register", "skills"],
+    "maxSources": 5
+  },
+  {
+    "id": "social-link-maya",
+    "category": "social_links",
+    "question": "How do I start the Hermit Social Link?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "minSources": 1,
+    "maxSources": 5,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "social-link-rank-answer",
+    "category": "social_links",
+    "question": "What is the best answer for Emperor rank 4?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "minSources": 1,
+    "maxSources": 5,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "social-link-school-break",
+    "category": "social_links",
+    "question": "Which school Social Links become unavailable during summer break?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["school", "summer", "available"],
+    "maxSources": 6
+  },
+  {
+    "id": "schedule-exam-prep",
+    "category": "schedule",
+    "question": "Exams are coming up. Should I study or spend time on Social Links?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldClarify": true,
+    "maxSources": 5
+  },
+  {
+    "id": "schedule-rainy-day",
+    "category": "schedule",
+    "question": "What are efficient things to do on a rainy day?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["rain", "stat", "Social Link", "activity"],
+    "maxSources": 5
+  },
+  {
+    "id": "schedule-evening-options",
+    "category": "schedule",
+    "question": "I have a free evening in May. What are my best options?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["evening", "May", "Social Link", "stat"],
+    "maxSources": 5
+  },
+  {
+    "id": "tartarus-sp-management",
+    "category": "tartarus",
+    "question": "How can I conserve SP during long Tartarus runs?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["SP", "item", "weakness", "return"],
+    "maxSources": 5
+  },
+  {
+    "id": "tartarus-rescue",
+    "category": "tartarus",
+    "question": "How do missing-person rescues work in Tartarus?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["rescue", "deadline", "Tartarus"],
+    "maxSources": 5
+  },
+  {
+    "id": "tartarus-border-floor",
+    "category": "tartarus",
+    "question": "Why can't I climb past the border floor?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["border", "story", "full moon", "wait"],
+    "maxSources": 5
+  },
+  {
+    "id": "request-juzumaru",
+    "category": "requests",
+    "question": "Where can I get Juzumaru for Elizabeth?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "minSources": 1,
+    "maxSources": 5,
+    "forbidUnsupportedExactness": true
+  },
+  {
+    "id": "request-deadline",
+    "category": "requests",
+    "question": "Do Elizabeth's requests expire?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["deadline", "expire", "request"],
+    "maxSources": 5
+  },
+  {
+    "id": "achievement-missable",
+    "category": "achievements",
+    "question": "Are there missable trophies I should plan around?",
+    "expectedIntent": "Achievement Hunting",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["missable", "Social Link", "trophy", "achievement"],
+    "maxSources": 6
+  },
+  {
+    "id": "story-no-spoilers",
+    "category": "story",
+    "question": "No spoilers: does the game warn me before the point of no return?",
+    "expectedIntent": "Story Guidance",
+    "shouldUseSources": true,
+    "mustNotInclude": ["final boss is", "ending reveals"],
+    "maxSources": 4
+  },
+  {
+    "id": "memory-month-followup",
+    "category": "memory",
+    "question": "What should I prioritize this month?",
+    "history": [
+      { "role": "user", "content": "I just reached July and I am level 31." },
+      { "role": "assistant", "content": "Got it. I will keep July and level 31 in mind." }
+    ],
+    "playerProfile": {
+      "currentMonth": "July",
+      "currentLevel": "31",
+      "difficulty": "Normal"
+    },
+    "expectedIntent": "Daily Schedule Planning",
+    "mustIncludeAny": ["July", "Social Link", "Tartarus", "stat"],
+    "maxSources": 6
   }
 ]
