@@ -29,6 +29,8 @@ export const config = {
   chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.groq.com/openai/v1",
   chatApiKey: required("CHAT_API_KEY"),
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
+  chatAppUrl: process.env.CHAT_APP_URL,
+  chatAppName: process.env.CHAT_APP_NAME ?? "Tartarus Guide",
   factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "qwen/qwen3-32b",
   factExtractionDelayMs: Number(process.env.FACT_EXTRACTION_DELAY_MS ?? "15000"),
   ingestUserAgent:
@@ -198,6 +200,9 @@ export async function createChatCompletion(
     model: options.model ?? config.chatModel,
     messages,
     temperature: 0.1,
+    ...(config.chatBaseUrl.includes("openrouter.ai")
+      ? { reasoning: { effort: "none", exclude: true } }
+      : {}),
     ...(options.maxCompletionTokens
       ? { max_completion_tokens: options.maxCompletionTokens }
       : {}),
@@ -214,6 +219,8 @@ export async function createChatCompletion(
         headers: {
           authorization: `Bearer ${config.chatApiKey}`,
           "content-type": "application/json",
+          ...(config.chatAppUrl ? { "HTTP-Referer": config.chatAppUrl } : {}),
+          ...(config.chatAppName ? { "X-Title": config.chatAppName } : {}),
         },
         body,
       },
