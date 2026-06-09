@@ -39,9 +39,15 @@ function dedupeFacts(facts: FactMatch[]): FactMatch[] {
 function diversifyChunks(chunks: ChunkMatch[], limit: number): ChunkMatch[] {
   const unique = new Map<string, ChunkMatch>();
   for (const chunk of chunks) {
-    const existing = unique.get(chunk.id);
+    const normalizedText = chunk.chunk_text
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .replace(/[^a-z0-9 ]/g, "")
+      .slice(0, 420);
+    const key = normalizedText || chunk.id;
+    const existing = unique.get(key);
     if (!existing || (chunk.similarity ?? 0) > (existing.similarity ?? 0)) {
-      unique.set(chunk.id, chunk);
+      unique.set(key, chunk);
     }
   }
 
@@ -54,6 +60,8 @@ function diversifyChunks(chunks: ChunkMatch[], limit: number): ChunkMatch[] {
   const selected: ChunkMatch[] = [];
   const perSource = new Map<string, number>();
   const perDomain = new Map<string, number>();
+  let contextCharacters = 0;
+  const maxContextCharacters = 18_000;
 
   for (const chunk of sorted) {
     const sourceCount = perSource.get(chunk.source_url) ?? 0;
@@ -62,7 +70,9 @@ function diversifyChunks(chunks: ChunkMatch[], limit: number): ChunkMatch[] {
     if (domainCount >= Math.ceil(limit * 0.75) && sorted.some((item) => item.source_domain !== chunk.source_domain)) {
       continue;
     }
+    if (selected.length > 0 && contextCharacters + chunk.chunk_text.length > maxContextCharacters) continue;
     selected.push(chunk);
+    contextCharacters += chunk.chunk_text.length;
     perSource.set(chunk.source_url, sourceCount + 1);
     perDomain.set(chunk.source_domain, domainCount + 1);
     if (selected.length >= limit) break;
@@ -71,7 +81,9 @@ function diversifyChunks(chunks: ChunkMatch[], limit: number): ChunkMatch[] {
   if (selected.length < limit) {
     for (const chunk of sorted) {
       if (selected.some((item) => item.id === chunk.id)) continue;
+      if (selected.length > 0 && contextCharacters + chunk.chunk_text.length > maxContextCharacters) continue;
       selected.push(chunk);
+      contextCharacters += chunk.chunk_text.length;
       if (selected.length >= limit) break;
     }
   }
