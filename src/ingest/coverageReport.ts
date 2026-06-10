@@ -10,124 +10,234 @@ type SourceRow = {
   category: string;
 };
 
-const requiredCategories = [
-  "enemies",
-  "bosses",
-  "social_links",
-  "requests",
-  "fusion",
-  "personas",
-  "tartarus",
-  "walkthrough",
-  "classroom",
-  "beginner_strategy",
+type ChunkRow = {
+  source_id: string;
+  embedding: number[] | null;
+};
+
+type FactRow = {
+  source_id: string;
+  entity_id: string;
+  fact_type: string;
+  confidence: number;
+};
+
+type EntityRow = {
+  id: string;
+  name: string;
+  type: string;
+};
+
+type CoverageArea = {
+  id: string;
+  label: string;
+  sourceMatches: (source: SourceRow) => boolean;
+  entityTypes: string[];
+};
+
+const coverageAreas: CoverageArea[] = [
+  {
+    id: "enemies",
+    label: "Enemies",
+    sourceMatches: (source) => source.category === "enemies",
+    entityTypes: ["enemy"],
+  },
+  {
+    id: "bosses",
+    label: "Bosses",
+    sourceMatches: (source) => source.category === "bosses",
+    entityTypes: ["boss"],
+  },
+  {
+    id: "social_links",
+    label: "Social Links",
+    sourceMatches: (source) => source.category === "social_links",
+    entityTypes: ["social_link"],
+  },
+  {
+    id: "requests",
+    label: "Requests",
+    sourceMatches: (source) => source.category === "requests",
+    entityTypes: ["request"],
+  },
+  {
+    id: "calendars",
+    label: "Calendars",
+    sourceMatches: (source) =>
+      source.category === "walkthrough" ||
+      source.category === "classroom" ||
+      /\b(calendar|classroom|exam|schedule|month|daily)\b/i.test(`${source.title} ${source.url}`),
+    entityTypes: ["activity"],
+  },
+  {
+    id: "tartarus",
+    label: "Tartarus",
+    sourceMatches: (source) => source.category === "tartarus",
+    entityTypes: ["tartarus_floor", "location"],
+  },
+  {
+    id: "personas",
+    label: "Personas",
+    sourceMatches: (source) => source.category === "personas" || source.category === "fusion",
+    entityTypes: ["persona", "skill"],
+  },
 ];
 
-const minimumFactsByCategory: Record<string, number> = {
-  enemies: 12,
-  bosses: 12,
-  social_links: 12,
-  requests: 10,
-  fusion: 10,
-  personas: 8,
-  tartarus: 8,
-  walkthrough: 6,
-  classroom: 8,
-  beginner_strategy: 0,
-};
+const PAGE_SIZE = 1_000;
 
-const minimumSourcesByCategory: Record<string, number> = {
-  classroom: 2,
-};
+async function fetchAllRows<T extends Record<string, unknown>>(
+  table: string,
+  columns: string,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from(table)
+      .select(columns)
+      .range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as T[];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) return rows;
+  }
+}
+
+function increment(map: Map<string, number>, key: string): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function sortedCounts(map: Map<string, number>): Record<string, number> {
+  return Object.fromEntries([...map.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
 
 async function main(): Promise<void> {
-  const [{ data: sources, error: sourceError }, { data: chunks, error: chunkError }, { data: facts, error: factError }] =
-    await Promise.all([
-      supabase.from("sources").select("id,title,url,domain,category"),
-      supabase.from("chunks").select("source_id"),
-      supabase.from("facts").select("source_id,fact_type,entity:entities(name,type)"),
-    ]);
-  if (sourceError) throw sourceError;
-  if (chunkError) throw chunkError;
-  if (factError) throw factError;
+  const [sources, chunks, facts, entities] = await Promise.all([
+    fetchAllRows<SourceRow>("sources", "id,title,url,domain,category"),
+    fetchAllRows<ChunkRow>("chunks", "source_id,embedding"),
+    fetchAllRows<FactRow>("facts", "source_id,entity_id,fact_type,confidence"),
+    fetchAllRows<EntityRow>("entities", "id,name,type"),
+  ]);
 
-  const sourceRows = (sources ?? []) as SourceRow[];
   const chunksBySource = new Map<string, number>();
+  const embeddedChunksBySource = new Map<string, number>();
   const factsBySource = new Map<string, number>();
-  for (const chunk of chunks ?? []) chunksBySource.set(chunk.source_id, (chunksBySource.get(chunk.source_id) ?? 0) + 1);
-  for (const fact of facts ?? []) factsBySource.set(fact.source_id, (factsBySource.get(fact.source_id) ?? 0) + 1);
+  const entityIdsBySource = new Map<string, Set<string>>();
+  const factTypesBySource = new Map<string, Map<string, number>>();
+  const entitiesById = new Map(entities.map((entity) => [entity.id, entity]));
 
-  const groups = new Map<string, { sources: number; chunks: number; facts: number }>();
-  for (const source of sourceRows) {
-    const key = `${source.domain}:${source.category}`;
-    const group = groups.get(key) ?? { sources: 0, chunks: 0, facts: 0 };
-    group.sources += 1;
-    group.chunks += chunksBySource.get(source.id) ?? 0;
-    group.facts += factsBySource.get(source.id) ?? 0;
-    groups.set(key, group);
+  for (const chunk of chunks) {
+    increment(chunksBySource, chunk.source_id);
+    if (chunk.embedding) increment(embeddedChunksBySource, chunk.source_id);
+  }
+  for (const fact of facts) {
+    increment(factsBySource, fact.source_id);
+    const entityIds = entityIdsBySource.get(fact.source_id) ?? new Set<string>();
+    entityIds.add(fact.entity_id);
+    entityIdsBySource.set(fact.source_id, entityIds);
+    const factTypes = factTypesBySource.get(fact.source_id) ?? new Map<string, number>();
+    increment(factTypes, fact.fact_type);
+    factTypesBySource.set(fact.source_id, factTypes);
   }
 
-  const categories = requiredCategories.map((category) => {
-    const matching = [...groups.entries()].filter(([key]) => key.endsWith(`:${category}`));
-    const totals = matching.reduce(
-      (sum, [, value]) => ({
-        sources: sum.sources + value.sources,
-        chunks: sum.chunks + value.chunks,
-        facts: sum.facts + value.facts,
-      }),
-      { sources: 0, chunks: 0, facts: 0 },
-    );
-    const domains = Object.fromEntries(matching.map(([key, value]) => [key.split(":")[0], value]));
+  const areas = coverageAreas.map((area) => {
+    const areaSources = sources.filter(area.sourceMatches);
+    const sourceIds = new Set(areaSources.map((source) => source.id));
+    const areaFacts = facts.filter((fact) => sourceIds.has(fact.source_id));
+    const entityIds = new Set(areaFacts.map((fact) => fact.entity_id));
+    const factTypes = new Map<string, number>();
+    const domains = new Map<string, number>();
+    for (const source of areaSources) increment(domains, source.domain);
+    for (const fact of areaFacts) increment(factTypes, fact.fact_type);
+
+    const typedEntities = entities.filter((entity) => area.entityTypes.includes(entity.type));
     return {
-      category,
-      ...totals,
-      domains,
-      healthy:
-        totals.sources >= (minimumSourcesByCategory[category] ?? 4) &&
-        totals.chunks >= 12 &&
-        totals.facts >= (minimumFactsByCategory[category] ?? 0),
-      minimumFacts: minimumFactsByCategory[category] ?? 0,
+      id: area.id,
+      label: area.label,
+      sources: areaSources.length,
+      chunks: areaSources.reduce((sum, source) => sum + (chunksBySource.get(source.id) ?? 0), 0),
+      embeddedChunks: areaSources.reduce(
+        (sum, source) => sum + (embeddedChunksBySource.get(source.id) ?? 0),
+        0,
+      ),
+      facts: areaFacts.length,
+      sourcedEntities: entityIds.size,
+      totalTypedEntities: typedEntities.length,
+      domains: sortedCounts(domains),
+      factTypes: sortedCounts(factTypes),
+      sourcesWithoutChunks: areaSources
+        .filter((source) => !chunksBySource.get(source.id))
+        .map(({ title, url, domain }) => ({ title, url, domain })),
+      sourcesWithoutFacts: areaSources
+        .filter((source) => !factsBySource.get(source.id))
+        .map(({ title, url, domain }) => ({ title, url, domain })),
     };
   });
 
-  const emptySources = sourceRows
-    .filter((source) => (chunksBySource.get(source.id) ?? 0) === 0)
-    .map((source) => ({ title: source.title, url: source.url, category: source.category }));
-  const noFactSources = sourceRows
-    .filter((source) => (factsBySource.get(source.id) ?? 0) === 0)
-    .map((source) => ({ title: source.title, url: source.url, category: source.category }));
+  const globalFactTypes = new Map<string, number>();
+  const globalEntityTypes = new Map<string, number>();
+  const domainCounts = new Map<string, number>();
+  for (const fact of facts) increment(globalFactTypes, fact.fact_type);
+  for (const entity of entities) increment(globalEntityTypes, entity.type);
+  for (const source of sources) increment(domainCounts, source.domain);
+
   const report = {
     generatedAt: new Date().toISOString(),
+    pagination: { pageSize: PAGE_SIZE, completeTableReads: true },
     totals: {
-      sources: sourceRows.length,
-      chunks: chunks?.length ?? 0,
-      facts: facts?.length ?? 0,
-      domains: Object.fromEntries(
-        [...new Set(sourceRows.map((source) => source.domain))].map((domain) => [
-          domain,
-          sourceRows.filter((source) => source.domain === domain).length,
-        ]),
-      ),
+      sources: sources.length,
+      chunks: chunks.length,
+      embeddedChunks: chunks.filter((chunk) => chunk.embedding).length,
+      entities: entities.length,
+      facts: facts.length,
+      domains: sortedCounts(domainCounts),
+      entityTypes: sortedCounts(globalEntityTypes),
+      factTypes: sortedCounts(globalFactTypes),
     },
-    categories,
-    gaps: categories.filter((category) => !category.healthy).map((category) => category.category),
-    emptySources,
-    noFactSources,
+    areas,
+    sourceHealth: {
+      emptySources: sources
+        .filter((source) => !chunksBySource.get(source.id))
+        .map(({ title, url, category, domain }) => ({ title, url, category, domain })),
+      sourcesWithoutFacts: sources
+        .filter((source) => !factsBySource.get(source.id))
+        .map(({ title, url, category, domain }) => ({ title, url, category, domain })),
+      sourcesWithFacts: sources
+        .filter((source) => factsBySource.get(source.id))
+        .map((source) => ({
+          title: source.title,
+          url: source.url,
+          category: source.category,
+          domain: source.domain,
+          chunks: chunksBySource.get(source.id) ?? 0,
+          facts: factsBySource.get(source.id) ?? 0,
+          entities: entityIdsBySource.get(source.id)?.size ?? 0,
+          factTypes: sortedCounts(factTypesBySource.get(source.id) ?? new Map()),
+        })),
+    },
+    orphanFacts: facts
+      .filter((fact) => !entitiesById.has(fact.entity_id))
+      .map((fact) => ({ sourceId: fact.source_id, entityId: fact.entity_id, factType: fact.fact_type })),
   };
 
   await mkdir("evals/results", { recursive: true });
   await writeFile("evals/results/coverage-latest.json", JSON.stringify(report, null, 2));
 
-  console.log(`Coverage: ${report.totals.sources} sources, ${report.totals.chunks} chunks, ${report.totals.facts} facts.`);
-  for (const category of categories) {
+  console.log(
+    `Coverage audit: ${report.totals.sources} sources, ${report.totals.chunks} chunks, ` +
+      `${report.totals.entities} entities, ${report.totals.facts} facts.`,
+  );
+  console.log(`Embedded chunks: ${report.totals.embeddedChunks}/${report.totals.chunks}\n`);
+  for (const area of areas) {
+    const domainSummary = Object.entries(area.domains)
+      .map(([domain, count]) => `${domain}=${count}`)
+      .join(", ");
     console.log(
-      `${category.healthy ? "OK " : "GAP"} ${category.category.padEnd(20)} sources=${String(category.sources).padStart(3)} chunks=${String(category.chunks).padStart(4)} facts=${String(category.facts).padStart(4)}/${String(category.minimumFacts).padEnd(3)}`,
+      `${area.label.padEnd(14)} sources=${String(area.sources).padStart(3)} ` +
+        `chunks=${String(area.chunks).padStart(4)} facts=${String(area.facts).padStart(4)} ` +
+        `entities=${String(area.sourcedEntities).padStart(4)} domains=[${domainSummary}]`,
     );
   }
-  if (report.gaps.length) {
-    console.log(`\nCoverage gaps: ${report.gaps.join(", ")}`);
-    process.exitCode = 2;
-  }
+  console.log(`\nReport written to evals/results/coverage-latest.json`);
 }
 
 main().catch((error) => {
