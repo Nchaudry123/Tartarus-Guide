@@ -18,12 +18,14 @@
     "ingest:coverage": "tsx src/ingest/coverageReport.ts",
     "ingest:gaps": "tsx src/ingest/analyzeCoverage.ts",
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
+    "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --delay-ms=250",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
     "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts",
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
     "ask": "tsx src/ask.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run typecheck && npm run eval:gate && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
