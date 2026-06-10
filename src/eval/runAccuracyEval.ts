@@ -45,9 +45,44 @@ const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
 const delayMs = Number(args.get("delay-ms") ?? "1000");
 const validateOnly = args.has("validate-only");
+const direct = args.has("direct");
 
 const sleep = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+let directRoutePromise:
+  | Promise<typeof import("../../app/api/chat/route")>
+  | undefined;
+
+async function requestChat(test: EvalCase): Promise<ChatResponse> {
+  const payload = {
+    question: test.question,
+    history: test.history,
+    playerProfile: test.playerProfile,
+    debug: true,
+  } satisfies ChatRequest;
+
+  const response = direct
+    ? await (async () => {
+        directRoutePromise ??= import("../../app/api/chat/route");
+        const route = await directRoutePromise;
+        return route.POST(
+          new Request("http://quality-gate.local/api/chat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(payload),
+          }),
+        );
+      })()
+    : await fetch(apiUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+  if (!response.ok) throw new Error(`API returned ${response.status} ${await response.text()}`);
+  return (await response.json()) as ChatResponse;
+}
 
 function textOf(response: ChatResponse): string {
   return [
@@ -209,18 +244,7 @@ async function main(): Promise<void> {
   const results: EvalResult[] = [];
   for (const [index, test] of selected.entries()) {
     try {
-      const response = await fetch(apiUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          question: test.question,
-          history: test.history,
-          playerProfile: test.playerProfile,
-          debug: true,
-        } satisfies ChatRequest),
-      });
-      if (!response.ok) throw new Error(`API returned ${response.status} ${await response.text()}`);
-      const body = (await response.json()) as ChatResponse;
+      const body = await requestChat(test);
       const checks = evaluate(test, body);
       const passed = checks.filter((check) => check.passed).length;
       const score = passed / checks.length;
@@ -254,7 +278,7 @@ async function main(): Promise<void> {
   );
   const report = {
     generatedAt: new Date().toISOString(),
-    apiUrl,
+    apiUrl: direct ? "direct://app/api/chat" : apiUrl,
     score,
     passed: results.filter((result) => result.score >= 0.8).length,
     total: results.length,

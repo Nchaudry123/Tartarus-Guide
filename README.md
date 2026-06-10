@@ -217,6 +217,7 @@ local or deployed API:
 ```bash
 npm run eval:accuracy -- --url=http://127.0.0.1:3000/api/chat
 npm run eval:accuracy -- --url=https://your-project.vercel.app/api/chat --category=enemy
+npm run eval:accuracy -- --direct --origin=user_transcript
 ```
 
 The evaluator waits four seconds between cases by default so burst traffic does
@@ -224,6 +225,18 @@ not distort results on rate-limited model tiers. Override it with
 `--delay-ms=0` for providers with higher throughput.
 
 Detailed reports are written to `evals/results/` and ignored by Git.
+
+### Deployment quality gate
+
+Vercel runs `npm run vercel-build` through `vercel.json`. The command validates
+the fixtures, runs deterministic regression tests and TypeScript checks, then
+calls the current `app/api/chat` route directly for the transcript-derived
+evaluation slice. The deployment fails when its average accuracy is below 85%.
+
+The direct evaluation uses the same Supabase and model environment variables as
+the deployment. Keep those variables available to Production and Preview
+environments; missing credentials or mock mode should fail the gate instead of
+shipping an unverified chatbot.
 
 Game8 affinity tables are parsed deterministically. Explicit table values take
 precedence over nearby strategy prose so a summoned enemy's weakness is not
