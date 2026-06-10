@@ -27,6 +27,14 @@ function asksForMajorSpoiler(question: string): boolean {
   );
 }
 
+function asksForSpoilerSafeProgressionGuidance(question: string): boolean {
+  return (
+    /\b(no spoilers?|spoiler[- ]free|without spoilers?)\b/i.test(question) &&
+    /\b(point of no return|warn(?:ing|s)?|lockout|locked out|safe to continue|missable)\b/i.test(question) &&
+    !asksForMajorSpoiler(question)
+  );
+}
+
 export function evaluateSpoilerPolicy(input: SpoilerInput): SpoilerDecision {
   const mode = input.preference ?? "strict";
   if (input.intent !== "Story Guidance") {
@@ -42,6 +50,15 @@ export function evaluateSpoilerPolicy(input: SpoilerInput): SpoilerDecision {
       allow: true,
       mode,
       promptInstruction: "The player permits spoilers for this answer. Still reveal only what directly answers the question.",
+    };
+  }
+
+  if (asksForSpoilerSafeProgressionGuidance(input.question)) {
+    return {
+      allow: true,
+      mode,
+      promptInstruction:
+        "Answer only the spoiler-free gameplay consequence or warning behavior. Do not name future bosses, dates, identities, endings, or story events.",
     };
   }
 
