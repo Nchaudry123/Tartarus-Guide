@@ -44,6 +44,11 @@ const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /level|arcana|stats?|inherit/i, types: ["prerequisite", "tip", "unlock_condition"] },
   { pattern: /skill|learn|move/i, types: ["tip", "item_effect", "prerequisite"] },
   { pattern: /social link|s-link|answer|choice/i, types: ["answer_choice", "schedule", "unlock_condition", "tip"] },
+  {
+    pattern:
+      /schedule|calendar|today|date|classroom|school question|quiz|january|february|march|april|may|june|july|august|september|october|november|december|\b\d{1,2}\/\d{1,2}\b/i,
+    types: ["schedule", "answer_choice", "strategy", "unlock_condition"],
+  },
   { pattern: /request|elizabeth|reward/i, types: ["reward", "deadline", "prerequisite", "location", "tip"] },
   { pattern: /floor|tartarus|block/i, types: ["floor_range", "location", "tip"] },
   { pattern: /item|equipment|effect/i, types: ["item_effect", "location", "reward"] },
@@ -164,6 +169,14 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
   const entityRelevance = (fact: FactMatch): number => {
     const entityName = fact.entity.normalized_name || normalizeName(fact.entity.name);
     if (!entityName) return 0;
+    if (analysis.date && entityName.includes(normalizeName(analysis.date))) {
+      const classroomBonus =
+        /\b(classroom|school question|quiz|answer)\b/i.test(query) &&
+        /\b(classroom|school question|quiz)\b/i.test(entityName)
+          ? 25
+          : 0;
+      return 125 + classroomBonus;
+    }
     if (normalizedQuery === entityName) return 120;
     if (normalizedQuery.includes(entityName)) return 100 + entityName.split(" ").length * 5;
     if (analysis.phrases.some((phrase) => phrase === entityName)) return 115;

@@ -109,13 +109,10 @@ export async function buildPlannedContext(plan: RetrievalPlan): Promise<Retrieva
     }),
   );
 
-  const facts = dedupeFacts(results.flatMap((result) => result.facts))
-    .sort(
-      (a, b) =>
-        b.confidence - a.confidence ||
-        a.source.credibility_rank - b.source.credibility_rank,
-    )
-    .slice(0, factLimit);
+  // searchFacts already ranks each result set by query relevance. Preserve that
+  // ordering when combining planned queries instead of replacing it with a
+  // confidence-only sort that can elevate broad guide facts over exact matches.
+  const facts = dedupeFacts(results.flatMap((result) => result.facts)).slice(0, factLimit);
   const chunks = diversifyChunks(results.flatMap((result) => result.chunks), chunkLimit);
 
   const sourceMap = new Map<string, { title: string; url: string; domain: string }>();
