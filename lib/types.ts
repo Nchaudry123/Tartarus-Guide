@@ -53,6 +53,8 @@ export type ChatResponse = {
     retrievalQueries?: string[];
     factCount?: number;
     chunkCount?: number;
+    groundingStatus?: "verified" | "partial" | "insufficient";
+    guardrailNotes?: string[];
   };
 };
 
