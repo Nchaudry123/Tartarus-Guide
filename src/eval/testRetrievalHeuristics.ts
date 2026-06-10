@@ -19,6 +19,20 @@ const socialLink = analyzeRetrievalQuery("What is the best answer for Emperor So
 assert.equal(socialLink.category, "social_link");
 assert(socialLink.phrases.some((phrase) => phrase.includes("emperor social link")));
 
+const classroom = analyzeRetrievalQuery("What is the classroom answer on April 8?");
+assert.equal(classroom.category, "schedule");
+assert.equal(classroom.month, "april");
+assert.equal(classroom.date, "April 8");
+assert.equal(classroom.entityCandidates[0], "april 8 classroom question");
+
+const numericDate = analyzeRetrievalQuery("What should I do on 4/23?");
+assert.equal(numericDate.category, "schedule");
+assert.equal(numericDate.date, "April 23");
+
+const gatekeeper = analyzeRetrievalQuery("How do I beat Bloody Maria and what party should I bring?");
+assert.equal(gatekeeper.category, "boss");
+assert(gatekeeper.entityCandidates.includes("bloody maria"));
+
 assert(isRetrievalBoilerplate("Advertisement. Find in guide. Top guide sections."));
 assert(!isRetrievalBoilerplate("The Priestess uses Ice attacks and has no exploitable weakness."));
 
