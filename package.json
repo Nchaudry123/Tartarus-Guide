@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "ingest": "tsx src/ingest/runIngestion.ts",
+    "ingest:targeted": "tsx src/ingest/runIngestion.ts --target-gaps",
     "ingest:lite": "node scripts/ingest-lite.mjs",
     "ingest:facts": "tsx src/ingest/backfillFacts.ts",
     "ingest:fusion": "tsx src/ingest/importFusionTool.ts",

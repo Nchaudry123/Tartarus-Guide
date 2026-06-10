@@ -169,6 +169,18 @@ Target only categories that need more exact facts:
 npm run ingest:facts -- --categories=enemies,bosses,social_links,personas,classroom --max-fact-chunks=120
 ```
 
+Use the latest gap report to discover and ingest only weak knowledge areas:
+
+```bash
+npm run ingest:coverage
+npm run ingest:gaps
+npm run ingest:targeted -- --dry-run --max-pages=260
+npm run ingest:targeted -- --skip-facts --sync --max-pages=260
+```
+
+Use `--gap-area-limit=3` to work on only the three weakest areas first. The
+targeted mode intentionally excludes overview and unrelated guide categories.
+
 Import the structured Persona 3 Reload compendium and fusion recipes from the
 community fusion calculator:
 
