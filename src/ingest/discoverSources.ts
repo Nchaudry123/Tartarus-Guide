@@ -49,9 +49,12 @@ function selectBalancedSources(
   seeds: SourceInput[],
   discovered: SourceInput[],
   maxPages: number,
+  allowedCategories?: Set<string>,
 ): SourceInput[] {
   const selected = new Map<string, SourceInput>();
-  for (const seed of seeds) selected.set(seed.url, seed);
+  for (const seed of seeds) {
+    if (!allowedCategories || allowedCategories.has(seed.category)) selected.set(seed.url, seed);
+  }
 
   const categories = [
     "enemies",
@@ -71,6 +74,7 @@ function selectBalancedSources(
   const queues = new Map<string, SourceInput[]>();
 
   for (const source of discovered.sort((a, b) => sourceQualityScore(b) - sourceQualityScore(a))) {
+    if (allowedCategories && !allowedCategories.has(source.category)) continue;
     const domain = new URL(source.url).hostname.replace(/^www\./, "");
     const key = `${domain}:${source.category}`;
     const queue = queues.get(key) ?? [];
@@ -99,12 +103,22 @@ function selectBalancedSources(
 
 export async function discoverSources(
   seeds: SourceInput[],
-  options: { maxPages?: number; force?: boolean; maxDiscoveryPages?: number } = {},
+  options: {
+    maxPages?: number;
+    force?: boolean;
+    maxDiscoveryPages?: number;
+    categories?: string[];
+  } = {},
 ): Promise<SourceInput[]> {
-  const maxPages = Math.max(seeds.length, options.maxPages ?? 200);
-  const maxDiscoveryPages = options.maxDiscoveryPages ?? Math.min(seeds.length + 64, 96);
-  const byUrl = new Map(seeds.map((source) => [source.url, source]));
-  const queue = [...seeds];
+  const allowedCategories = options.categories?.length ? new Set(options.categories) : undefined;
+  const eligibleSeeds = allowedCategories
+    ? seeds.filter((source) => allowedCategories.has(source.category))
+    : seeds;
+  const maxPages = Math.max(eligibleSeeds.length, options.maxPages ?? 200);
+  const maxDiscoveryPages =
+    options.maxDiscoveryPages ?? Math.min(eligibleSeeds.length + 64, 96);
+  const byUrl = new Map(eligibleSeeds.map((source) => [source.url, source]));
+  const queue = [...eligibleSeeds];
   const visited = new Set<string>();
 
   while (queue.length && visited.size < maxDiscoveryPages && byUrl.size < maxPages * 4) {
@@ -136,9 +150,15 @@ export async function discoverSources(
     }
   }
 
-  const selected = selectBalancedSources(seeds, [...byUrl.values()], maxPages);
+  const selected = selectBalancedSources(
+    eligibleSeeds,
+    [...byUrl.values()],
+    maxPages,
+    allowedCategories,
+  );
   console.log(
-    `Discovery inspected ${visited.size} pages and selected ${selected.length} balanced IGN/Game8 sources.`,
+    `Discovery inspected ${visited.size} pages and selected ${selected.length} balanced IGN/Game8 sources` +
+      `${allowedCategories ? ` across ${[...allowedCategories].join(", ")}` : ""}.`,
   );
   return selected;
 }

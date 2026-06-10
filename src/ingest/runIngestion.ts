@@ -6,6 +6,7 @@ import { extractContent } from "./extractContent";
 import { chunkExtractedPage } from "./chunkText";
 import { embedAndInsertChunks } from "./embedChunks";
 import { extractAndInsertFacts, isFactCandidate } from "./extractFacts";
+import { loadGapTargetCategories } from "./gapTargets";
 
 const hasFlag = (flag: string): boolean => process.argv.includes(flag);
 const numberArg = (name: string, fallback: number): number => {
@@ -19,15 +20,37 @@ const skipFacts = hasFlag("--skip-facts");
 const noDiscover = hasFlag("--no-discover");
 const dryRun = hasFlag("--dry-run");
 const listSources = hasFlag("--list-sources");
+const targetGaps = hasFlag("--target-gaps");
 const maxPages = numberArg("--max-pages", 200);
 const maxFactChunks = numberArg("--max-fact-chunks", 450);
+const gapAreaLimit = numberArg("--gap-area-limit", Number.POSITIVE_INFINITY);
 const categoriesArg = process.argv.find((arg) => arg.startsWith("--categories="))?.split("=")[1];
 const categories = categoriesArg?.split(",").map((value) => value.trim()).filter(Boolean);
+const gapReportPath = process.argv.find((arg) => arg.startsWith("--gap-report="))?.split("=")[1] ??
+  "evals/results/coverage-gaps-latest.json";
 
 async function main(): Promise<void> {
+  const gapTargets = targetGaps
+    ? await loadGapTargetCategories(
+        gapReportPath,
+        Number.isFinite(gapAreaLimit) ? gapAreaLimit : undefined,
+      )
+    : null;
+  if (gapTargets) {
+    console.log(
+      `Targeting weak areas: ${gapTargets.areas.join(", ")} ` +
+        `(${gapTargets.categories.join(", ")}).`,
+    );
+  }
   const sources = noDiscover
-    ? curatedSources.slice(0, maxPages)
-    : await discoverSources(curatedSources, { maxPages, force });
+    ? curatedSources
+        .filter((source) => !gapTargets || gapTargets.categories.includes(source.category))
+        .slice(0, maxPages)
+    : await discoverSources(curatedSources, {
+        maxPages,
+        force,
+        categories: gapTargets?.categories,
+      });
 
   if (listSources) {
     for (const source of sources) {
@@ -55,7 +78,10 @@ async function main(): Promise<void> {
   );
 
   if (!skipFacts) {
-    const changedFacts = await extractAndInsertFacts(chunks, { maxFactChunks, categories });
+    const changedFacts = await extractAndInsertFacts(chunks, {
+      maxFactChunks,
+      categories: categories ?? gapTargets?.categories,
+    });
     console.log(`Inserted or refreshed ${changedFacts} facts.`);
   }
 }
