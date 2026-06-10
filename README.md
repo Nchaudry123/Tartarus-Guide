@@ -154,7 +154,14 @@ coverage:
 
 ```bash
 npm run ingest:coverage
+npm run ingest:gaps
 ```
+
+The coverage audit reads every Supabase row with pagination and reports the
+seven core knowledge areas: enemies, bosses, Social Links, requests, calendars,
+Tartarus, and Personas. The gap analysis then scores exact-fact coverage,
+source/domain balance, embeddings, and indexed pages that still have no
+structured facts. Reports are written under `evals/results/`.
 
 Target only categories that need more exact facts:
 
