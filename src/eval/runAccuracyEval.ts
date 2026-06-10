@@ -6,6 +6,7 @@ type EvalCase = {
   id: string;
   category: string;
   question: string;
+  origin?: "curated" | "user_transcript";
   history?: ChatRequest["history"];
   playerProfile?: PlayerProfile;
   expectedIntent?: string;
@@ -39,6 +40,7 @@ const args = new Map(
 );
 const apiUrl = args.get("url") ?? process.env.EVAL_API_URL ?? "http://127.0.0.1:3000/api/chat";
 const category = args.get("category");
+const origin = args.get("origin");
 const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
 const delayMs = Number(args.get("delay-ms") ?? "1000");
@@ -154,6 +156,7 @@ function validateFixtures(tests: EvalCase[]): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
   const allowedRoles = new Set(["user", "assistant"]);
+  const transcriptCases = tests.filter((test) => test.origin === "user_transcript");
   for (const [index, test] of tests.entries()) {
     const location = `case ${index + 1}`;
     if (!test.id?.trim()) errors.push(`${location}: missing id`);
@@ -178,6 +181,9 @@ function validateFixtures(tests: EvalCase[]): string[] {
     }
   }
   if (tests.length < 50) errors.push(`suite needs at least 50 cases; found ${tests.length}`);
+  if (transcriptCases.length < 10) {
+    errors.push(`suite needs at least 10 user-transcript cases; found ${transcriptCases.length}`);
+  }
   return errors;
 }
 
@@ -196,6 +202,7 @@ async function main(): Promise<void> {
   }
   const selected = allCases
     .filter((test) => !category || test.category === category)
+    .filter((test) => !origin || test.origin === origin)
     .slice(0, limit);
   if (!selected.length) throw new Error("No evaluation cases matched the selected filters.");
 
