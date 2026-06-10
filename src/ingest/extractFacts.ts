@@ -332,13 +332,17 @@ function subjectFromPageTitle(pageTitle: string): {
   name: string;
   type: ExtractedFact["entity_type"];
 } | null {
+  const isBoss = /\bboss(?:es)?\b/i.test(pageTitle);
   const suffixPatterns = [
+    /\s+-\s+persona 3 reload guide\s+-\s+ign.*$/i,
+    /\s+-\s+persona 3 reload.*$/i,
     /\s+boss guide(?::.*)?$/i,
+    /\s+boss guide\b.*$/i,
     /\s+weakness(?:es)? and how to beat.*$/i,
     /\s+weakness(?:es)? and location.*$/i,
     /\s+weakness(?:es)?(?::.*)?$/i,
   ];
-  let name = pageTitle.trim();
+  let name = pageTitle.trim().replace(/^the\s+/i, "");
   for (const pattern of suffixPatterns) name = name.replace(pattern, "").trim();
   if (
     !name ||
@@ -349,7 +353,7 @@ function subjectFromPageTitle(pageTitle: string): {
   }
   return {
     name,
-    type: /\bboss guide\b/i.test(pageTitle) ? "boss" : "enemy",
+    type: isBoss ? "boss" : "enemy",
   };
 }
 
@@ -462,6 +466,23 @@ function cleanExactValue(value: string): string {
     .trim();
 }
 
+function conciseValue(value: string, maxLength = 520): string {
+  const cleaned = cleanExactValue(value)
+    .replace(/^(?:-|•)\s*/g, "")
+    .replace(/\s*\|\s*/g, "; ");
+  if (cleaned.length <= maxLength) return cleaned;
+  const shortened = cleaned.slice(0, maxLength);
+  const sentenceEnd = Math.max(
+    shortened.lastIndexOf(". "),
+    shortened.lastIndexOf("; "),
+  );
+  return `${shortened.slice(0, sentenceEnd > maxLength * 0.55 ? sentenceEnd + 1 : maxLength).trim()}…`;
+}
+
+function isUsefulExactValue(value: string): boolean {
+  return Boolean(value) && !/^(?:-|none|n\/a|unknown)$/i.test(value.trim());
+}
+
 export function extractDeterministicRequestFacts(chunks: TextChunk[]): ExtractedFact[] {
   const facts = new Map<string, ExtractedFact>();
   const requestPattern =
@@ -501,6 +522,175 @@ export function extractDeterministicRequestFacts(chunks: TextChunk[]): Extracted
           deterministicFact(entityName, "request", "reward", reward, note),
         );
       }
+    }
+
+    const game8ListPattern =
+      /(?:Table data:\s*(?:No\.\s*\|\s*Request\s*\|\s*Unlock Duration\s*\|\|\s*)?)?(\d{1,3})\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\|\s*How to Complete:\s*([\s\S]*?)(?=\s*\|\|\s*\d{1,3}\s*\||\s*\[[^\]]+\]|$)/gi;
+    for (const match of chunk.text.matchAll(game8ListPattern)) {
+      const number = match[1];
+      const title = cleanExactValue(match[2]);
+      const unlock = cleanExactValue(match[3]);
+      const solution = conciseValue(match[4]);
+      if (!title || /^(?:request|unlock duration)$/i.test(title)) continue;
+      const entityName = `Request ${number}: ${title}`;
+      const note = "Extracted directly from the Game8 Elizabeth request list.";
+
+      if (isUsefulExactValue(unlock)) {
+        const factType = /^complete request\b/i.test(unlock) ? "prerequisite" : "schedule";
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", factType, unlock, note),
+        );
+      }
+      if (isUsefulExactValue(solution)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "strategy", solution, note),
+        );
+      }
+    }
+
+    const ignRowPattern =
+      /\|\s*(\d{1,3})\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*Elizabeth Request\s+\1\s*\|/gi;
+    for (const match of chunk.text.matchAll(ignRowPattern)) {
+      const number = match[1];
+      const title = cleanExactValue(match[2]);
+      const deadline = cleanExactValue(match[3]);
+      const solution = conciseValue(match[4]);
+      const reward = cleanExactValue(match[5]);
+      if (!title || /^request$/i.test(title)) continue;
+      const entityName = `Request ${number}: ${title}`;
+      const note = "Extracted directly from the IGN Elizabeth request table.";
+
+      if (isUsefulExactValue(deadline)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "deadline", deadline, note),
+        );
+      }
+      if (isUsefulExactValue(solution)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "strategy", solution, note),
+        );
+      }
+      if (isUsefulExactValue(reward)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "reward", reward, note),
+        );
+      }
+    }
+  }
+
+  return [...facts.values()];
+}
+
+const calendarMonthPattern =
+  "January|February|March|April|May|June|July|August|September|October|November|December";
+
+function addCalendarEntry(
+  facts: Map<string, ExtractedFact>,
+  date: string,
+  actions: string,
+  note: string,
+): void {
+  const entityName = cleanExactValue(date);
+  const cleanedActions = conciseValue(actions);
+  if (!entityName) return;
+  addDeterministicFact(
+    facts,
+    deterministicFact(entityName, "activity", "schedule", entityName, note),
+  );
+  if (isUsefulExactValue(cleanedActions)) {
+    addDeterministicFact(
+      facts,
+      deterministicFact(entityName, "activity", "strategy", cleanedActions, note),
+    );
+  }
+
+  const answer =
+    cleanedActions.match(/\b(?:answer|a)\s*:\s*([^;|.]+(?:\.)?)/i)?.[1] ??
+    cleanedActions.match(/\bchoose\s+[“"]?([^”";.]+)[”"]?/i)?.[1];
+  if (answer) {
+    addDeterministicFact(
+      facts,
+      deterministicFact(
+        `${entityName} Classroom Question`,
+        "activity",
+        "answer_choice",
+        cleanExactValue(answer),
+        note,
+      ),
+    );
+  }
+}
+
+export function extractDeterministicCalendarFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const category = chunks[0]?.source.category ?? "";
+  if (!["walkthrough", "classroom"].includes(category)) return [];
+
+  const facts = new Map<string, ExtractedFact>();
+  const note = "Extracted directly from the dated walkthrough or classroom answer table.";
+  const date = `(?:${calendarMonthPattern})\\s+\\d{1,2}(?:st|nd|rd|th)?`;
+
+  for (const chunk of chunks) {
+    const text = chunk.text;
+
+    const datedQuestionPattern = new RegExp(
+      `(?:Table data:\\s*Date:\\s*|\\|\\|\\s*)(${date})\\s*\\|\\s*(?:Question:\\s*)?(?:Q:\\s*)?([\\s\\S]*?)(?:\\s+A(?:nswer)?\\s*:\\s*)([^|]+?)(?=\\s*\\|\\||\\s*\\[[^\\]]+\\]|$)`,
+      "gi",
+    );
+    for (const match of text.matchAll(datedQuestionPattern)) {
+      const entityName = `${cleanExactValue(match[1])} Classroom Question`;
+      const question = conciseValue(match[2], 280);
+      const answer = cleanExactValue(match[3]);
+      addDeterministicFact(
+        facts,
+        deterministicFact(entityName, "activity", "schedule", cleanExactValue(match[1]), note),
+      );
+      if (isUsefulExactValue(answer)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(
+            entityName,
+            "activity",
+            "answer_choice",
+            question ? `${answer} — ${question}` : answer,
+            note,
+          ),
+        );
+      }
+    }
+
+    const recommendedActionsPattern = new RegExp(
+      `(?:Table data:\\s*Date\\s*\\|\\s*Recommended Actions\\s*\\|\\|\\s*|\\|\\|\\s*)?(${date})\\s*\\|\\s*([\\s\\S]*?)(?=\\s*\\|\\|\\s*${date}\\s*\\||\\s*\\[[^\\]]+\\]|$)`,
+      "gi",
+    );
+    for (const match of text.matchAll(recommendedActionsPattern)) {
+      addCalendarEntry(facts, match[1], match[2], note);
+    }
+
+    const headingPattern = new RegExp(
+      `\\[(${date})\\]\\s*([\\s\\S]*?)(?=\\s*\\[(?:${date})\\]|$)`,
+      "gi",
+    );
+    for (const match of text.matchAll(headingPattern)) {
+      const dateValue = cleanExactValue(match[1]);
+      const section = match[2];
+      const activityPattern =
+        /\b(After School|Evening|Daytime|Morning)\s*\|\s*([\s\S]*?)(?=\s*\|\|\s*(?:After School|Evening|Daytime|Morning)\s*\||$)/gi;
+      let foundActivity = false;
+      for (const activity of section.matchAll(activityPattern)) {
+        foundActivity = true;
+        addCalendarEntry(
+          facts,
+          dateValue,
+          `${cleanExactValue(activity[1])}: ${conciseValue(activity[2], 360)}`,
+          note,
+        );
+      }
+      if (!foundActivity) addCalendarEntry(facts, dateValue, section, note);
     }
   }
 
@@ -613,7 +803,9 @@ export function extractDeterministicSocialLinkFacts(chunks: TextChunk[]): Extrac
 
 export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFact[] {
   const facts = new Map<string, ExtractedFact>();
-  const note = "Extracted directly from the Game8 boss overview table.";
+  const tableNote = "Extracted directly from the Game8 boss overview table.";
+  const proseNote = "Extracted directly from the boss guide's stated mechanics.";
+  const pageSubject = subjectFromPageTitle(chunks[0]?.pageTitle ?? "");
 
   for (const chunk of chunks) {
     for (const overview of chunk.text.matchAll(
@@ -633,7 +825,7 @@ export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFac
       if (date) {
         addDeterministicFact(
           facts,
-          deterministicFact(entityName, "boss", "schedule", cleanExactValue(date), note),
+          deterministicFact(entityName, "boss", "schedule", cleanExactValue(date), tableNote),
         );
       }
       if (requirement) {
@@ -644,14 +836,14 @@ export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFac
             "boss",
             "prerequisite",
             cleanExactValue(requirement),
-            note,
+            tableNote,
           ),
         );
       }
       if (location) {
         addDeterministicFact(
           facts,
-          deterministicFact(entityName, "boss", "location", cleanExactValue(location), note),
+          deterministicFact(entityName, "boss", "location", cleanExactValue(location), tableNote),
         );
       }
       if (level) {
@@ -662,9 +854,81 @@ export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFac
             "boss",
             "prerequisite",
             `Recommended level: ${cleanExactValue(level)}`,
-            note,
+            tableNote,
           ),
         );
+      }
+    }
+
+    const sectionSubject =
+      chunk.sectionTitle.match(/^(.+?)\s+(?:Weaknesses and Resistances|Boss Guide)$/i)?.[1] ??
+      pageSubject?.name;
+    const prose = chunk.text.replace(/\[[^\]]+\]/g, " ");
+    const relationSentencePattern =
+      /\b((?:The\s+)?[A-Z][A-Za-z0-9'’ -]{1,70}?)\s+((?:is|are|has|have|will)\s+(?:weak to|resistant to|resists|nulls|nullifies|absorbs|drains|reflects|repels|blocks)\s+[^.!?]+)/gi;
+    const predicatePattern =
+      /(?:(?:is|are|has|have|will)\s+)?(weak to|resistant to|resists|nulls|nullifies|absorbs|drains|reflects|repels|blocks)\s+([\s\S]*?)(?=\s+and\s+(?:(?:is|are|has|have|will)\s+)?(?:weak to|resistant to|resists|nulls|nullifies|absorbs|drains|reflects|repels|blocks)\b|$)/gi;
+    for (const relationSentence of prose.matchAll(relationSentencePattern)) {
+      const entityName = cleanExactValue(relationSentence[1]).replace(/^the\s+/i, "");
+      if (!entityName || /\b(?:strategy|party|player|protagonist|attack)\b/i.test(entityName)) continue;
+      for (const predicate of relationSentence[2].matchAll(predicatePattern)) {
+        const relationName = predicate[1].toLowerCase();
+        const factType: ExtractedFact["fact_type"] =
+          relationName === "weak to"
+            ? "weakness"
+            : /resist/.test(relationName)
+              ? "resistance"
+              : /null|block/.test(relationName)
+                ? "nullifies"
+                : /drain|absorb/.test(relationName)
+                  ? "drains"
+                  : "repels";
+        for (const value of affinityValues(predicate[2])) {
+          addDeterministicFact(
+            facts,
+            deterministicFact(entityName, "boss", factType, value, proseNote),
+          );
+        }
+      }
+    }
+
+    if (pageSubject) {
+      const foundFloor = prose.match(/\bfound\s+(?:on|at)\s+(?:Tartarus\s+)?Floor\s+(\d{1,3})\b/i)?.[1];
+      if (foundFloor) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(pageSubject.name, "boss", "floor_range", `Floor ${foundFloor}`, proseNote),
+        );
+      }
+
+      const party =
+        prose.match(/\b(?:best bet is to bring|party I brought was|bring)\s+([A-Z][^.!?]{3,100})/i)?.[1] ??
+        chunk.text.match(
+          /Table data:\s*Character:\s*([^|]+?)(?:\s*\|[^|]*)?\s*\|\|\s*([A-Z][^|]+?)(?:\s*\|[^|]*)?\s*\|\|\s*([A-Z][^|]+?)(?=\s*\||$)/i,
+        )?.slice(1).join(", ");
+      if (party) {
+        const members = affinityValues(party).length
+          ? ""
+          : cleanExactValue(party)
+              .replace(/\b(?:for|because|since|as)\b[\s\S]*$/i, "")
+              .replace(/\s+(?:and|&)\s+/g, ", ")
+              .replace(/\s*,\s*/g, ", ");
+        if (members && members.length <= 120) {
+          addDeterministicFact(
+            facts,
+            deterministicFact(pageSubject.name, "boss", "recommended_party", members, proseNote),
+          );
+        }
+      }
+
+      if (sectionSubject && /\bboss guide\b/i.test(chunk.sectionTitle)) {
+        const strategy = conciseValue(prose, 520);
+        if (strategy.length >= 60) {
+          addDeterministicFact(
+            facts,
+            deterministicFact(sectionSubject, "boss", "strategy", strategy, proseNote),
+          );
+        }
       }
     }
   }
@@ -723,6 +987,7 @@ export function extractDeterministicFacts(chunks: TextChunk[]): ExtractedFact[] 
     ...extractDeterministicAffinityFacts(chunks),
     ...extractDeterministicPersonaFacts(chunks),
     ...extractDeterministicRequestFacts(chunks),
+    ...extractDeterministicCalendarFacts(chunks),
     ...extractDeterministicSocialLinkFacts(chunks),
     ...extractDeterministicBossFacts(chunks),
     ...extractDeterministicLocationFacts(chunks),
