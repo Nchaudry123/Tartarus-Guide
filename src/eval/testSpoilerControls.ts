@@ -24,6 +24,15 @@ assert.equal(
   true,
 );
 
+const spoilerFreeProgression = evaluateSpoilerPolicy({
+  question: "No spoilers: does the game warn me before the point of no return?",
+  intent: "Story Guidance",
+  preference: "strict",
+});
+assert.equal(spoilerFreeProgression.allow, true);
+assert.match(spoilerFreeProgression.promptInstruction, /spoiler-free gameplay consequence/i);
+assert.match(spoilerFreeProgression.promptInstruction, /do not name future bosses/i);
+
 const progressUnknown = evaluateSpoilerPolicy({
   question: "What happens next?",
   intent: "Story Guidance",
