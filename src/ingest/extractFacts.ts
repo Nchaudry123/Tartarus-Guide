@@ -428,10 +428,304 @@ export function extractDeterministicPersonaFacts(chunks: TextChunk[]): Extracted
   return [...facts.values()];
 }
 
-function extractDeterministicFacts(chunks: TextChunk[]): ExtractedFact[] {
+function deterministicFact(
+  entityName: string,
+  entityType: ExtractedFact["entity_type"],
+  factType: ExtractedFact["fact_type"],
+  value: string,
+  notes: string,
+): ExtractedFact {
+  return {
+    entity_name: entityName.trim(),
+    entity_type: entityType,
+    aliases: [],
+    fact_type: factType,
+    value: value.trim(),
+    confidence: 0.99,
+    notes,
+  };
+}
+
+function addDeterministicFact(
+  facts: Map<string, ExtractedFact>,
+  fact: ExtractedFact,
+): void {
+  if (!fact.entity_name || !fact.value) return;
+  const key = `${normalizeName(fact.entity_name)}:${fact.fact_type}:${normalizeName(fact.value)}`;
+  facts.set(key, fact);
+}
+
+function cleanExactValue(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/\s+\[(?:[^\]]+)\].*$/s, "")
+    .trim();
+}
+
+export function extractDeterministicRequestFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const facts = new Map<string, ExtractedFact>();
+  const requestPattern =
+    /Table data:\s*(Request\s+\d+\s*:\s*[^|]+?)\s*\|\|\s*Objective\s*\|\s*([^|]+?)\s*\|\|\s*Start Date\s*\|\s*([^|]+?)\s*\|\|\s*End Date\s*\|\s*([^|]+?)\s*\|\|\s*Reward\s*\|\s*([^\[]+?)(?=\s*\[[^\]]+\]|$)/gi;
+
+  for (const chunk of chunks) {
+    for (const match of chunk.text.matchAll(requestPattern)) {
+      const entityName = cleanExactValue(match[1]);
+      const objective = cleanExactValue(match[2]);
+      const start = cleanExactValue(match[3]);
+      const end = cleanExactValue(match[4]);
+      const reward = cleanExactValue(match[5]);
+      const note = "Extracted directly from the Game8 request overview table.";
+
+      if (objective) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "strategy", objective, note),
+        );
+      }
+      if (start && !/^(?:-|none|n\/a)$/i.test(start)) {
+        const factType = /^complete\b/i.test(start) ? "prerequisite" : "schedule";
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", factType, start, note),
+        );
+      }
+      if (end && !/^(?:-|none|n\/a)$/i.test(end)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "deadline", end, note),
+        );
+      }
+      if (reward && !/^(?:-|none|n\/a)$/i.test(reward)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "request", "reward", reward, note),
+        );
+      }
+    }
+  }
+
+  return [...facts.values()];
+}
+
+function socialLinkSubject(pageTitle: string): string | null {
+  const match = pageTitle.match(/^(.+?)\s+-\s+[^-]+$/);
+  return match?.[1]?.trim() || null;
+}
+
+export function extractDeterministicSocialLinkFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const facts = new Map<string, ExtractedFact>();
+  const pageSubject = socialLinkSubject(chunks[0]?.pageTitle ?? "");
+  const note = "Extracted directly from the Social Link guide schedule or answer section.";
+
+  for (const chunk of chunks) {
+    const text = chunk.text;
+    const tablePattern =
+      /Table data:\s*([^|[\]]+?)\s*\(([^)]+)\)\s*\|\|\s*Start Date:\s*([^|]+?)\s*\|\|\s*Pre-Requisites:\s*([^|]+?)\s*\|\|\s*Days Available:\s*([^|]+?)\s*\|\|\s*Location:\s*([^\[]+?)(?=\s*\[[^\]]+\]|$)/gi;
+    for (const match of text.matchAll(tablePattern)) {
+      const entityName = cleanExactValue(match[1]);
+      const start = cleanExactValue(match[3]);
+      const prerequisites = cleanExactValue(match[4]);
+      const days = cleanExactValue(match[5]);
+      const location = cleanExactValue(match[6]);
+      if (start && !/^(?:-|none|n\/a)$/i.test(start)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "social_link", "unlock_condition", `Starts ${start}`, note),
+        );
+      }
+      if (prerequisites && !/^(?:-|none|n\/a)$/i.test(prerequisites)) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "social_link", "prerequisite", prerequisites, note),
+        );
+      }
+      if (days) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "social_link", "schedule", days, note),
+        );
+      }
+      if (location) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "social_link", "location", location, note),
+        );
+      }
+    }
+
+    if (pageSubject) {
+      const unlock = text.match(
+        /\b(?:automatically unlocks|can begin(?: starting)?|can begin on|isn't available until)\s+(?:on\s+)?([^,.]+(?:\s+or later)?)/i,
+      )?.[1];
+      if (unlock) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(
+            pageSubject,
+            "social_link",
+            "unlock_condition",
+            cleanExactValue(unlock),
+            note,
+          ),
+        );
+      }
+      const availability = text.match(
+        /\b(?:is|he's|she's)\s+available\s+on\s+([^.]*)/i,
+      )?.[1];
+      if (availability) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(
+            pageSubject,
+            "social_link",
+            "schedule",
+            cleanExactValue(availability),
+            note,
+          ),
+        );
+      }
+
+      for (const section of text.matchAll(
+        /\[(Rank\s+\d+\s*->\s*Rank\s+\d+)\]\s*([\s\S]*?)(?=\s*\[[^\]]+\]|$)/gi,
+      )) {
+        const choices = [...section[2].matchAll(/[“"]([^”"]+)[”"]\s*\(#(\d)\)/g)].map(
+          (choice) => ({ text: cleanExactValue(choice[1]), points: Number(choice[2]) }),
+        );
+        const maxPoints = Math.max(0, ...choices.map((choice) => choice.points));
+        for (const choice of choices.filter((candidate) => candidate.points === maxPoints)) {
+          addDeterministicFact(
+            facts,
+            deterministicFact(
+              pageSubject,
+              "social_link",
+              "answer_choice",
+              `${cleanExactValue(section[1])}: "${choice.text}" (+${choice.points})`,
+              note,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  return [...facts.values()];
+}
+
+export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const facts = new Map<string, ExtractedFact>();
+  const note = "Extracted directly from the Game8 boss overview table.";
+
+  for (const chunk of chunks) {
+    for (const overview of chunk.text.matchAll(
+      /Table data:\s*Boss:\s*([^|]+?)(?:\s+Arcana:\s*[^|]+)?\s*\|\|\s*Date ＆ Location:\s*([\s\S]*?)(?=\s*\[[^\]]+\]|$)/gi,
+    )) {
+      const entityName = cleanExactValue(overview[1]);
+      const details = overview[2];
+      const date = details.match(/\bDate:\s*([^|]+?)(?=\s+Location:|\s+Recommended Level:|$)/i)?.[1];
+      const requirement = details.match(
+        /\bRequirement:\s*([^|]+?)(?=\s+Location:|\s+Recommended Level:|$)/i,
+      )?.[1];
+      const location = details.match(
+        /\bLocation:\s*([^|]+?)(?=\s+Recommended Level:|\s+Stats:|$)/i,
+      )?.[1];
+      const level = details.match(/\bRecommended Level:\s*([^|]+?)(?=\s+Stats:|$)/i)?.[1];
+
+      if (date) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "boss", "schedule", cleanExactValue(date), note),
+        );
+      }
+      if (requirement) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(
+            entityName,
+            "boss",
+            "prerequisite",
+            cleanExactValue(requirement),
+            note,
+          ),
+        );
+      }
+      if (location) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(entityName, "boss", "location", cleanExactValue(location), note),
+        );
+      }
+      if (level) {
+        addDeterministicFact(
+          facts,
+          deterministicFact(
+            entityName,
+            "boss",
+            "prerequisite",
+            `Recommended level: ${cleanExactValue(level)}`,
+            note,
+          ),
+        );
+      }
+    }
+  }
+
+  return [...facts.values()];
+}
+
+export function extractDeterministicLocationFacts(chunks: TextChunk[]): ExtractedFact[] {
+  const facts = new Map<string, ExtractedFact>();
+  const note = "Extracted directly from a Tartarus floor or location table.";
+  const pageTitle = chunks[0]?.pageTitle ?? "";
+  const block = pageTitle.match(/^(.+?)\s+\(Floors?\s+(\d+)\s*[-–]\s*(\d+)\)\s+Tartarus/i);
+  if (block) {
+    const entityName = `${cleanExactValue(block[1])} Block`;
+    addDeterministicFact(
+      facts,
+      deterministicFact(entityName, "tartarus_floor", "floor_range", `${block[2]}F-${block[3]}F`, note),
+    );
+  }
+
+  for (const chunk of chunks) {
+    for (const location of chunk.text.matchAll(
+      /\[([^\]]+?) Location\]\s*Table data:\s*Block:\s*([^|]+?)\s*\|\s*Floors?:\s*([0-9]+F?\s*(?:-|to|–)\s*[0-9]+F?)/gi,
+    )) {
+      const entityName = cleanExactValue(location[1]);
+      addDeterministicFact(
+        facts,
+        deterministicFact(entityName, "enemy", "location", cleanExactValue(location[2]), note),
+      );
+      addDeterministicFact(
+        facts,
+        deterministicFact(entityName, "enemy", "floor_range", cleanExactValue(location[3]), note),
+      );
+    }
+    for (const location of chunk.text.matchAll(
+      /Table data:\s*Boss Overview:\s*Floor:\s*([0-9]+F?\s*(?:-|to|–)\s*[0-9]+F?)\s+Tartarus Block:\s*([^|]+?)(?=\s+Recommended Level:|\s+Boss Type:|$)/gi,
+    )) {
+      const subject = subjectFromPageTitle(pageTitle);
+      if (!subject) continue;
+      addDeterministicFact(
+        facts,
+        deterministicFact(subject.name, "boss", "floor_range", cleanExactValue(location[1]), note),
+      );
+      addDeterministicFact(
+        facts,
+        deterministicFact(subject.name, "boss", "location", cleanExactValue(location[2]), note),
+      );
+    }
+  }
+
+  return [...facts.values()];
+}
+
+export function extractDeterministicFacts(chunks: TextChunk[]): ExtractedFact[] {
   return [
     ...extractDeterministicAffinityFacts(chunks),
     ...extractDeterministicPersonaFacts(chunks),
+    ...extractDeterministicRequestFacts(chunks),
+    ...extractDeterministicSocialLinkFacts(chunks),
+    ...extractDeterministicBossFacts(chunks),
+    ...extractDeterministicLocationFacts(chunks),
   ];
 }
 
@@ -577,19 +871,25 @@ function batchCandidates(chunks: TextChunk[], maxFactChunks: number): TextChunk[
 
 export async function extractAndInsertFacts(
   chunks: TextChunk[],
-  options: { maxFactChunks?: number; categories?: string[] } = {},
+  options: {
+    maxFactChunks?: number;
+    categories?: string[];
+    deterministicOnly?: boolean;
+  } = {},
 ): Promise<number> {
   const maxFactChunks = options.maxFactChunks ?? Number.POSITIVE_INFINITY;
   const eligibleChunks = options.categories?.length
     ? chunks.filter((chunk) => options.categories?.includes(chunk.source.category))
     : chunks;
-  const batches = batchCandidates(eligibleChunks, maxFactChunks);
+  const batches = options.deterministicOnly
+    ? []
+    : batchCandidates(eligibleChunks, maxFactChunks);
   let changed = 0;
   let completed = 0;
   const sourceByUrl = new Map<string, SourceRecord>();
 
   const chunksBySource = new Map<string, TextChunk[]>();
-  for (const chunk of chunks) {
+  for (const chunk of eligibleChunks) {
     const sourceChunks = chunksBySource.get(chunk.source.url) ?? [];
     sourceChunks.push(chunk);
     chunksBySource.set(chunk.source.url, sourceChunks);
@@ -606,8 +906,13 @@ export async function extractAndInsertFacts(
     }
   }
 
+  if (options.deterministicOnly) {
+    console.log(`Loaded ${changed} deterministic facts; skipped model extraction.`);
+    return changed;
+  }
+
   console.log(
-    `Loaded ${changed} direct affinity facts; extracting broader facts from ${Math.min(eligibleChunks.filter(isFactCandidate).length, maxFactChunks)} focused chunks in ${batches.length} batched model calls.`,
+    `Loaded ${changed} deterministic facts; extracting broader facts from ${Math.min(eligibleChunks.filter(isFactCandidate).length, maxFactChunks)} focused chunks in ${batches.length} batched model calls.`,
   );
 
   for (const batch of batches) {

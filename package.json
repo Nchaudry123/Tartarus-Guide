@@ -11,6 +11,8 @@
     "ingest:targeted": "tsx src/ingest/runIngestion.ts --target-gaps",
     "ingest:lite": "node scripts/ingest-lite.mjs",
     "ingest:facts": "tsx src/ingest/backfillFacts.ts",
+    "ingest:facts:deterministic": "tsx src/ingest/backfillFacts.ts --deterministic-only",
+    "test:facts": "tsx --test src/ingest/extractFacts.test.ts",
     "ingest:fusion": "tsx src/ingest/importFusionTool.ts",
     "ingest:audit": "tsx src/ingest/auditIndex.ts",
     "ingest:coverage": "tsx src/ingest/coverageReport.ts",
