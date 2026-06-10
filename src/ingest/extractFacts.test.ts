@@ -3,6 +3,7 @@ import test from "node:test";
 import type { SourceInput, TextChunk } from "../types/schema";
 import {
   extractDeterministicBossFacts,
+  extractDeterministicCalendarFacts,
   extractDeterministicLocationFacts,
   extractDeterministicRequestFacts,
   extractDeterministicSocialLinkFacts,
@@ -79,6 +80,116 @@ test("extracts exact boss overview fields", () => {
   assert(
     facts.some(
       (fact) => fact.fact_type === "prerequisite" && fact.value === "Recommended level: 10+",
+    ),
+  );
+});
+
+test("extracts broad Game8 request list facts", () => {
+  const facts = extractDeterministicRequestFacts(
+    chunks(
+      "List of All Elizabeth's Requests",
+      "requests",
+      "Table data: No. | Request | Unlock Duration || 1 | Bring me a Muscle Drink | 5/10 || How to Complete: - Explore Tartarus and open chests. - Purchase it from the pharmacy. || 6 | Create a Persona with Kouha | Complete Request 5 || How to Complete: Fuse a Persona that knows Kouha.",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Request 1: Bring me a Muscle Drink" &&
+        fact.fact_type === "schedule" &&
+        fact.value === "5/10",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Request 6: Create a Persona with Kouha" &&
+        fact.fact_type === "prerequisite" &&
+        fact.value === "Complete Request 5",
+    ),
+  );
+  assert(facts.some((fact) => fact.fact_type === "strategy" && fact.value?.includes("Fuse")));
+});
+
+test("extracts IGN request deadline, solution, and reward rows", () => {
+  const facts = extractDeterministicRequestFacts(
+    chunks(
+      "Elizabeth Requests Guide",
+      "requests",
+      "| 12 | Bring me pine resin | 6/6 | Accept the request and speak to Yukari in the dorm. | x1 Toy Bow | Elizabeth Request 12 |",
+    ),
+  );
+  assert(facts.some((fact) => fact.fact_type === "deadline" && fact.value === "6/6"));
+  assert(facts.some((fact) => fact.fact_type === "reward" && fact.value === "x1 Toy Bow"));
+  assert(
+    facts.some(
+      (fact) => fact.fact_type === "strategy" && fact.value?.includes("speak to Yukari"),
+    ),
+  );
+});
+
+test("extracts dated calendar actions and classroom answers", () => {
+  const facts = extractDeterministicCalendarFacts(
+    chunks(
+      "April Walkthrough",
+      "walkthrough",
+      "[April 23] Table data: Classroom Answer? | None || After School | Free time recommendation: Head to Gym. || Evening | Go to Tartarus and reach floor 11. [April 24] Table data: Date: April 24 | Question: Q: What phrase is used? A: Vivid Carp Streamers",
+    ),
+  );
+  assert(facts.some((fact) => fact.fact_type === "schedule" && fact.value === "April 23"));
+  assert(
+    facts.some(
+      (fact) => fact.fact_type === "strategy" && fact.value?.includes("Head to Gym"),
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "April 24 Classroom Question" &&
+        fact.fact_type === "answer_choice" &&
+        fact.value?.includes("Vivid Carp Streamers"),
+    ),
+  );
+});
+
+test("extracts IGN boss affinities, floor, party, and strategy", () => {
+  const facts = extractDeterministicBossFacts(
+    chunks(
+      "Bloody Maria Boss Guide - Persona 3 Reload Guide - IGN",
+      "bosses",
+      "[Bloody Maria Weaknesses and Resistances] The Bloody Maria is weak to pierce attacks and nulls fire, ice, electric, wind, light and dark. The Executioner's Crown is weak to fire and resists wind and electric. [Bloody Maria Boss Guide] The Bloody Maria is found on Floor 105 and is flanked by an Executioner's Crown. Your best bet is to bring Yukari, Junpei and Aigis. Focus the crown first, then use Pierce attacks.",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Bloody Maria" &&
+        fact.fact_type === "weakness" &&
+        fact.value === "Pierce",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Bloody Maria" &&
+        fact.fact_type === "nullifies" &&
+        fact.value === "Fire",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Bloody Maria" &&
+        fact.fact_type === "floor_range" &&
+        fact.value === "Floor 105",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Bloody Maria" &&
+        fact.fact_type === "recommended_party" &&
+        fact.value?.includes("Yukari"),
     ),
   );
 });
