@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import type { ChatRequest, ChatResponse, PlayerProfile } from "../../../lib/types";
+import {
+  assessGrounding,
+  exactDetailPrompt,
+  requiresExactGameEvidence,
+} from "../../../src/quality/grounding";
 
 export const runtime = "nodejs";
 
@@ -1189,6 +1194,76 @@ function relevantResponseSources(
   return context.sources.slice(0, 4);
 }
 
+function applyGroundingGuardrails(
+  question: string,
+  intent: CompanionIntent,
+  response: ChatResponse,
+  context: {
+    facts: Array<{
+      confidence: number;
+      entity: { name: string };
+      source: { url: string };
+    }>;
+    chunks: Array<{
+      source_url: string;
+      section_title: string | null;
+      chunk_text: string;
+      similarity?: number;
+    }>;
+  },
+): ChatResponse {
+  const requiresExactEvidence = requiresExactGameEvidence(question, intent);
+  const subject = likelyExactSubject(question);
+  const matchingFacts = context.facts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
+  const matchingChunks = subject
+    ? context.chunks.filter((chunk) =>
+        `${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(subject.toLowerCase()),
+      )
+    : [];
+  const matchingUrls = new Set([
+    ...matchingFacts.map((fact) => fact.source.url),
+    ...matchingChunks.map((chunk) => chunk.source_url),
+  ]);
+  const assessment = assessGrounding({
+    requiresExactEvidence,
+    matchingFactConfidences: matchingFacts.map((fact) => fact.confidence),
+    matchingChunkSimilarities: matchingChunks.map((chunk) => chunk.similarity ?? 0.58),
+  });
+
+  const diagnostics = {
+    ...response.diagnostics,
+    groundingStatus: assessment.status,
+    guardrailNotes: assessment.notes,
+  };
+
+  if (requiresExactEvidence && assessment.status === "insufficient") {
+    const prompt = exactDetailPrompt(intent);
+    return {
+      ...response,
+      answer: `I can’t confirm that exact detail yet, so I won’t guess. ${prompt}`,
+      sections: [],
+      tables: [],
+      sources: [],
+      confidence: assessment.confidenceCeiling,
+      missingInfo: prompt,
+      companion: {
+        ...response.companion,
+        followUpQuestions: [prompt],
+      },
+      diagnostics,
+    };
+  }
+
+  return {
+    ...response,
+    sources: requiresExactEvidence
+      ? response.sources.filter((source) => matchingUrls.has(source.url)).slice(0, 4)
+      : response.sources.slice(0, 4),
+    confidence: Math.min(response.confidence ?? assessment.confidenceCeiling, assessment.confidenceCeiling),
+    diagnostics,
+  };
+}
+
 function formatAssistantContext(context: {
   queries: string[];
   facts: Array<{
@@ -1791,9 +1866,18 @@ Your previous draft contained an affinity element that is not present in the str
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
-    const response = withMode(normalized, "rag");
+    const response = withMode(
+      applyGroundingGuardrails(
+        conversation.analysisQuestion,
+        controller.intent,
+        normalized,
+        context,
+      ),
+      "rag",
+    );
     if (debug) {
       response.diagnostics = {
+        ...response.diagnostics,
         retrievalQueries: context.queries,
         factCount: context.facts.length,
         chunkCount: context.chunks.length,

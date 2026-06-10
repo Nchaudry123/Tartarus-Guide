@@ -1,0 +1,74 @@
+export type GroundingStatus = "verified" | "partial" | "insufficient";
+
+export type GroundingAssessment = {
+  status: GroundingStatus;
+  confidenceCeiling: number;
+  notes: string[];
+};
+
+type GroundingInput = {
+  requiresExactEvidence: boolean;
+  matchingFactConfidences: number[];
+  matchingChunkSimilarities: number[];
+};
+
+export function requiresExactGameEvidence(question: string, intent: string): boolean {
+  if (intent === "Enemy Weakness") return true;
+
+  const exactMechanic =
+    /\b(weak(?:ness| to)?|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate)\b/i;
+  return exactMechanic.test(question);
+}
+
+export function assessGrounding(input: GroundingInput): GroundingAssessment {
+  if (!input.requiresExactEvidence) {
+    return {
+      status: "partial",
+      confidenceCeiling: 0.72,
+      notes: ["The request allows principle-based coaching."],
+    };
+  }
+
+  if (input.matchingFactConfidences.length) {
+    const strongestFact = Math.max(...input.matchingFactConfidences);
+    return {
+      status: "verified",
+      confidenceCeiling: Math.max(0.55, Math.min(0.95, strongestFact)),
+      notes: ["A subject-matched structured fact supports the exact claim."],
+    };
+  }
+
+  if (input.matchingChunkSimilarities.length) {
+    const strongestChunk = Math.max(...input.matchingChunkSimilarities);
+    return {
+      status: "partial",
+      confidenceCeiling: Math.max(0.45, Math.min(0.68, strongestChunk || 0.58)),
+      notes: ["A subject-matched guide excerpt supports a cautious answer."],
+    };
+  }
+
+  return {
+    status: "insufficient",
+    confidenceCeiling: 0.35,
+    notes: ["No subject-matched fact or guide excerpt supports an exact claim."],
+  };
+}
+
+export function exactDetailPrompt(intent: string): string {
+  if (intent === "Enemy Weakness") {
+    return "Tell me the exact Shadow name and its Tartarus block or floor.";
+  }
+  if (intent === "Fusion Advice") {
+    return "Tell me the exact Persona name or the ingredients you are trying to fuse.";
+  }
+  if (intent === "Boss Help") {
+    return "Tell me the exact boss or Full Moon operation and your current level.";
+  }
+  if (intent === "Social Links") {
+    return "Tell me the Social Link name, rank, and in-game date.";
+  }
+  if (intent === "Quest Help") {
+    return "Tell me the request number or exact request name.";
+  }
+  return "Give me the exact enemy, Persona, floor, date, item, or mechanic you want confirmed.";
+}

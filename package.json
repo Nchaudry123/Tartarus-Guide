@@ -16,6 +16,7 @@
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
+    "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit"
   },

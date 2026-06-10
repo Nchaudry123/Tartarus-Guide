@@ -20,6 +20,7 @@ type EvalCase = {
   minSources?: number;
   maxSources?: number;
   maxAnswerCharacters?: number;
+  expectedGroundingStatus?: "verified" | "partial" | "insufficient";
 };
 
 type Check = { name: string; passed: boolean; detail: string };
@@ -126,6 +127,18 @@ function evaluate(test: EvalCase, response: ChatResponse): Check[] {
       /\b(don't have|do not have|not confirmed|need|which|what floor|what block|can't confirm|cannot confirm)\b/i.test(answerText),
       "No sources were returned, so the answer must avoid unsupported exactness.",
     );
+    add(
+      "confidence reflects missing evidence",
+      (response.confidence ?? 1) <= 0.5,
+      `confidence=${response.confidence ?? "missing"}`,
+    );
+  }
+  if (test.expectedGroundingStatus) {
+    add(
+      "grounding status",
+      response.diagnostics?.groundingStatus === test.expectedGroundingStatus,
+      `expected=${test.expectedGroundingStatus}, actual=${response.diagnostics?.groundingStatus ?? "missing"}`,
+    );
   }
   if (test.mustUseStructuredFacts) {
     add(
@@ -156,6 +169,12 @@ function validateFixtures(tests: EvalCase[]): string[] {
     }
     if (test.maxSources !== undefined && test.minSources !== undefined && test.maxSources < test.minSources) {
       errors.push(`${test.id || location}: maxSources is lower than minSources`);
+    }
+    if (
+      test.expectedGroundingStatus &&
+      !["verified", "partial", "insufficient"].includes(test.expectedGroundingStatus)
+    ) {
+      errors.push(`${test.id || location}: invalid expectedGroundingStatus`);
     }
   }
   if (tests.length < 50) errors.push(`suite needs at least 50 cases; found ${tests.length}`);
