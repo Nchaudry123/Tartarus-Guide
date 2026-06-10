@@ -10,6 +10,7 @@ const numberArg = (name: string, fallback: number): number => {
 
 const maxFactChunks = numberArg("--max-fact-chunks", 450);
 const clearExisting = process.argv.includes("--clear-existing");
+const deterministicOnly = process.argv.includes("--deterministic-only");
 const categoriesArg = process.argv.find((arg) => arg.startsWith("--categories="))?.split("=")[1];
 const categories = categoriesArg?.split(",").map((value) => value.trim()).filter(Boolean);
 const pageSize = 500;
@@ -64,7 +65,11 @@ async function main(): Promise<void> {
   if (clearExisting) await clearExistingFacts();
   const chunks = await loadExistingChunks();
   console.log(`Loaded ${chunks.length} existing chunks for selective fact backfill.`);
-  const changed = await extractAndInsertFacts(chunks, { maxFactChunks, categories });
+  const changed = await extractAndInsertFacts(chunks, {
+    maxFactChunks,
+    categories,
+    deterministicOnly,
+  });
   console.log(`Facts backfill complete; ${changed} facts inserted or refreshed.`);
 }
 
