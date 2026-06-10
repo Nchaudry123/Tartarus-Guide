@@ -571,5 +571,76 @@
     "shouldClarify": true,
     "shouldUseSources": false,
     "maxAnswerCharacters": 700
+  },
+  {
+    "id": "real-user-request-pine-resin",
+    "category": "requests",
+    "origin": "user_transcript",
+    "question": "how do i finish the pine resin request and when is it due?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["pine resin", "Yukari", "6/6"],
+    "forbidUnsupportedExactness": true,
+    "maxSources": 5,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "real-user-request-kouha",
+    "category": "requests",
+    "origin": "user_transcript",
+    "question": "what do i need to do for the persona with kouha request?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Kouha", "Persona", "Request 5"],
+    "maxSources": 5,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "real-user-april-plan",
+    "category": "schedule",
+    "origin": "user_transcript",
+    "question": "what should i do on april 23?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["April 23", "after school", "evening", "Tartarus"],
+    "maxSources": 5,
+    "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "real-user-classroom-answer",
+    "category": "schedule",
+    "origin": "user_transcript",
+    "question": "what is the classroom answer on april 8?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Vivid Carp Streamers"],
+    "forbidUnsupportedExactness": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "real-user-bloody-maria",
+    "category": "boss",
+    "origin": "user_transcript",
+    "question": "how do i beat bloody maria and what party should i bring?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Pierce", "Yukari", "Junpei", "Aigis"],
+    "mustNotInclude": ["weak to fire"],
+    "forbidUnsupportedExactness": true,
+    "maxSources": 6,
+    "maxAnswerCharacters": 1600
+  },
+  {
+    "id": "real-user-priestess-affinity",
+    "category": "boss",
+    "origin": "user_transcript",
+    "question": "does priestess have a weakness or anything i should avoid using?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["no weakness", "Ice", "reflect"],
+    "forbidUnsupportedExactness": true,
+    "maxSources": 6,
+    "maxAnswerCharacters": 1400
   }
 ]
