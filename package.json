@@ -13,6 +13,7 @@
     "ingest:fusion": "tsx src/ingest/importFusionTool.ts",
     "ingest:audit": "tsx src/ingest/auditIndex.ts",
     "ingest:coverage": "tsx src/ingest/coverageReport.ts",
+    "ingest:gaps": "tsx src/ingest/analyzeCoverage.ts",
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
