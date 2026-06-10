@@ -33,6 +33,7 @@ export type PlayerProfile = {
   currentSocialLinks?: string[];
   playstyle?: string;
   currentGoal?: string;
+  spoilerPreference?: "strict" | "progress-aware" | "open";
 };
 
 export type ChatResponse = {
@@ -55,6 +56,7 @@ export type ChatResponse = {
     chunkCount?: number;
     groundingStatus?: "verified" | "partial" | "insufficient";
     guardrailNotes?: string[];
+    spoilerMode?: "strict" | "progress-aware" | "open";
   };
 };
 

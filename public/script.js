@@ -140,6 +140,11 @@ function renderMemorySummary() {
     playerProfile.currentMonth,
     playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "",
     playerProfile.difficulty,
+    playerProfile.spoilerPreference === "open"
+      ? "Spoilers open"
+      : playerProfile.spoilerPreference === "progress-aware"
+        ? "Progress-aware"
+        : "Spoiler-safe",
     playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
   ].filter(Boolean);
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
@@ -153,6 +158,7 @@ function populateMemoryForm() {
   fields.currentLevel.value = playerProfile.currentLevel || "";
   fields.difficulty.value = playerProfile.difficulty || "";
   fields.playstyle.value = playerProfile.playstyle || "";
+  fields.spoilerPreference.value = playerProfile.spoilerPreference || "strict";
   fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
   fields.currentGoal.value = playerProfile.currentGoal || "";
 }
@@ -718,6 +724,7 @@ document.addEventListener("submit", (event) => {
     currentLevel: data.get("currentLevel"),
     difficulty: data.get("difficulty"),
     playstyle: data.get("playstyle"),
+    spoilerPreference: data.get("spoilerPreference"),
     activeParty: String(data.get("activeParty") || "")
       .split(",")
       .map((name) => name.trim())

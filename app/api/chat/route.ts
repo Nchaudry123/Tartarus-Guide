@@ -5,6 +5,7 @@ import {
   exactDetailPrompt,
   requiresExactGameEvidence,
 } from "../../../src/quality/grounding";
+import { evaluateSpoilerPolicy } from "../../../src/quality/spoilers";
 
 export const runtime = "nodejs";
 
@@ -683,6 +684,7 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   const recentBoss = asString(raw.recentBoss);
   const playstyle = asString(raw.playstyle);
   const currentGoal = asString(raw.currentGoal);
+  const spoilerPreference = asString(raw.spoilerPreference);
   const activeParty = asStringArray(raw.activeParty, 4);
   const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
 
@@ -692,6 +694,9 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   if (recentBoss) updates.recentBoss = recentBoss;
   if (playstyle) updates.playstyle = playstyle;
   if (currentGoal) updates.currentGoal = currentGoal;
+  if (["strict", "progress-aware", "open"].includes(spoilerPreference ?? "")) {
+    updates.spoilerPreference = spoilerPreference as PlayerProfile["spoilerPreference"];
+  }
   if (activeParty.length) updates.activeParty = activeParty;
   if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
 
@@ -1432,10 +1437,6 @@ Decide the next action.`;
   }
 }
 
-function explicitSpoilerPermission(question: string): boolean {
-  return /\b(spoilers? (?:are|is) fine|spoil(?:er)? me|tell me the spoiler|full spoilers?|I don't mind spoilers)\b/i.test(question);
-}
-
 function deterministicControllerDecision(
   question: string,
   analysis: CompanionAnalysis,
@@ -1451,15 +1452,21 @@ function deterministicControllerDecision(
     spoilerCaution: analysis.spoilerCaution,
   };
 
-  if (analysis.intent === "Story Guidance" && !explicitSpoilerPermission(question)) {
+  const spoilerDecision = evaluateSpoilerPolicy({
+    question,
+    intent: analysis.intent,
+    preference: profile.spoilerPreference,
+    currentMonth: profile.currentMonth,
+  });
+  if (!spoilerDecision.allow) {
     return {
       ...base,
       action: "ask_clarifying_question",
       retrievalQuery: "",
       retrievalQueries: [],
-      answer: "That answer is a major story spoiler. Do you want just the name, or the full ending explanation?",
-      followUpQuestions: ["Do you want just the name, or the full ending explanation?"],
-      suggestedPrompts: ["Just give me the name", "Full spoilers are fine"],
+      answer: spoilerDecision.message ?? "I’ll keep that spoiler-free.",
+      followUpQuestions: spoilerDecision.followUp ? [spoilerDecision.followUp] : [],
+      suggestedPrompts: ["Give me a spoiler-free hint", "Full spoilers are fine"],
     };
   }
 
@@ -1640,6 +1647,12 @@ async function directRagResponse(
     deterministicControllerDecision(conversation.analysisQuestion, analysis, playerProfile) ??
     (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, createChatCompletion));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
+  const spoilerDecision = evaluateSpoilerPolicy({
+    question: conversation.analysisQuestion,
+    intent: controller.intent,
+    preference: controllerProfile.spoilerPreference,
+    currentMonth: controllerProfile.currentMonth,
+  });
   const controllerFollowUps = controller.followUpQuestions.length ? controller.followUpQuestions : analysis.followUpQuestions;
   const companion = {
     intent: controller.intent,
@@ -1820,6 +1833,7 @@ Recent conversation:
 ${historyForPrompt || "No prior turns."}
 Follow-up questions to ask if useful: ${controllerFollowUps.join(" | ") || "None"}
 Spoiler caution: ${controller.spoilerCaution ? "Avoid story specifics unless asked." : "Normal."}
+Spoiler policy: ${spoilerDecision.promptInstruction}
 
 ${formatAssistantContext(context)}
 
@@ -1881,6 +1895,7 @@ Your previous draft contained an affinity element that is not present in the str
         retrievalQueries: context.queries,
         factCount: context.facts.length,
         chunkCount: context.chunks.length,
+        spoilerMode: spoilerDecision.mode,
       };
     }
     return response;
