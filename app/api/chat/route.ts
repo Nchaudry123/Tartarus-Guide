@@ -102,9 +102,17 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(achievement|achievements|trophy|trophies|platinum|missable|completion|complete|100%)\b/.test(text)) {
     return "Achievement Hunting";
   }
-  if (/\b(exam|exams|study|studying)\b/.test(text)) return "Daily Schedule Planning";
+  if (
+    /\b(exam|exams|study|studying|schedule|calendar|classroom|school question|quiz|january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(
+      text,
+    ) ||
+    /\b\d{1,2}\/\d{1,2}\b/.test(text)
+  ) {
+    return "Daily Schedule Planning";
+  }
   if (/\b(social links?|s-links?|romance|hang out|confidant)\b/.test(text)) return "Social Links";
   if (/\btartarus\b/.test(text) && /\b(climb|floor|block|how far|how high|route|explore|grind|border)\b/.test(text)) return "Tartarus Navigation";
+  if (/\b(how (?:do|can) i beat|strategy for|fight against|prepare for)\b/.test(text)) return "Boss Help";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
   if (
     /\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion|compendium)\b/.test(text) ||
@@ -323,6 +331,10 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   const isNamedPartyComparison =
     namedPartyMembers.length >= 2 &&
     /\b(or|versus|vs\.?|better|best|main|role|healer|healing|support|damage)\b/i.test(question);
+  const hasExplicitBossTarget =
+    /\b(?:beat|against|fighting|fight)\s+(?:the\s+)?[a-z][a-z' -]{2,40}(?=\s+(?:and|with|using|at|on)\b|[?.!,]|$)/i.test(
+      question,
+    );
 
   if (
     intent === "Team Building" &&
@@ -331,7 +343,7 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   ) {
     followUpQuestions.push("What level are you right now, and who is on your active team?");
   }
-  if (intent === "Boss Help" && !mergedProfile.recentBoss) {
+  if (intent === "Boss Help" && !mergedProfile.recentBoss && !hasExplicitBossTarget) {
     followUpQuestions.push(
       /\bnext full moon\b/i.test(question)
         ? "What in-game month and date are you on, and which full moon operation is next?"
@@ -1655,7 +1667,7 @@ function deterministicControllerDecision(
     "Boss Help": "search_both",
     "Fusion Advice": "search_both",
     "Social Links": "search_both",
-    "Daily Schedule Planning": "search_guides",
+    "Daily Schedule Planning": "search_both",
     "Tartarus Navigation": "search_guides",
     "Quest Help": "search_both",
     "Story Guidance": "search_guides",
