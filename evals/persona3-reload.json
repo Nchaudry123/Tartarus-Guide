@@ -442,5 +442,134 @@
     "expectedIntent": "Daily Schedule Planning",
     "mustIncludeAny": ["July", "Social Link", "Tartarus", "stat"],
     "maxSources": 6
+  },
+  {
+    "id": "real-user-hi",
+    "category": "conversation",
+    "origin": "user_transcript",
+    "question": "hi",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["hi", "hey", "hello"],
+    "maxAnswerCharacters": 500
+  },
+  {
+    "id": "real-user-negative-followup",
+    "category": "conversation",
+    "origin": "user_transcript",
+    "question": "no",
+    "history": [
+      {
+        "role": "user",
+        "content": "hello there"
+      },
+      {
+        "role": "assistant",
+        "content": "Hey. Are you looking for help with a boss, your party, a Social Link, or Tartarus?"
+      }
+    ],
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "mustNotInclude": ["Are you stuck on a boss"],
+    "maxAnswerCharacters": 500
+  },
+  {
+    "id": "real-user-satan-value",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "would satan be good to get?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Satan", "level", "skill", "Persona"],
+    "mustNotInclude": ["early-game Persona"],
+    "maxSources": 5
+  },
+  {
+    "id": "real-user-dancing-hand",
+    "category": "enemy",
+    "origin": "user_transcript",
+    "question": "what is dancing hand weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "mustUseStructuredFacts": true,
+    "requiredDomains": ["ign.com", "game8.co"],
+    "forbidUnsupportedExactness": true,
+    "maxSources": 5
+  },
+  {
+    "id": "real-user-full-moon-prep",
+    "category": "boss",
+    "origin": "user_transcript",
+    "question": "what should i do before the full moon?",
+    "expectedIntent": "Boss Help",
+    "shouldClarify": true,
+    "maxSources": 5
+  },
+  {
+    "id": "real-user-priestess",
+    "category": "boss",
+    "origin": "user_transcript",
+    "question": "how do i beat priestess?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Priestess", "party", "strategy", "prepare"],
+    "maxSources": 6
+  },
+  {
+    "id": "real-user-jack-frost",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "jack frost",
+    "expectedIntent": "Fusion Advice",
+    "shouldClarify": true,
+    "maxSources": 4
+  },
+  {
+    "id": "real-user-social-priority",
+    "category": "social_links",
+    "origin": "user_transcript",
+    "question": "which social links should i focus on?",
+    "expectedIntent": "Social Links",
+    "shouldClarify": true,
+    "maxSources": 5
+  },
+  {
+    "id": "real-user-tartarus-distance",
+    "category": "tartarus",
+    "origin": "user_transcript",
+    "question": "how far should i go in tartarus?",
+    "expectedIntent": "Tartarus Navigation",
+    "shouldClarify": true,
+    "maxSources": 5
+  },
+  {
+    "id": "real-user-team-weak",
+    "category": "team",
+    "origin": "user_transcript",
+    "question": "my team feels weak",
+    "expectedIntent": "Team Building",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "real-user-vague-problem",
+    "category": "conversation",
+    "origin": "user_transcript",
+    "question": "its not working",
+    "expectedIntent": "General Discussion",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "real-user-request-vague",
+    "category": "requests",
+    "origin": "user_transcript",
+    "question": "how do i finish this elizabeth request?",
+    "expectedIntent": "Quest Help",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "maxAnswerCharacters": 700
   }
 ]
