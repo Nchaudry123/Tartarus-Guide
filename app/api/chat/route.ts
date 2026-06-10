@@ -88,25 +88,43 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
-  if (/\b(story|spoiler|plot|ending|final boss|character dies|what happens)\b/.test(text)) return "Story Guidance";
-  if (/\b(team feels weak|party feels weak|my team is weak|my party is weak|underleveled|under-leveled|team|party|build|members|composition|gear|equipment)\b/.test(text)) return "Team Building";
+  if (
+    /\b(story|spoiler|plot|ending|final boss|character dies|what happens|point of no return|lockout|locked out)\b/.test(
+      text,
+    )
+  ) {
+    return "Story Guidance";
+  }
+  if (/\b(do you like|what do you think (?:of|about)|your opinion|favorite)\b/.test(text)) {
+    return "General Discussion";
+  }
   if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
-  if (/\b(social link|s-link|romance|hang out|confidant)\b/.test(text)) return "Social Links";
+  if (/\b(achievement|achievements|trophy|trophies|platinum|missable|completion|complete|100%)\b/.test(text)) {
+    return "Achievement Hunting";
+  }
+  if (/\b(exam|exams|study|studying)\b/.test(text)) return "Daily Schedule Planning";
+  if (/\b(social links?|s-links?|romance|hang out|confidant)\b/.test(text)) return "Social Links";
   if (/\btartarus\b/.test(text) && /\b(climb|floor|block|how far|how high|route|explore|grind|border)\b/.test(text)) return "Tartarus Navigation";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
-  if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
   if (
     /\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion|compendium)\b/.test(text) ||
     /\b(worth (?:getting|fusing|using)|good to (?:get|fuse|use)|should i (?:get|fuse|use)|is .{1,40} (?:good|worth it|viable)|best (?:magic|physical|support|healing) option)\b/.test(text)
   ) {
     return "Fusion Advice";
   }
-  if (/\b(today|schedule|calendar|month|night|after school|free evening|free evenings|free time|daily plan|use my time)\b/.test(text)) return "Daily Schedule Planning";
+  if (
+    /\b(today|schedule|calendar|month|night|after school|free evening|free evenings|free time|daily plan|use my time|exam|exams|study|studying|school break|summer break|summer vacation)\b/.test(
+      text,
+    )
+  ) {
+    return "Daily Schedule Planning";
+  }
+  if (/\b(team feels weak|party feels weak|my team is weak|my party is weak|underleveled|under-leveled|team|party|build|members|composition|gear|equipment|healer|healing|support)\b/.test(text)) return "Team Building";
+  if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
   if (/\b(rank)\b/.test(text)) return "Social Links";
   if (/\b(day|date)\b/.test(text)) return "Daily Schedule Planning";
   if (/\b(tartarus|floor|block|gatekeeper|border|explore|grind|shadows)\b/.test(text)) return "Tartarus Navigation";
   if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) return "Quest Help";
-  if (/\b(achievement|trophy|platinum|completion|complete|100%)\b/.test(text)) return "Achievement Hunting";
   return "General Discussion";
 }
 
@@ -234,6 +252,7 @@ function isCasualMessage(question: string): boolean {
   if (/^(hi|hello|hey|yo)\b(?:\s+(there|again|tartarus|guide|buddy|man|friend))?$/.test(text)) return true;
   if (/^(thanks|thank you|ty|appreciate it|cool|nice|ok|okay|got it)$/.test(text)) return true;
   if (/\b(who are you|what can you do|how do you work|how are you)\b/.test(text)) return true;
+  if (/\b(do you like|what do you think (?:of|about)|your opinion|favorite)\b/.test(text)) return true;
   return false;
 }
 
@@ -300,15 +319,34 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   const isShort = text.split(/\s+/).filter(Boolean).length <= 6;
   const isAmbiguous = vagueSignals.some((signal) => text.includes(signal)) || (intent === "General Discussion" && isShort);
   const followUpQuestions: string[] = [];
+  const namedPartyMembers = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
+  const isNamedPartyComparison =
+    namedPartyMembers.length >= 2 &&
+    /\b(or|versus|vs\.?|better|best|main|role|healer|healing|support|damage)\b/i.test(question);
 
-  if (intent === "Team Building" && (!mergedProfile.currentLevel || !mergedProfile.activeParty?.length)) {
+  if (
+    intent === "Team Building" &&
+    !isNamedPartyComparison &&
+    (!mergedProfile.currentLevel || !mergedProfile.activeParty?.length)
+  ) {
     followUpQuestions.push("What level are you right now, and who is on your active team?");
   }
-  if (intent === "Boss Help" && !mergedProfile.recentBoss && !/\bfull moon\b/i.test(question)) {
-    followUpQuestions.push("Which boss or Tartarus gatekeeper are you fighting?");
+  if (intent === "Boss Help" && !mergedProfile.recentBoss) {
+    followUpQuestions.push(
+      /\bnext full moon\b/i.test(question)
+        ? "What in-game month and date are you on, and which full moon operation is next?"
+        : "Which boss or Tartarus gatekeeper are you fighting?",
+    );
   }
   if (intent === "Daily Schedule Planning" && !mergedProfile.currentMonth) {
     followUpQuestions.push("What month or date are you currently on?");
+  }
+  if (
+    intent === "Quest Help" &&
+    /\b(this|that|the)\s+(?:elizabeth\s+)?request\b/i.test(question) &&
+    !/\b(?:request\s*)?#?\d{1,3}\b/i.test(question)
+  ) {
+    followUpQuestions.push("Which Elizabeth request is it? Send me the request number or its objective.");
   }
   const hasKnownSituation = Boolean(
     mergedProfile.currentLevel ||
@@ -1482,6 +1520,23 @@ function deterministicControllerDecision(
   }
 
   if (analysis.intent === "Team Building") {
+    const namedMembers = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
+    const isNamedComparison =
+      namedMembers.length >= 2 &&
+      /\b(or|versus|vs\.?|better|best|main|role|healer|healing|support|damage)\b/i.test(question);
+    if (isNamedComparison) {
+      const exactComparison = `${namedMembers.join(" ")} Persona 3 Reload healer healing support skills party role`;
+      const memberGuides = namedMembers.map(
+        (member) => `${member} Persona 3 Reload skills healing support party member guide`,
+      );
+      return {
+        ...base,
+        action: "search_guides",
+        retrievalQuery: exactComparison,
+        retrievalQueries: uniqueStrings([exactComparison, ...memberGuides]).slice(0, 4),
+        followUpQuestions: [],
+      };
+    }
     if ((!profile.currentLevel || !profile.activeParty?.length) && analysis.followUpQuestions.length) {
       return {
         ...base,
@@ -1560,6 +1615,18 @@ function deterministicControllerDecision(
     };
   }
 
+  if (analysis.intent === "Quest Help" && analysis.followUpQuestions.length) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: analysis.followUpQuestions[0],
+      followUpQuestions: analysis.followUpQuestions,
+      suggestedPrompts: ["It's request 27", "The objective says to fuse a Persona"],
+    };
+  }
+
   if (analysis.isAmbiguous && analysis.followUpQuestions.length) {
     return {
       ...base,
@@ -1597,6 +1664,26 @@ function deterministicControllerDecision(
   const action = routeByIntent[analysis.intent];
   if (!action) return null;
 
+  const intentQueries: Partial<Record<CompanionIntent, string[]>> = {
+    "Social Links": /\b(school|summer break|summer vacation)\b/i.test(question)
+      ? [
+          "Persona 3 Reload school Social Links summer break availability",
+          "Persona 3 Reload summer vacation school Social Links unavailable",
+        ]
+      : [],
+    "Daily Schedule Planning": /\b(exam|exams|study|studying)\b/i.test(question)
+      ? [
+          "Persona 3 Reload exams study academics Social Links schedule",
+          "Persona 3 Reload exam dates study benefits school schedule",
+        ]
+      : [],
+    "Story Guidance": /\b(point of no return|lockout|locked out)\b/i.test(question)
+      ? [
+          "Persona 3 Reload point of no return warning spoiler free",
+          "Persona 3 Reload final lockout warning save spoiler free",
+        ]
+      : [],
+  };
   const query = compactText(
     [
       question,
@@ -1612,7 +1699,7 @@ function deterministicControllerDecision(
     ...base,
     action,
     retrievalQuery: query,
-    retrievalQueries: [query],
+    retrievalQueries: uniqueStrings([...(intentQueries[analysis.intent] ?? []), query]).slice(0, 4),
     followUpQuestions: analysis.followUpQuestions,
   };
 }
