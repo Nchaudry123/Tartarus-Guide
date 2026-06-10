@@ -21,6 +21,7 @@ export type ChatRequest = {
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   playerProfile?: PlayerProfile;
   debug?: boolean;
+  stream?: boolean;
 };
 
 export type PlayerProfile = {

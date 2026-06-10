@@ -1540,11 +1540,13 @@ async function directRagResponse(
   playerProfile?: PlayerProfile,
   history: ChatRequest["history"] = [],
   debug = false,
+  onProgress?: (message: string) => void,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
   }
 
+  onProgress?.("Understanding your question...");
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
   const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
@@ -1599,6 +1601,13 @@ async function directRagResponse(
     }, "rag");
   }
 
+  onProgress?.(
+    controller.action === "search_structured_facts"
+      ? "Checking exact game facts..."
+      : controller.action === "search_guides"
+        ? "Reviewing the guide index..."
+        : "Checking facts and strategy guides...",
+  );
   const retrievalQueries = uniqueStrings([
     ...controller.retrievalQueries,
     controller.retrievalQuery,
@@ -1752,6 +1761,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   ];
 
   try {
+    onProgress?.("Building a grounded answer...");
     const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
     const responseCompanion = {
       intent: controller.intent,
@@ -1796,6 +1806,57 @@ Your previous draft contained an affinity element that is not present in the str
   }
 }
 
+async function resolveChatRequest(
+  body: Partial<ChatRequest>,
+  onProgress?: (message: string) => void,
+): Promise<ChatResponse> {
+  const question = body.question?.trim() ?? "";
+  onProgress?.("Opening the strategy terminal...");
+  const external = await externalRagResponse(question, body.conversationId);
+  if (external) return external;
+
+  const direct = await directRagResponse(
+    question,
+    body.playerProfile,
+    body.history,
+    body.debug,
+    onProgress,
+  );
+  return direct ?? withMode(mockResponse(question), "mock");
+}
+
+function streamedChatResponse(request: Request, body: Partial<ChatRequest>): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const emit = (event: object) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      };
+
+      try {
+        const response = await resolveChatRequest(body, (message) => {
+          emit({ type: "status", message });
+        });
+        emit({ type: "response", data: response });
+      } catch (error) {
+        console.error(error);
+        emit({ type: "response", data: withMode(mockResponse(body.question ?? ""), "error") });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      ...corsHeaders(request),
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      "x-accel-buffering": "no",
+    },
+  });
+}
+
 export async function POST(request: Request) {
   const body = (await request.json()) as Partial<ChatRequest>;
   const question = body.question?.trim();
@@ -1821,11 +1882,12 @@ export async function POST(request: Request) {
     );
   }
 
+  if (body.stream) {
+    return streamedChatResponse(request, body);
+  }
+
   try {
-    const rag =
-      (await externalRagResponse(question, body.conversationId)) ??
-      (await directRagResponse(question, body.playerProfile, body.history, body.debug));
-    return NextResponse.json(rag ?? withMode(mockResponse(question), "mock"), { headers: corsHeaders(request) });
+    return NextResponse.json(await resolveChatRequest(body), { headers: corsHeaders(request) });
   } catch (error) {
     console.error(error);
     return NextResponse.json(withMode(mockResponse(question), "error"), { headers: corsHeaders(request) });

@@ -760,6 +760,17 @@ footer span {
   padding: .85rem 1rem;
   box-shadow: 0 0 30px rgba(85,247,255,.18);
 }
+.loading-status {
+  display: inline-block;
+  min-width: 12rem;
+  color: var(--ice);
+  font-size: .86rem;
+  font-weight: 850;
+}
+.typing-dots {
+  display: inline-flex;
+  margin-left: .55rem;
+}
 .typing i {
   display: inline-block;
   width: .45rem;
@@ -844,6 +855,12 @@ footer span {
   cursor: wait;
   filter: saturate(.55) brightness(.78);
   box-shadow: none;
+}
+.chat-form button.is-stop {
+  background: rgba(7, 92, 255, .72);
+  color: var(--ice);
+  cursor: pointer;
+  font-size: 1rem;
 }
 .chat-form.is-sending textarea {
   border-color: rgba(85,247,255,.42);

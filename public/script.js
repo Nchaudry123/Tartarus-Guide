@@ -22,6 +22,7 @@ const recent = [];
 const chatHistory = loadChatHistory();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
+let activeRequestController = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -311,12 +312,20 @@ function addLoading() {
   node.id = "loading";
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
-    <div class="bubble typing" aria-label="Assistant is thinking">
-      <i></i><i></i><i></i>
+    <div class="bubble typing" role="status" aria-live="polite">
+      <span class="loading-status">Understanding your question...</span>
+      <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   `;
   messages.appendChild(node);
   scrollMessagesToBottom({ force: true });
+}
+
+function updateLoadingStatus(message) {
+  const status = document.querySelector("#loading .loading-status");
+  if (!status || !message) return;
+  status.textContent = message;
+  scrollMessagesToBottom();
 }
 
 async function addAssistantMessage(response) {
@@ -396,19 +405,75 @@ function setSending(sending) {
   isSending = sending;
   form?.classList.toggle("is-sending", sending);
   form?.setAttribute("aria-busy", String(sending));
-  if (sendButton) sendButton.disabled = sending;
+  if (sendButton) {
+    sendButton.disabled = false;
+    sendButton.classList.toggle("is-stop", sending);
+    sendButton.textContent = sending ? "■" : "➜";
+    sendButton.setAttribute("aria-label", sending ? "Stop generating" : "Send question");
+    sendButton.title = sending ? "Stop generating" : "Send question";
+  }
 }
 
-async function requestAnswer(question, history = chatHistory.slice(-8)) {
+function normalizeApiResponse(data) {
+  return {
+    answer: data.answer || "The chat API returned no answer.",
+    sections: (data.sections || []).map((section) => [section.title, section.content]),
+    table: data.tables?.[0]?.rows,
+    missing: data.missingInfo || "No missing information reported.",
+    retrievalMode: data.retrievalMode || "mock",
+    companion: data.companion,
+    sources: data.sources || [],
+    confidence:
+      typeof data.confidence === "number"
+        ? `${Math.round(data.confidence * 100)}%`
+        : "N/A",
+  };
+}
+
+async function readEventStream(response, onStatus) {
+  const reader = response.body?.getReader();
+  if (!reader) return normalizeApiResponse(await response.json());
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResponse = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "status") onStatus?.(event.message);
+      if (event.type === "response") finalResponse = event.data;
+    }
+
+    if (done) break;
+  }
+
+  if (!finalResponse && buffer.trim()) {
+    const event = JSON.parse(buffer);
+    if (event.type === "response") finalResponse = event.data;
+  }
+  if (!finalResponse) throw new Error("The chat stream ended before an answer arrived.");
+  return normalizeApiResponse(finalResponse);
+}
+
+async function requestAnswer(question, history = chatHistory.slice(-8), signal) {
   if (apiAvailable) {
     try {
       const response = await fetch(chatApiUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal,
         body: JSON.stringify({
           question,
           history,
           playerProfile,
+          stream: true,
         }),
       });
 
@@ -416,21 +481,9 @@ async function requestAnswer(question, history = chatHistory.slice(-8)) {
         throw new Error("No chat API available.");
       }
 
-      const data = await response.json();
-      return {
-        answer: data.answer || "The chat API returned no answer.",
-        sections: (data.sections || []).map((section) => [section.title, section.content]),
-        table: data.tables?.[0]?.rows,
-        missing: data.missingInfo || "No missing information reported.",
-        retrievalMode: data.retrievalMode || "mock",
-        companion: data.companion,
-        sources: data.sources || [],
-        confidence:
-          typeof data.confidence === "number"
-            ? `${Math.round(data.confidence * 100)}%`
-            : "N/A",
-      };
-    } catch {
+      return await readEventStream(response, updateLoadingStatus);
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
       setApiStatus("error");
     }
   }
@@ -529,8 +582,13 @@ function updateRecent(question) {
 
 async function ask(question) {
   const trimmed = question.trim();
-  if (!trimmed || isSending) return;
+  if (isSending) {
+    activeRequestController?.abort();
+    return;
+  }
+  if (!trimmed) return;
   const priorHistory = chatHistory.slice(-8);
+  activeRequestController = new AbortController();
   setSending(true);
   setMenu(false);
   addUserMessage(trimmed);
@@ -540,10 +598,21 @@ async function ask(question) {
   input.style.height = "";
   addLoading();
   try {
-    const response = await requestAnswer(trimmed, priorHistory);
+    const response = await requestAnswer(trimmed, priorHistory, activeRequestController.signal);
     await new Promise((resolve) => window.setTimeout(resolve, 180));
     await addAssistantMessage(response);
+  } catch (error) {
+    document.getElementById("loading")?.remove();
+    if (error?.name !== "AbortError") {
+      await addAssistantMessage({
+        answer: "That request hit a snag. Try it once more and I’ll pick up from here.",
+        sections: [],
+        sources: [],
+        retrievalMode: "error",
+      });
+    }
   } finally {
+    activeRequestController = null;
     setSending(false);
     if (!document.documentElement.classList.contains("is-mobile")) input.focus();
   }
@@ -551,6 +620,10 @@ async function ask(question) {
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (isSending) {
+    activeRequestController?.abort();
+    return;
+  }
   ask(input.value);
 });
 
