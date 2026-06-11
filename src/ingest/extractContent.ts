@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import type { AnyNode } from "domhandler";
+import { sanitizeUntrustedText } from "../security/untrustedContent";
 import type { ExtractedPage, SourceInput } from "../types/schema";
 
 const junkSelectors = [
@@ -37,7 +38,7 @@ const contentSelectors = [
 ];
 
 const normalizeText = (value: string): string =>
-  value.replace(/\s+/g, " ").replace(/\u00a0/g, " ").trim();
+  sanitizeUntrustedText(value.replace(/\s+/g, " ").replace(/\u00a0/g, " "), 20_000);
 
 function replaceTablesWithReadableRows($: cheerio.CheerioAPI, root: cheerio.Cheerio<AnyNode>): void {
   root.find("table").each((_, table) => {

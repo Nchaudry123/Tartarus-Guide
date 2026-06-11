@@ -50,7 +50,8 @@ const highValueTerms =
 export function isIgnUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.hostname.replace(/^www\./, "") === "ign.com" &&
+    return url.protocol === "https:" &&
+      url.hostname.replace(/^www\./, "") === "ign.com" &&
       url.pathname.toLowerCase().startsWith(ALLOWED_IGN_PREFIX);
   } catch {
     return false;
@@ -60,7 +61,8 @@ export function isIgnUrl(value: string): boolean {
 export function isGame8Url(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.hostname.replace(/^www\./, "") === "game8.co" &&
+    return url.protocol === "https:" &&
+      url.hostname.replace(/^www\./, "") === "game8.co" &&
       url.pathname.startsWith(ALLOWED_GAME8_PREFIX);
   } catch {
     return false;

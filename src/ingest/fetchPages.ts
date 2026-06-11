@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import robotsParser from "robots-parser";
 import { config, sleep } from "../db/client";
+import { isAllowedSourceUrl } from "./sourceCatalog";
 import type { SourceInput } from "../types/schema";
 
 type RobotsCache = Map<string, ReturnType<typeof robotsParser>>;
@@ -19,6 +20,20 @@ const isIgnUrl = (url: string): boolean =>
 
 const readerUrl = (url: string): string =>
   `https://r.jina.ai/http://${url.replace(/^https?:\/\//, "")}`;
+
+function responseTargetAllowed(response: Response, sourceUrl: string, viaReader: boolean): boolean {
+  try {
+    const finalUrl = new URL(response.url);
+    if (viaReader) {
+      return finalUrl.protocol === "https:" && finalUrl.hostname === "r.jina.ai";
+    }
+    const sourceHost = new URL(sourceUrl).hostname.replace(/^www\./, "");
+    const finalHost = finalUrl.hostname.replace(/^www\./, "");
+    return isAllowedSourceUrl(finalUrl.toString()) && sourceHost === finalHost;
+  } catch {
+    return false;
+  }
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 30_000): Promise<Response> {
   const controller = new AbortController();
@@ -47,6 +62,11 @@ async function getRobots(url: URL): Promise<ReturnType<typeof robotsParser>> {
 }
 
 export async function fetchPage(source: SourceInput, force = false): Promise<string | null> {
+  if (!isAllowedSourceUrl(source.url)) {
+    console.warn(`Skipping URL outside the ingestion allowlist: ${source.url}`);
+    return null;
+  }
+
   await mkdir(config.rawCacheDir, { recursive: true });
   const cachePath = cachePathForUrl(source.url);
 
@@ -66,7 +86,8 @@ export async function fetchPage(source: SourceInput, force = false): Promise<str
   }
 
   await sleep(config.ingestDelayMs);
-  let response = await fetchWithTimeout(isIgnUrl(source.url) ? readerUrl(source.url) : source.url, {
+  let viaReader = isIgnUrl(source.url);
+  let response = await fetchWithTimeout(viaReader ? readerUrl(source.url) : source.url, {
     headers: {
       "user-agent": config.ingestUserAgent,
       accept: "text/html,text/markdown,text/plain,application/xhtml+xml",
@@ -74,6 +95,7 @@ export async function fetchPage(source: SourceInput, force = false): Promise<str
   });
 
   if (!response.ok && isIgnUrl(source.url)) {
+    viaReader = false;
     response = await fetchWithTimeout(source.url, {
       headers: {
         "user-agent": config.ingestUserAgent,
@@ -84,6 +106,10 @@ export async function fetchPage(source: SourceInput, force = false): Promise<str
 
   if (!response.ok) {
     console.warn(`Skipping ${source.url}: HTTP ${response.status}`);
+    return null;
+  }
+  if (!responseTargetAllowed(response, source.url, viaReader)) {
+    console.warn(`Skipping unsafe redirect target for ${source.url}`);
     return null;
   }
 
