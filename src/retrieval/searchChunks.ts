@@ -2,8 +2,10 @@ import { createEmbedding, supabase } from "../db/client";
 import type { ChunkMatch } from "../types/schema";
 import {
   analyzeRetrievalQuery,
+  isClearlyWrongCategory,
   isRetrievalBoilerplate,
   lexicalCoverage,
+  matchesPrimarySubject,
   type RetrievalQueryAnalysis,
 } from "./queryAnalysis";
 
@@ -20,8 +22,8 @@ function rerankScore(
   const section = (chunk.section_title ?? "").toLowerCase();
   const text = chunk.chunk_text.toLowerCase();
   const haystack = `${title} ${section} ${text}`;
-  const termHits = analysis.terms.filter((term) => haystack.includes(term)).length;
-  const headingHits = analysis.terms.filter((term) => `${title} ${section}`.includes(term)).length;
+  const termHits = analysis.expandedTerms.filter((term) => haystack.includes(term)).length;
+  const headingHits = analysis.expandedTerms.filter((term) => `${title} ${section}`.includes(term)).length;
   const exactPhraseHits = analysis.phrases.filter((phrase) => haystack.includes(phrase)).length;
   const exactHeadingEntity = analysis.entityCandidates.some(
     (entity) => entity.includes(" ") && `${title} ${section}`.includes(entity),
@@ -51,7 +53,7 @@ async function keywordFallback(
   limit: number,
   analysis = analyzeRetrievalQuery(query),
 ): Promise<ChunkMatch[]> {
-  const terms = [...analysis.phrases, ...analysis.terms].slice(0, 10);
+  const terms = [...analysis.phrases, ...analysis.expandedTerms].slice(0, 12);
   if (!terms.length) return [];
 
   const exactPhrases = terms.filter((term) => term.includes(" "));
@@ -163,6 +165,23 @@ export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch
     }))
     .filter(({ chunk, score, coverage }) => {
       if (isRetrievalBoilerplate(chunk.chunk_text)) return false;
+      if (
+        isClearlyWrongCategory(
+          `${chunk.source_title} ${chunk.section_title ?? ""}`,
+          analysis.category,
+        )
+      ) {
+        return false;
+      }
+      if (
+        ["enemy", "boss", "fusion", "social_link", "request"].includes(analysis.category) &&
+        !matchesPrimarySubject(
+          `${chunk.source_title} ${chunk.section_title ?? ""} ${chunk.chunk_text}`,
+          analysis,
+        )
+      ) {
+        return false;
+      }
       if (!hasSpecificTerms) return score >= 0.16;
       return coverage > 0 || (chunk.similarity ?? 0) >= 0.48;
     })
@@ -176,7 +195,18 @@ export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch
 
   if (!ranked.length) {
     return vectorMatches
-      .filter((chunk) => !isRetrievalBoilerplate(chunk.chunk_text))
+      .filter(
+        (chunk) =>
+          !isRetrievalBoilerplate(chunk.chunk_text) &&
+          !isClearlyWrongCategory(
+            `${chunk.source_title} ${chunk.section_title ?? ""}`,
+            analysis.category,
+          ) &&
+          matchesPrimarySubject(
+            `${chunk.source_title} ${chunk.section_title ?? ""} ${chunk.chunk_text}`,
+            analysis,
+          ),
+      )
       .slice(0, Math.min(limit, 3));
   }
 
