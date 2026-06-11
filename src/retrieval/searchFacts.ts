@@ -77,7 +77,12 @@ function likelyEntityTerms(query: string): string[] {
   return [...new Set([...phrases, ...words])].slice(0, 8);
 }
 
-export async function searchFacts(query: string, limit = 12): Promise<FactMatch[]> {
+export async function searchFacts(
+  query: string,
+  limit = 12,
+  signal?: AbortSignal,
+): Promise<FactMatch[]> {
+  signal?.throwIfAborted();
   const analysis = analyzeRetrievalQuery(query);
   const likelyTerms = [...new Set([...analysis.entityCandidates, ...likelyEntityTerms(query)])].slice(0, 10);
   const factTypes = detectFactTypes(query);
@@ -102,6 +107,7 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
     entityQuery = entityQuery.or(orTerms);
   }
 
+  if (signal) entityQuery = entityQuery.abortSignal(signal);
   const { data: directEntities, error: entityError } = await entityQuery;
   if (entityError) {
     throw entityError;
@@ -115,6 +121,7 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
     if (entityTypes.length > 0) {
       fallbackQuery = fallbackQuery.in("type", entityTypes);
     }
+    if (signal) fallbackQuery = fallbackQuery.abortSignal(signal);
     const { data: fallbackEntities, error: fallbackError } = await fallbackQuery;
     if (fallbackError) throw fallbackError;
     entities = (fallbackEntities ?? [])
@@ -151,6 +158,8 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
     factsQuery = factsQuery.in("fact_type", factTypes);
   }
 
+  signal?.throwIfAborted();
+  if (signal) factsQuery = factsQuery.abortSignal(signal);
   const { data, error } = await factsQuery;
   if (error) {
     throw error;
@@ -181,6 +190,7 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
       for (const entity of namedEntities) {
         recipeQuery = recipeQuery.ilike("value", `%${entity.name}%`);
       }
+      if (signal) recipeQuery = recipeQuery.abortSignal(signal);
       const { data: recipeRows, error: recipeError } = await recipeQuery;
       if (recipeError) throw recipeError;
       rows = [

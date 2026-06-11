@@ -334,6 +334,28 @@ function updateLoadingStatus(message) {
   scrollMessagesToBottom();
 }
 
+function appendStreamToken(delta) {
+  if (!delta) return;
+  document.getElementById("loading")?.remove();
+  let node = document.getElementById("streamingAssistant");
+  if (!node) {
+    node = document.createElement("article");
+    node.id = "streamingAssistant";
+    node.className = "message assistant-message mode-rag is-streaming";
+    node.innerHTML = `
+      <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
+      <div class="bubble">
+        <span class="assistant-name">SEES Navigator</span>
+        <div class="answer is-typing" aria-live="polite"></div>
+      </div>
+    `;
+    messages.appendChild(node);
+  }
+  const answer = node.querySelector(".answer");
+  if (answer) answer.textContent += delta;
+  scrollMessagesToBottom({ force: true, behavior: "auto" });
+}
+
 async function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
@@ -365,7 +387,10 @@ async function addAssistantMessage(response) {
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
   const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
-  const node = document.createElement("article");
+  let node = document.getElementById("streamingAssistant");
+  const streamed = Boolean(node);
+  if (!node) node = document.createElement("article");
+  node.removeAttribute("id");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
@@ -380,10 +405,10 @@ async function addAssistantMessage(response) {
       </div>
     </div>
   `;
-  messages.appendChild(node);
+  if (!streamed) messages.appendChild(node);
   const answerNode = node.querySelector(".answer");
   if (answerNode) {
-    await typeText(answerNode, response.answer);
+    if (!streamed) await typeText(answerNode, response.answer);
     answerNode.classList.remove("is-typing");
     answerNode.innerHTML = renderText(response.answer);
   }
@@ -436,7 +461,7 @@ function normalizeApiResponse(data) {
   };
 }
 
-async function readEventStream(response, onStatus) {
+async function readEventStream(response, onStatus, onToken) {
   const reader = response.body?.getReader();
   if (!reader) return normalizeApiResponse(await response.json());
 
@@ -454,6 +479,7 @@ async function readEventStream(response, onStatus) {
       if (!line.trim()) continue;
       const event = JSON.parse(line);
       if (event.type === "status") onStatus?.(event.message);
+      if (event.type === "token") onToken?.(event.delta);
       if (event.type === "response") finalResponse = event.data;
     }
 
@@ -462,6 +488,7 @@ async function readEventStream(response, onStatus) {
 
   if (!finalResponse && buffer.trim()) {
     const event = JSON.parse(buffer);
+    if (event.type === "token") onToken?.(event.delta);
     if (event.type === "response") finalResponse = event.data;
   }
   if (!finalResponse) throw new Error("The chat stream ended before an answer arrived.");
@@ -487,7 +514,7 @@ async function requestAnswer(question, history = chatHistory.slice(-8), signal) 
         throw new Error("No chat API available.");
       }
 
-      return await readEventStream(response, updateLoadingStatus);
+      return await readEventStream(response, updateLoadingStatus, appendStreamToken);
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       setApiStatus("error");
@@ -588,13 +615,15 @@ function updateRecent(question) {
 
 async function ask(question) {
   const trimmed = question.trim();
+  if (!trimmed) return;
   if (isSending) {
     activeRequestController?.abort();
-    return;
+    document.getElementById("loading")?.remove();
+    document.getElementById("streamingAssistant")?.remove();
   }
-  if (!trimmed) return;
   const priorHistory = chatHistory.slice(-8);
-  activeRequestController = new AbortController();
+  const requestController = new AbortController();
+  activeRequestController = requestController;
   setSending(true);
   setMenu(false);
   addUserMessage(trimmed);
@@ -604,11 +633,11 @@ async function ask(question) {
   input.style.height = "";
   addLoading();
   try {
-    const response = await requestAnswer(trimmed, priorHistory, activeRequestController.signal);
-    await new Promise((resolve) => window.setTimeout(resolve, 180));
+    const response = await requestAnswer(trimmed, priorHistory, requestController.signal);
     await addAssistantMessage(response);
   } catch (error) {
     document.getElementById("loading")?.remove();
+    document.getElementById("streamingAssistant")?.remove();
     if (error?.name !== "AbortError") {
       await addAssistantMessage({
         answer: "That request hit a snag. Try it once more and I’ll pick up from here.",
@@ -618,15 +647,17 @@ async function ask(question) {
       });
     }
   } finally {
-    activeRequestController = null;
-    setSending(false);
-    if (!document.documentElement.classList.contains("is-mobile")) input.focus();
+    if (activeRequestController === requestController) {
+      activeRequestController = null;
+      setSending(false);
+      if (!document.documentElement.classList.contains("is-mobile")) input.focus();
+    }
   }
 }
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  if (isSending) {
+  if (isSending && !input.value.trim()) {
     activeRequestController?.abort();
     return;
   }

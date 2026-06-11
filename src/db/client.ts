@@ -1,5 +1,7 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
+import { TtlCache } from "../cache/ttlCache";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -51,15 +53,58 @@ export const normalizeName = (value: string): string =>
 export const sleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
-export async function createEmbedding(input: string): Promise<number[]> {
+const embeddingCache = new TtlCache<number[]>(384, 15 * 60_000);
+const embeddingRequests = new Map<string, Promise<number[]>>();
+
+function embeddingCacheKey(input: string): string {
+  return createHash("sha256")
+    .update(`${config.embeddingModel}\n${input.trim().replace(/\s+/g, " ").toLowerCase()}`)
+    .digest("hex");
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw signal.reason instanceof Error
+      ? signal.reason
+      : new DOMException("The request was aborted.", "AbortError");
+  }
+}
+
+export async function createEmbedding(input: string, signal?: AbortSignal): Promise<number[]> {
+  throwIfAborted(signal);
+  const cacheKey = embeddingCacheKey(input);
+  const cached = embeddingCache.get(cacheKey);
+  if (cached) return [...cached];
+
+  const pending = embeddingRequests.get(cacheKey);
+  if (pending) {
+    const embedding = await pending;
+    throwIfAborted(signal);
+    return [...embedding];
+  }
+
+  const request = createEmbeddingUncached(input, signal);
+  embeddingRequests.set(cacheKey, request);
+  try {
+    const embedding = await request;
+    embeddingCache.set(cacheKey, embedding);
+    return [...embedding];
+  } finally {
+    embeddingRequests.delete(cacheKey);
+  }
+}
+
+async function createEmbeddingUncached(input: string, signal?: AbortSignal): Promise<number[]> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= 5; attempt += 1) {
+    throwIfAborted(signal);
     try {
       if (config.embeddingProvider === "huggingface") {
-        return await createHuggingFaceEmbedding(input);
+        return await createHuggingFaceEmbedding(input, signal);
       }
-      return await createOpenAiCompatibleEmbedding(input);
+      return await createOpenAiCompatibleEmbedding(input, signal);
     } catch (error) {
+      throwIfAborted(signal);
       lastError = error;
       const message = error instanceof Error ? error.message : String(error);
       const retryable = /\b(408|409|425|429|500|502|503|504)\b|abort|timeout|temporar/i.test(message);
@@ -116,7 +161,7 @@ function parseHuggingFaceEmbedding(value: unknown): number[] {
   throw new Error("Hugging Face embedding response used an unsupported shape.");
 }
 
-async function createHuggingFaceEmbedding(input: string): Promise<number[]> {
+async function createHuggingFaceEmbedding(input: string, signal?: AbortSignal): Promise<number[]> {
   const modelPath = encodeURIComponent(config.embeddingModel).replaceAll("%2F", "/");
   const baseUrl = config.embeddingBaseUrl.replace(/\/$/, "");
   const endpoint = baseUrl.includes("/pipeline/feature-extraction")
@@ -137,6 +182,7 @@ async function createHuggingFaceEmbedding(input: string): Promise<number[]> {
       }),
     },
     30_000,
+    signal,
   );
 
   if (!response.ok) {
@@ -150,17 +196,25 @@ async function fetchWithTimeout(
   input: string | URL,
   init: RequestInit,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromParent = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abortFromParent();
+  signal?.addEventListener("abort", abortFromParent, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("The request timed out.", "TimeoutError")),
+    timeoutMs,
+  );
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", abortFromParent);
   }
 }
 
-async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]> {
+async function createOpenAiCompatibleEmbedding(input: string, signal?: AbortSignal): Promise<number[]> {
   const response = await fetchWithTimeout(
     `${config.embeddingBaseUrl}/embeddings`,
     {
@@ -176,6 +230,7 @@ async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]>
       }),
     },
     30_000,
+    signal,
   );
 
   if (!response.ok) {
@@ -194,7 +249,12 @@ async function createOpenAiCompatibleEmbedding(input: string): Promise<number[]>
 
 export async function createChatCompletion(
   messages: Array<{ role: "system" | "user"; content: string }>,
-  options: { jsonObject?: boolean; model?: string; maxCompletionTokens?: number } = {},
+  options: {
+    jsonObject?: boolean;
+    model?: string;
+    maxCompletionTokens?: number;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<string> {
   const body = JSON.stringify({
     model: options.model ?? config.chatModel,
@@ -225,6 +285,7 @@ export async function createChatCompletion(
         body,
       },
       45_000,
+      options.signal,
     );
 
     if (response.ok) break;
@@ -241,9 +302,20 @@ export async function createChatCompletion(
     const retryDelayMs = Number.isFinite(retryAfterSeconds)
       ? retryAfterSeconds * 1_000
       : parsedDelayMs;
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(Math.max(retryDelayMs, 500), 15_000)),
-    );
+    await Promise.race([
+      sleep(Math.min(Math.max(retryDelayMs, 500), 15_000)),
+      new Promise<never>((_, reject) => {
+        if (options.signal?.aborted) {
+          reject(options.signal.reason);
+          return;
+        }
+        options.signal?.addEventListener(
+          "abort",
+          () => reject(options.signal?.reason),
+          { once: true },
+        );
+      }),
+    ]);
   }
 
   if (!response?.ok) {
