@@ -13,6 +13,7 @@
   <body>
     <section class="entrance-screen" id="entranceScreen" aria-label="Tartarus Guide entrance">
       <video class="entrance-video" aria-hidden="true" autoplay muted loop playsinline preload="auto">
+        <source src="./assets/hero_loop%202.mp4" type="video/mp4" />
         <source src="./assets/hero_loop.mp4" type="video/mp4" />
       </video>
       <div class="intro-scan" aria-hidden="true"></div>
@@ -29,7 +30,8 @@
       <div class="persona-bg" aria-hidden="true">
         <img class="bg-art bg-art-main" src="./assets/chat-blue-wide.jpeg" alt="" />
         <img class="bg-art bg-art-secondary" src="./assets/chat-equip.jpeg" alt="" />
-        <span class="orb"></span>
+        <img class="bg-art bg-art-config" src="./assets/chat-config.jpeg" alt="" />
+        <span class="signal-slab"></span>
         <span class="word word-guide">GUIDE</span>
         <span class="word word-tartarus">TARTARUS</span>
         <i></i><i></i><i></i><i></i><i></i>
@@ -42,6 +44,11 @@
           <p>Quick Menu</p>
           <h2>Records</h2>
         </div>
+        <section class="rag-status" id="ragStatus" aria-live="polite">
+          <span aria-hidden="true"></span>
+          <strong>Checking</strong>
+          <small>Contacting guide API</small>
+        </section>
         <nav class="category-list" id="categoryList">
           <button type="button" data-prompt="What enemy weaknesses should I know early?">Shadows</button>
           <button type="button" data-prompt="How do I prepare for the next full moon boss?">Bosses</button>
@@ -56,6 +63,19 @@
             <span id="memorySummary">No profile saved</span>
           </div>
           <button type="button" id="openMemory" aria-haspopup="dialog">Edit</button>
+        </section>
+        <section class="mode-card" aria-label="Guide connection">
+          <p id="chatModeLabel">Checking</p>
+          <span id="modeCardText">The terminal is checking whether live guide mode is available.</span>
+        </section>
+        <section class="recent-panel">
+          <div class="recent-head">
+            <h3>Recent</h3>
+            <button type="button" id="clearChat">Clear</button>
+          </div>
+          <div class="recent-list" id="recentList">
+            <p>Your last questions will appear here.</p>
+          </div>
         </section>
       </aside>
 
