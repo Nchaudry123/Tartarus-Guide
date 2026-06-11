@@ -14,6 +14,14 @@ type GroundingInput = {
 
 export function requiresExactGameEvidence(question: string, intent: string): boolean {
   if (intent === "Enemy Weakness") return true;
+  if (
+    intent === "Social Links" &&
+    /\b(who|which|whose|arcana|social link|s-?link|start|unlock|available|availability|schedule|rank|date)\b/i.test(
+      question,
+    )
+  ) {
+    return true;
+  }
 
   const exactMechanic =
     /\b(weak(?:ness| to)?|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate)\b/i;

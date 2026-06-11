@@ -534,6 +534,55 @@
     "maxSources": 5
   },
   {
+    "id": "social-link-junpei-regression",
+    "category": "social_links",
+    "origin": "user_transcript",
+    "question": "Junpei social link",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["Linked Episode", "does not have a Social Link"],
+    "mustNotInclude": ["Junpei (Magician)", "4/23", "Classroom 1F"],
+    "maxSources": 0,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "social-link-akihiko-regression",
+    "category": "social_links",
+    "origin": "user_transcript",
+    "question": "Does Akihiko have a Social Link?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["Linked Episode", "does not have a Social Link"],
+    "mustNotInclude": ["Akihiko (Emperor)"],
+    "maxSources": 0,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "social-link-classmate-regression",
+    "category": "social_links",
+    "origin": "user_transcript",
+    "question": "classmate social link",
+    "expectedIntent": "Social Links",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "mustIncludeAny": ["Kenji", "Kazushi", "Chihiro", "Yuko"],
+    "mustNotInclude": ["Magician for Junpei", "Nozomi by spending time after school"],
+    "maxSources": 0,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "social-link-early-priority-regression",
+    "category": "social_links",
+    "origin": "user_transcript",
+    "question": "Which Social Links should I prioritize early?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["school-limited", "Social Stats", "matching Arcana"],
+    "mustNotInclude": ["Junpei", "Akihiko", "combat benefits"],
+    "maxSources": 0,
+    "maxAnswerCharacters": 1400
+  },
+  {
     "id": "real-user-tartarus-distance",
     "category": "tartarus",
     "origin": "user_transcript",

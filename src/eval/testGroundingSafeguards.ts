@@ -13,6 +13,10 @@ assert.equal(
   requiresExactGameEvidence("How should I balance my party?", "Team Building"),
   false,
 );
+assert.equal(
+  requiresExactGameEvidence("Does Junpei have a Social Link?", "Social Links"),
+  true,
+);
 
 assert.deepEqual(
   assessGrounding({
