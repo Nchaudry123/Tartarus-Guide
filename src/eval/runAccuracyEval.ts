@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import type { ChatRequest, ChatResponse, PlayerProfile } from "../../lib/types";
 
@@ -17,6 +18,8 @@ type EvalCase = {
   mustIncludeAll?: string[];
   mustNotInclude?: string[];
   forbidUnsupportedExactness?: boolean;
+  exactAnswer?: boolean;
+  hallucinationSensitive?: boolean;
   mustUseStructuredFacts?: boolean;
   minSources?: number;
   maxSources?: number;
@@ -43,9 +46,22 @@ const category = args.get("category");
 const origin = args.get("origin");
 const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
+const exactFailUnder = Number(args.get("exact-fail-under") ?? "0.8");
+const hallucinationFailUnder = Number(args.get("hallucination-fail-under") ?? "0.95");
 const delayMs = Number(args.get("delay-ms") ?? "1000");
 const validateOnly = args.has("validate-only");
 const direct = args.has("direct");
+
+const hallucinationCheckNames = new Set([
+  "no backend language",
+  "forbidden concepts absent",
+  "does not fabricate exact fact",
+  "confidence reflects missing evidence",
+  "grounding status",
+  "structured fact support",
+  "exact answer uses evidence",
+  "exact answer confidence is evidence-aware",
+]);
 
 const sleep = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -184,7 +200,89 @@ function evaluate(test: EvalCase, response: ChatResponse): Check[] {
       `${response.diagnostics?.factCount ?? 0} structured fact(s)`,
     );
   }
+  if (test.exactAnswer) {
+    const sourceCount = response.sources.length;
+    const factCount = response.diagnostics?.factCount ?? 0;
+    const hasEvidence = sourceCount > 0 || factCount > 0;
+    add(
+      "exact answer uses evidence",
+      hasEvidence,
+      `${sourceCount} source(s), ${factCount} structured fact(s)`,
+    );
+    add(
+      "exact answer confidence is evidence-aware",
+      hasEvidence || (response.confidence ?? 1) <= 0.5,
+      `confidence=${response.confidence ?? "missing"}`,
+    );
+  }
   return checks;
+}
+
+function isExactAnswerCase(test: EvalCase): boolean {
+  return Boolean(
+    test.exactAnswer ||
+      test.mustUseStructuredFacts ||
+      test.forbidUnsupportedExactness ||
+      test.expectedGroundingStatus,
+  );
+}
+
+function anonymizeQuestion(question: string): string {
+  return question
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+    .replace(/\b(?:\+?\d[\d\s().-]{7,}\d)\b/g, "[number]")
+    .replace(/\b(?:my name is|i am|i'm)\s+[A-Z][a-z]+/gi, (match) =>
+      match.replace(/\s+[A-Z][a-z]+$/i, " [name]"),
+    )
+    .trim();
+}
+
+function questionHash(question: string): string {
+  return createHash("sha256").update(question.trim().toLowerCase()).digest("hex").slice(0, 16);
+}
+
+function metricScore(
+  results: EvalResult[],
+  predicate: (test: EvalResult, check: Check) => boolean,
+): number | null {
+  const checks = results.flatMap((result) =>
+    result.checks.filter((check) => predicate(result, check)),
+  );
+  if (!checks.length) return null;
+  return checks.filter((check) => check.passed).length / checks.length;
+}
+
+function failedQuestionCandidates(results: EvalResult[]) {
+  return results
+    .filter((result) => result.score < 0.8)
+    .map((result) => {
+      const anonymizedQuestion = anonymizeQuestion(result.question);
+      return {
+        id: result.id,
+        category: result.category,
+        origin: result.origin ?? "curated",
+        questionHash: questionHash(result.question),
+        anonymizedQuestion,
+        score: result.score,
+        failedChecks: result.checks
+          .filter((check) => !check.passed)
+          .map((check) => ({ name: check.name, detail: check.detail })),
+        suggestedEvalCase: {
+          id: `regression-${questionHash(result.question)}`,
+          category: result.category,
+          origin: "user_transcript",
+          question: anonymizedQuestion,
+          expectedIntent: result.expectedIntent,
+          shouldUseSources: result.shouldUseSources,
+          shouldClarify: result.shouldClarify,
+          exactAnswer: isExactAnswerCase(result),
+          hallucinationSensitive:
+            result.hallucinationSensitive ||
+            result.checks.some((check) => hallucinationCheckNames.has(check.name)),
+          maxAnswerCharacters: result.maxAnswerCharacters ?? 1_400,
+        },
+      };
+    });
 }
 
 function validateFixtures(tests: EvalCase[]): string[] {
@@ -204,6 +302,9 @@ function validateFixtures(tests: EvalCase[]): string[] {
     }
     if (test.shouldUseSources === false && (test.minSources ?? 0) > 0) {
       errors.push(`${test.id || location}: source requirements conflict`);
+    }
+    if (test.exactAnswer && test.shouldUseSources === false && !test.mustUseStructuredFacts) {
+      errors.push(`${test.id || location}: exactAnswer requires sources or structured facts`);
     }
     if (test.maxSources !== undefined && test.minSources !== undefined && test.maxSources < test.minSources) {
       errors.push(`${test.id || location}: maxSources is lower than minSources`);
@@ -264,6 +365,26 @@ async function main(): Promise<void> {
   }
 
   const score = results.reduce((sum, result) => sum + result.score, 0) / results.length;
+  const exactAnswerAccuracy = metricScore(results, (result, check) =>
+    isExactAnswerCase(result) &&
+    [
+      "uses sources",
+      "does not fabricate exact fact",
+      "confidence reflects missing evidence",
+      "grounding status",
+      "structured fact support",
+      "exact answer uses evidence",
+      "exact answer confidence is evidence-aware",
+      "all required concepts",
+      "expected concept",
+    ].includes(check.name),
+  );
+  const hallucinationSafety = metricScore(
+    results,
+    (result, check) =>
+      Boolean(result.hallucinationSensitive || isExactAnswerCase(result)) &&
+      hallucinationCheckNames.has(check.name),
+  );
   const categoryScores = Object.fromEntries(
     [...new Set(results.map((result) => result.category))]
       .sort()
@@ -280,19 +401,43 @@ async function main(): Promise<void> {
     generatedAt: new Date().toISOString(),
     apiUrl: direct ? "direct://app/api/chat" : apiUrl,
     score,
+    exactAnswerAccuracy,
+    hallucinationSafety,
     passed: results.filter((result) => result.score >= 0.8).length,
     total: results.length,
     categoryScores,
     results,
   };
   await mkdir("evals/results", { recursive: true });
+  const failedCandidates = failedQuestionCandidates(results);
   await writeFile("evals/results/accuracy-latest.json", JSON.stringify(report, null, 2));
+  await writeFile(
+    "evals/results/failed-question-candidates-latest.json",
+    JSON.stringify(
+      {
+        generatedAt: report.generatedAt,
+        total: failedCandidates.length,
+        candidates: failedCandidates,
+      },
+      null,
+      2,
+    ),
+  );
   console.log(`\nAccuracy score: ${(score * 100).toFixed(1)}% (${report.passed}/${report.total} cases at 80% or better)`);
+  if (exactAnswerAccuracy !== null) {
+    console.log(`Exact-answer accuracy: ${(exactAnswerAccuracy * 100).toFixed(1)}%`);
+  }
+  if (hallucinationSafety !== null) {
+    console.log(`Hallucination safety: ${(hallucinationSafety * 100).toFixed(1)}%`);
+  }
   for (const [name, summary] of Object.entries(categoryScores)) {
     console.log(`- ${name}: ${(summary.score * 100).toFixed(1)}% (${summary.passed}/${summary.total})`);
   }
   console.log("Detailed report: evals/results/accuracy-latest.json");
+  console.log("Failed-question candidates: evals/results/failed-question-candidates-latest.json");
   if (score < failUnder) process.exitCode = 2;
+  if (exactAnswerAccuracy !== null && exactAnswerAccuracy < exactFailUnder) process.exitCode = 2;
+  if (hallucinationSafety !== null && hallucinationSafety < hallucinationFailUnder) process.exitCode = 2;
 }
 
 main().catch((error) => {
