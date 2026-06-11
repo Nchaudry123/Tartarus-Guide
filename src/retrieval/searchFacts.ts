@@ -1,6 +1,10 @@
 import { normalizeName, supabase } from "../db/client";
 import type { FactMatch, FactType } from "../types/schema";
-import { analyzeRetrievalQuery } from "./queryAnalysis";
+import {
+  analyzeRetrievalQuery,
+  entityCandidateScore,
+  entityTypesForCategory,
+} from "./queryAnalysis";
 
 const entityStopWords = new Set([
   "what",
@@ -78,26 +82,52 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
   const likelyTerms = [...new Set([...analysis.entityCandidates, ...likelyEntityTerms(query)])].slice(0, 10);
   const factTypes = detectFactTypes(query);
   const normalizedQuery = normalizeName(query);
+  const entityTypes = entityTypesForCategory(analysis.category);
 
   let entityQuery = supabase
     .from("entities")
     .select("id,name,type,aliases,normalized_name")
     .limit(30);
 
+  if (entityTypes.length > 0) {
+    entityQuery = entityQuery.in("type", entityTypes);
+  }
+
   if (likelyTerms.length > 0) {
     const orTerms = likelyTerms
+      .map((term) => term.replace(/[,%().]/g, " "))
+      .filter(Boolean)
       .map((term) => `normalized_name.ilike.%${term}%,name.ilike.%${term}%`)
       .join(",");
     entityQuery = entityQuery.or(orTerms);
   }
 
-  const { data: entities, error: entityError } = await entityQuery;
+  const { data: directEntities, error: entityError } = await entityQuery;
   if (entityError) {
     throw entityError;
   }
-  if (!entities || entities.length === 0) {
-    return [];
+  let entities = directEntities ?? [];
+  if (entities.length === 0 && analysis.entityCandidates.length > 0) {
+    let fallbackQuery = supabase
+      .from("entities")
+      .select("id,name,type,aliases,normalized_name")
+      .limit(500);
+    if (entityTypes.length > 0) {
+      fallbackQuery = fallbackQuery.in("type", entityTypes);
+    }
+    const { data: fallbackEntities, error: fallbackError } = await fallbackQuery;
+    if (fallbackError) throw fallbackError;
+    entities = (fallbackEntities ?? [])
+      .map((entity) => ({
+        entity,
+        score: entityCandidateScore(analysis, entity.name, entity.aliases ?? []),
+      }))
+      .filter(({ score }) => score >= 0.72)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 12)
+      .map(({ entity }) => entity);
   }
+  if (entities.length === 0) return [];
 
   let factsQuery = supabase
     .from("facts")
@@ -185,6 +215,9 @@ export async function searchFacts(query: string, limit = 12): Promise<FactMatch[
       ?.map(normalizeName)
       .some((alias) => alias.length >= 3 && normalizedQuery.includes(alias));
     if (aliasMatch) return 90;
+
+    const fuzzyScore = entityCandidateScore(analysis, fact.entity.name, fact.entity.aliases);
+    if (fuzzyScore >= 0.72) return fuzzyScore * 90;
 
     const entityTerms = entityName.split(" ").filter(Boolean);
     const matchedTerms = entityTerms.filter((term) => normalizedQuery.split(" ").includes(term));

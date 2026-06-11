@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import {
   analyzeRetrievalQuery,
+  editSimilarity,
+  entityCandidateScore,
+  entityTypesForCategory,
+  isClearlyWrongCategory,
   isRetrievalBoilerplate,
   lexicalCoverage,
+  matchesPrimarySubject,
 } from "../retrieval/queryAnalysis";
 
 const enemy = analyzeRetrievalQuery("What is Dancing Hand weak to on floor 22?");
@@ -10,10 +15,18 @@ assert.equal(enemy.category, "enemy");
 assert.equal(enemy.floor, 22);
 assert(enemy.phrases.includes("dancing hand"));
 assert(lexicalCoverage("Dancing Hand appears in Thebel on floor 22.", enemy) > 0.5);
+assert(entityTypesForCategory(enemy.category).includes("enemy"));
+assert(matchesPrimarySubject("Dancing Hand is weak to Fire.", enemy));
+assert(!matchesPrimarySubject("The Priestess is a Full Moon boss.", enemy));
+assert(isClearlyWrongCategory("Persona 3 Reload Ending Explained", enemy.category));
+assert(!isClearlyWrongCategory("Dancing Hand Weaknesses", enemy.category));
+assert(editSimilarity("dacing hand", "dancing hand") > 0.9);
+assert(entityCandidateScore(analyzeRetrievalQuery("dacing hand weakness"), "Dancing Hand") > 0.7);
 
 const fusion = analyzeRetrievalQuery("Is Satan worth fusing in Persona 3 Reload?");
 assert.equal(fusion.category, "fusion");
 assert(fusion.entityCandidates.includes("satan"));
+assert(entityTypesForCategory(fusion.category).includes("persona"));
 
 const socialLink = analyzeRetrievalQuery("What is the best answer for Emperor Social Link rank 4?");
 assert.equal(socialLink.category, "social_link");
