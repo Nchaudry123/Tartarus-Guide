@@ -322,13 +322,20 @@ function hasGuideIntent(question: string): boolean {
 function extractProfileUpdates(question: string): PlayerProfile {
   const updates: PlayerProfile = {};
   const monthMatch = question.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
-  if (monthMatch) updates.currentMonth = monthMatch[1][0].toUpperCase() + monthMatch[1].slice(1).toLowerCase();
+  if (monthMatch) updates.currentMonth = titleCase(monthMatch[1]);
+
+  const writtenDateMatch = question.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i,
+  );
+  const numericDateMatch = question.match(/\b(?:date\s*)?(\d{1,2})\/(\d{1,2})\b/i);
+  if (writtenDateMatch) updates.currentDate = `${titleCase(writtenDateMatch[1])} ${writtenDateMatch[2]}`;
+  else if (numericDateMatch) updates.currentDate = `${numericDateMatch[1]}/${numericDateMatch[2]}`;
 
   const levelMatch = question.match(/\b(?:level|lvl)\s*(\d{1,3})\b/i) ?? question.match(/\b(\d{1,3})\s*(?:level|lvl)\b/i);
   if (levelMatch) updates.currentLevel = levelMatch[1];
 
   const difficultyMatch = question.match(/\b(beginner|easy|normal|hard|merciless|peaceful)\b/i);
-  if (difficultyMatch) updates.difficulty = difficultyMatch[1][0].toUpperCase() + difficultyMatch[1].slice(1).toLowerCase();
+  if (difficultyMatch) updates.difficulty = titleCase(difficultyMatch[1]);
 
   const activeParty = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
   if (activeParty.length) updates.activeParty = activeParty;
@@ -339,15 +346,45 @@ function extractProfileUpdates(question: string): PlayerProfile {
   const bossMatch = question.match(/\b(Priestess|Emperor|Empress|Hierophant|Lovers|Chariot|Justice|Hermit|Fortune|Strength|Hanged Man|Nyx)\b/i);
   if (bossMatch) updates.recentBoss = bossMatch[1];
 
+  const enemyMatch = question.match(/\b(?:stuck on|fighting|fight|beat|weakness for|weak to|against)\s+(?:the\s+)?([a-z][a-z' -]{2,40})(?=\s+(?:on|with|at|in|and|but|because)\b|[?.!,]|$)/i);
+  if (enemyMatch && !bossMatch) updates.recentEnemy = titleCase(enemyMatch[1].replace(/\bweak(?:ness)?\b/i, "").trim());
+
+  const blockMatch = question.match(/\b(thebel|arqa|yabbashah|tziah|harabah|adamah)\b/i);
+  if (blockMatch) updates.tartarusBlock = titleCase(blockMatch[1]);
+
+  const floorMatch =
+    question.match(/\b(?:floor|fl\.?|f)\s*(\d{1,3})\b/i) ??
+    question.match(/\b(\d{1,3})\s*(?:floor|fl\.?)\b/i) ??
+    question.match(/\b(\d{1,3})f\b/i);
+  if (floorMatch) updates.tartarusFloor = `${floorMatch[1]}F`;
+
+  const ownedPersonasMatch = question.match(/\b(?:i have|my personas are|owned personas?|personas?:)\s+([a-z0-9,' /+-]{3,140})/i);
+  if (ownedPersonasMatch) updates.ownedPersonas = splitProfileList(ownedPersonasMatch[1], 12).map(titleCase);
+
+  const socialStats: NonNullable<PlayerProfile["socialStats"]> = {};
+  for (const stat of ["academics", "charm", "courage"] as const) {
+    const statMatch = question.match(new RegExp(`\\b${stat}\\s*(?:rank|level|is)?\\s*(max|\\d{1,2})\\b`, "i"));
+    if (statMatch) socialStats[stat] = titleCase(statMatch[1]);
+  }
+  if (Object.keys(socialStats).length) updates.socialStats = socialStats;
+
   return updates;
 }
 
 function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): PlayerProfile {
+  const socialStats = {
+    ...(base?.socialStats ?? {}),
+    ...(updates.socialStats ?? {}),
+  };
   return {
     ...(base ?? {}),
     ...updates,
     activeParty: updates.activeParty?.length ? uniqueStrings(updates.activeParty) : base?.activeParty,
     currentSocialLinks: updates.currentSocialLinks?.length ? uniqueStrings(updates.currentSocialLinks) : base?.currentSocialLinks,
+    ownedPersonas: updates.ownedPersonas?.length
+      ? uniqueStrings([...(base?.ownedPersonas ?? []), ...updates.ownedPersonas]).slice(0, 24)
+      : base?.ownedPersonas,
+    socialStats: Object.keys(socialStats).length ? socialStats : undefined,
   };
 }
 
@@ -412,10 +449,13 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     followUpQuestions.push("Which Elizabeth request is it? Send me the request number or its objective.");
   }
   const hasKnownSituation = Boolean(
-    mergedProfile.currentLevel ||
+      mergedProfile.currentLevel ||
       mergedProfile.activeParty?.length ||
       mergedProfile.currentMonth ||
+      mergedProfile.currentDate ||
       mergedProfile.recentBoss ||
+      mergedProfile.recentEnemy ||
+      mergedProfile.tartarusFloor ||
       mergedProfile.playstyle,
   );
   if (isAmbiguous && followUpQuestions.length === 0 && !hasKnownSituation) {
@@ -424,10 +464,20 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
 
   const profileHints = [
     mergedProfile.currentMonth ? `current month: ${mergedProfile.currentMonth}` : undefined,
+    mergedProfile.currentDate ? `current date: ${mergedProfile.currentDate}` : undefined,
     mergedProfile.currentLevel ? `player level: ${mergedProfile.currentLevel}` : undefined,
     mergedProfile.difficulty ? `difficulty: ${mergedProfile.difficulty}` : undefined,
     mergedProfile.activeParty?.length ? `active party: ${mergedProfile.activeParty.join(", ")}` : undefined,
     mergedProfile.recentBoss ? `recent boss: ${mergedProfile.recentBoss}` : undefined,
+    mergedProfile.recentEnemy ? `recent enemy: ${mergedProfile.recentEnemy}` : undefined,
+    mergedProfile.tartarusBlock ? `Tartarus block: ${mergedProfile.tartarusBlock}` : undefined,
+    mergedProfile.tartarusFloor ? `Tartarus floor: ${mergedProfile.tartarusFloor}` : undefined,
+    mergedProfile.ownedPersonas?.length ? `owned Personas: ${mergedProfile.ownedPersonas.join(", ")}` : undefined,
+    mergedProfile.socialStats
+      ? `social stats: ${Object.entries(mergedProfile.socialStats)
+          .map(([key, value]) => `${key} ${value}`)
+          .join(", ")}`
+      : undefined,
     mergedProfile.playstyle ? `preferred playstyle: ${mergedProfile.playstyle}` : undefined,
     mergedProfile.currentGoal ? `current goal: ${mergedProfile.currentGoal}` : undefined,
   ];
@@ -735,6 +785,23 @@ function asStringArray(value: unknown, maxItems = 3): string[] {
     : [];
 }
 
+function titleCase(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : ""))
+    .join(" ");
+}
+
+function splitProfileList(value: string, maxItems = 12): string[] {
+  return uniqueStrings(
+    value
+      .split(/,|\band\b|\/|\+/i)
+      .map((item) => item.trim())
+      .filter((item) => item.length >= 2 && item.length <= 40),
+  ).slice(0, maxItems);
+}
+
 function sanitizeSuggestedPrompts(value: unknown, maxItems = 3): string[] {
   return asStringArray(value, maxItems + 3)
     .filter((prompt) => {
@@ -780,19 +847,34 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const updates: PlayerProfile = {};
   const currentMonth = asString(raw.currentMonth);
+  const currentDate = asString(raw.currentDate);
   const currentLevel = asString(raw.currentLevel);
   const difficulty = asString(raw.difficulty);
   const recentBoss = asString(raw.recentBoss);
+  const recentEnemy = asString(raw.recentEnemy);
+  const tartarusBlock = asString(raw.tartarusBlock);
+  const tartarusFloor = asString(raw.tartarusFloor);
   const playstyle = asString(raw.playstyle);
   const currentGoal = asString(raw.currentGoal);
   const spoilerPreference = asString(raw.spoilerPreference);
-  const activeParty = asStringArray(raw.activeParty, 4);
+  const activeParty = asStringArray(raw.activeParty, 8);
   const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
+  const ownedPersonas = asStringArray(raw.ownedPersonas, 24);
+  const rawSocialStats = raw.socialStats && typeof raw.socialStats === "object" ? (raw.socialStats as Record<string, unknown>) : {};
+  const socialStats: NonNullable<PlayerProfile["socialStats"]> = {};
+  for (const stat of ["academics", "charm", "courage"] as const) {
+    const value = asString(rawSocialStats[stat]);
+    if (value) socialStats[stat] = value;
+  }
 
   if (currentMonth) updates.currentMonth = currentMonth;
+  if (currentDate) updates.currentDate = currentDate;
   if (currentLevel) updates.currentLevel = currentLevel;
   if (difficulty) updates.difficulty = difficulty;
   if (recentBoss) updates.recentBoss = recentBoss;
+  if (recentEnemy) updates.recentEnemy = recentEnemy;
+  if (tartarusBlock) updates.tartarusBlock = tartarusBlock;
+  if (tartarusFloor) updates.tartarusFloor = tartarusFloor;
   if (playstyle) updates.playstyle = playstyle;
   if (currentGoal) updates.currentGoal = currentGoal;
   if (["strict", "progress-aware", "open"].includes(spoilerPreference ?? "")) {
@@ -800,6 +882,8 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   }
   if (activeParty.length) updates.activeParty = activeParty;
   if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
+  if (ownedPersonas.length) updates.ownedPersonas = ownedPersonas;
+  if (Object.keys(socialStats).length) updates.socialStats = socialStats;
 
   return updates;
 }
@@ -1548,11 +1632,21 @@ Return only JSON:
   "followUpQuestions": ["string"],
   "profileUpdates": {
     "currentMonth": "string",
+    "currentDate": "string",
     "currentLevel": "string",
     "difficulty": "string",
     "activeParty": ["string"],
     "recentBoss": "string",
+    "recentEnemy": "string",
+    "tartarusBlock": "string",
+    "tartarusFloor": "string",
     "currentSocialLinks": ["string"],
+    "ownedPersonas": ["string"],
+    "socialStats": {
+      "academics": "string",
+      "charm": "string",
+      "courage": "string"
+    },
     "playstyle": "string"
   },
   "suggestedPrompts": ["string"],
@@ -1572,6 +1666,7 @@ Routing rules:
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
 - Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
 - retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.
+- Extract durable profile details when the user volunteers them: date, month, level, difficulty, party, owned Personas, Tartarus block/floor, Social Link focus, social stats, current boss/enemy, current goal, and spoiler preference.
 - retrievalQueries should decompose the need into focused searches. Put the exact named entity first, then mechanics, location/date, or strategy searches only when useful.
 - Do not search for generic words alone. Preserve exact enemy, boss, Persona, Social Link, request, floor, item, and date names from the user.
 - For exact affinities, include one query with the exact entity plus "weakness resistance affinity".
@@ -1688,6 +1783,7 @@ function deterministicControllerDecision(
       profile.activeParty?.join(" "),
       profile.difficulty,
       profile.playstyle,
+      profile.ownedPersonas?.length ? `owned personas ${profile.ownedPersonas.join(" ")}` : undefined,
     ]
       .filter(Boolean)
       .join(" ");
@@ -1822,9 +1918,13 @@ function deterministicControllerDecision(
   const query = compactText(
     [
       question,
+      profile.currentDate ? `date ${profile.currentDate}` : undefined,
       profile.currentMonth ? `month ${profile.currentMonth}` : undefined,
       profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
       profile.activeParty?.length ? `party ${profile.activeParty.join(" ")}` : undefined,
+      profile.tartarusBlock ? `block ${profile.tartarusBlock}` : undefined,
+      profile.tartarusFloor ? `floor ${profile.tartarusFloor}` : undefined,
+      profile.ownedPersonas?.length ? `personas ${profile.ownedPersonas.join(" ")}` : undefined,
     ]
       .filter(Boolean)
       .join(" "),

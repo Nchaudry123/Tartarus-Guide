@@ -113,7 +113,11 @@ function rememberTurn(role, content) {
 
 function mergeProfileUpdates(updates) {
   if (!updates || typeof updates !== "object") return;
-  playerProfile = {
+  const mergedSocialStats = cleanProfile({
+    ...(playerProfile.socialStats || {}),
+    ...(updates.socialStats || {}),
+  });
+  playerProfile = cleanProfile({
     ...playerProfile,
     ...updates,
     activeParty: Array.isArray(updates.activeParty) && updates.activeParty.length ? [...new Set(updates.activeParty)] : playerProfile.activeParty,
@@ -121,31 +125,48 @@ function mergeProfileUpdates(updates) {
       Array.isArray(updates.currentSocialLinks) && updates.currentSocialLinks.length
         ? [...new Set(updates.currentSocialLinks)]
         : playerProfile.currentSocialLinks,
-  };
+    ownedPersonas:
+      Array.isArray(updates.ownedPersonas) && updates.ownedPersonas.length
+        ? [...new Set([...(playerProfile.ownedPersonas || []), ...updates.ownedPersonas])].slice(0, 24)
+        : playerProfile.ownedPersonas,
+    socialStats: Object.keys(mergedSocialStats).length ? mergedSocialStats : undefined,
+  });
   savePlayerProfile();
 }
 
 function cleanProfile(profile) {
   return Object.fromEntries(
-    Object.entries(profile || {}).filter(([, value]) => {
-      if (Array.isArray(value)) return value.length > 0;
-      return value !== undefined && value !== null && String(value).trim() !== "";
+    Object.entries(profile || {}).flatMap(([key, value]) => {
+      if (Array.isArray(value)) {
+        const items = [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+        return items.length ? [[key, items]] : [];
+      }
+      if (value && typeof value === "object") {
+        const nested = cleanProfile(value);
+        return Object.keys(nested).length ? [[key, nested]] : [];
+      }
+      const text = value === undefined || value === null ? "" : String(value).trim();
+      return text ? [[key, text]] : [];
     }),
   );
 }
 
 function renderMemorySummary() {
   if (!memorySummary) return;
+  const tartarusProgress = [playerProfile.tartarusBlock, playerProfile.tartarusFloor].filter(Boolean).join(" ");
   const details = [
+    playerProfile.currentDate,
     playerProfile.currentMonth,
     playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "",
     playerProfile.difficulty,
+    tartarusProgress,
     playerProfile.spoilerPreference === "open"
       ? "Spoilers open"
       : playerProfile.spoilerPreference === "progress-aware"
         ? "Progress-aware"
         : "Spoiler-safe",
     playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
+    playerProfile.currentGoal ? `Goal: ${playerProfile.currentGoal}` : "",
   ].filter(Boolean);
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
 }
@@ -155,11 +176,18 @@ function populateMemoryForm() {
   if (!memoryForm) return;
   const fields = memoryForm.elements;
   fields.currentMonth.value = playerProfile.currentMonth || "";
+  fields.currentDate.value = playerProfile.currentDate || "";
   fields.currentLevel.value = playerProfile.currentLevel || "";
   fields.difficulty.value = playerProfile.difficulty || "";
   fields.playstyle.value = playerProfile.playstyle || "";
+  fields.tartarusBlock.value = playerProfile.tartarusBlock || "";
+  fields.tartarusFloor.value = playerProfile.tartarusFloor || "";
   fields.spoilerPreference.value = playerProfile.spoilerPreference || "strict";
   fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
+  fields.ownedPersonas.value = playerProfile.ownedPersonas?.join(", ") || "";
+  fields.academics.value = playerProfile.socialStats?.academics || "";
+  fields.charm.value = playerProfile.socialStats?.charm || "";
+  fields.courage.value = playerProfile.socialStats?.courage || "";
   fields.currentGoal.value = playerProfile.currentGoal || "";
 }
 
@@ -752,15 +780,28 @@ document.addEventListener("submit", (event) => {
   playerProfile = cleanProfile({
     ...playerProfile,
     currentMonth: data.get("currentMonth"),
+    currentDate: data.get("currentDate"),
     currentLevel: data.get("currentLevel"),
     difficulty: data.get("difficulty"),
     playstyle: data.get("playstyle"),
+    tartarusBlock: data.get("tartarusBlock"),
+    tartarusFloor: data.get("tartarusFloor"),
     spoilerPreference: data.get("spoilerPreference"),
     activeParty: String(data.get("activeParty") || "")
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean)
-      .slice(0, 4),
+      .slice(0, 8),
+    ownedPersonas: String(data.get("ownedPersonas") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .slice(0, 24),
+    socialStats: {
+      academics: data.get("academics"),
+      charm: data.get("charm"),
+      courage: data.get("courage"),
+    },
     currentGoal: data.get("currentGoal"),
   });
   savePlayerProfile();

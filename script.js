@@ -11,12 +11,18 @@ const chatModeLabel = document.getElementById("chatModeLabel");
 const modeCardText = document.getElementById("modeCardText");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
+const memorySummary = document.getElementById("memorySummary");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
+const sendButton = form?.querySelector('button[type="submit"]');
+const chatHistoryKey = "tartarusChatHistoryV2";
+const playerProfileKey = "tartarusPlayerProfileV2";
 
 const recent = [];
-const chatHistory = [];
+const chatHistory = loadChatHistory();
 let playerProfile = loadPlayerProfile();
+let isSending = false;
+let activeRequestController = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -60,24 +66,58 @@ window.addEventListener("orientationchange", () => {
 
 function loadPlayerProfile() {
   try {
-    return JSON.parse(window.sessionStorage.getItem("tartarusPlayerProfile") || "{}");
+    const saved =
+      window.localStorage.getItem(playerProfileKey) ||
+      window.sessionStorage.getItem("tartarusPlayerProfile") ||
+      "{}";
+    return JSON.parse(saved);
   } catch {
     return {};
   }
 }
 
+function loadChatHistory() {
+  try {
+    const history = JSON.parse(window.sessionStorage.getItem(chatHistoryKey) || "[]");
+    return Array.isArray(history)
+      ? history
+          .filter(
+            (message) =>
+              message &&
+              (message.role === "user" || message.role === "assistant") &&
+              typeof message.content === "string" &&
+              message.content.trim(),
+          )
+          .slice(-12)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChatHistory() {
+  window.sessionStorage.setItem(chatHistoryKey, JSON.stringify(chatHistory));
+}
+
 function savePlayerProfile() {
-  window.sessionStorage.setItem("tartarusPlayerProfile", JSON.stringify(playerProfile));
+  window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
+  window.sessionStorage.removeItem("tartarusPlayerProfile");
+  renderMemorySummary();
 }
 
 function rememberTurn(role, content) {
   chatHistory.push({ role, content });
-  chatHistory.splice(0, Math.max(0, chatHistory.length - 10));
+  chatHistory.splice(0, Math.max(0, chatHistory.length - 12));
+  saveChatHistory();
 }
 
 function mergeProfileUpdates(updates) {
   if (!updates || typeof updates !== "object") return;
-  playerProfile = {
+  const mergedSocialStats = cleanProfile({
+    ...(playerProfile.socialStats || {}),
+    ...(updates.socialStats || {}),
+  });
+  playerProfile = cleanProfile({
     ...playerProfile,
     ...updates,
     activeParty: Array.isArray(updates.activeParty) && updates.activeParty.length ? [...new Set(updates.activeParty)] : playerProfile.activeParty,
@@ -85,9 +125,88 @@ function mergeProfileUpdates(updates) {
       Array.isArray(updates.currentSocialLinks) && updates.currentSocialLinks.length
         ? [...new Set(updates.currentSocialLinks)]
         : playerProfile.currentSocialLinks,
-  };
+    ownedPersonas:
+      Array.isArray(updates.ownedPersonas) && updates.ownedPersonas.length
+        ? [...new Set([...(playerProfile.ownedPersonas || []), ...updates.ownedPersonas])].slice(0, 24)
+        : playerProfile.ownedPersonas,
+    socialStats: Object.keys(mergedSocialStats).length ? mergedSocialStats : undefined,
+  });
   savePlayerProfile();
 }
+
+function cleanProfile(profile) {
+  return Object.fromEntries(
+    Object.entries(profile || {}).flatMap(([key, value]) => {
+      if (Array.isArray(value)) {
+        const items = [...new Set(value.map((item) => String(item).trim()).filter(Boolean))];
+        return items.length ? [[key, items]] : [];
+      }
+      if (value && typeof value === "object") {
+        const nested = cleanProfile(value);
+        return Object.keys(nested).length ? [[key, nested]] : [];
+      }
+      const text = value === undefined || value === null ? "" : String(value).trim();
+      return text ? [[key, text]] : [];
+    }),
+  );
+}
+
+function renderMemorySummary() {
+  if (!memorySummary) return;
+  const tartarusProgress = [playerProfile.tartarusBlock, playerProfile.tartarusFloor].filter(Boolean).join(" ");
+  const details = [
+    playerProfile.currentDate,
+    playerProfile.currentMonth,
+    playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "",
+    playerProfile.difficulty,
+    tartarusProgress,
+    playerProfile.spoilerPreference === "open"
+      ? "Spoilers open"
+      : playerProfile.spoilerPreference === "progress-aware"
+        ? "Progress-aware"
+        : "Spoiler-safe",
+    playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
+    playerProfile.currentGoal ? `Goal: ${playerProfile.currentGoal}` : "",
+  ].filter(Boolean);
+  memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
+}
+
+function populateMemoryForm() {
+  const memoryForm = document.getElementById("memoryForm");
+  if (!memoryForm) return;
+  const fields = memoryForm.elements;
+  fields.currentMonth.value = playerProfile.currentMonth || "";
+  fields.currentDate.value = playerProfile.currentDate || "";
+  fields.currentLevel.value = playerProfile.currentLevel || "";
+  fields.difficulty.value = playerProfile.difficulty || "";
+  fields.playstyle.value = playerProfile.playstyle || "";
+  fields.tartarusBlock.value = playerProfile.tartarusBlock || "";
+  fields.tartarusFloor.value = playerProfile.tartarusFloor || "";
+  fields.spoilerPreference.value = playerProfile.spoilerPreference || "strict";
+  fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
+  fields.ownedPersonas.value = playerProfile.ownedPersonas?.join(", ") || "";
+  fields.academics.value = playerProfile.socialStats?.academics || "";
+  fields.charm.value = playerProfile.socialStats?.charm || "";
+  fields.courage.value = playerProfile.socialStats?.courage || "";
+  fields.currentGoal.value = playerProfile.currentGoal || "";
+}
+
+function openMemoryDialog() {
+  const memoryDialog = document.getElementById("memoryDialog");
+  if (!memoryDialog) return;
+  populateMemoryForm();
+  if (typeof memoryDialog.showModal === "function") memoryDialog.showModal();
+  else memoryDialog.setAttribute("open", "");
+}
+
+function closeMemoryDialog() {
+  const memoryDialog = document.getElementById("memoryDialog");
+  if (!memoryDialog) return;
+  if (typeof memoryDialog.close === "function") memoryDialog.close();
+  else memoryDialog.removeAttribute("open");
+}
+
+renderMemorySummary();
 
 function escapeHtml(value) {
   return String(value)
@@ -227,12 +346,42 @@ function addLoading() {
   node.id = "loading";
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
-    <div class="bubble typing" aria-label="Assistant is thinking">
-      <i></i><i></i><i></i>
+    <div class="bubble typing" role="status" aria-live="polite">
+      <span class="loading-status">Understanding your question...</span>
+      <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   `;
   messages.appendChild(node);
   scrollMessagesToBottom({ force: true });
+}
+
+function updateLoadingStatus(message) {
+  const status = document.querySelector("#loading .loading-status");
+  if (!status || !message) return;
+  status.textContent = message;
+  scrollMessagesToBottom();
+}
+
+function appendStreamToken(delta) {
+  if (!delta) return;
+  document.getElementById("loading")?.remove();
+  let node = document.getElementById("streamingAssistant");
+  if (!node) {
+    node = document.createElement("article");
+    node.id = "streamingAssistant";
+    node.className = "message assistant-message mode-rag is-streaming";
+    node.innerHTML = `
+      <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
+      <div class="bubble">
+        <span class="assistant-name">SEES Navigator</span>
+        <div class="answer is-typing" aria-live="polite"></div>
+      </div>
+    `;
+    messages.appendChild(node);
+  }
+  const answer = node.querySelector(".answer");
+  if (answer) answer.textContent += delta;
+  scrollMessagesToBottom({ force: true, behavior: "auto" });
 }
 
 async function addAssistantMessage(response) {
@@ -266,11 +415,15 @@ async function addAssistantMessage(response) {
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
   const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
-  const node = document.createElement("article");
+  let node = document.getElementById("streamingAssistant");
+  const streamed = Boolean(node);
+  if (!node) node = document.createElement("article");
+  node.removeAttribute("id");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble">
+      <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
@@ -280,10 +433,10 @@ async function addAssistantMessage(response) {
       </div>
     </div>
   `;
-  messages.appendChild(node);
+  if (!streamed) messages.appendChild(node);
   const answerNode = node.querySelector(".answer");
   if (answerNode) {
-    await typeText(answerNode, response.answer);
+    if (!streamed) await typeText(answerNode, response.answer);
     answerNode.classList.remove("is-typing");
     answerNode.innerHTML = renderText(response.answer);
   }
@@ -307,16 +460,81 @@ function scrollMessagesToBottom(options = {}) {
   });
 }
 
-async function requestAnswer(question) {
+function setSending(sending) {
+  isSending = sending;
+  form?.classList.toggle("is-sending", sending);
+  form?.setAttribute("aria-busy", String(sending));
+  if (sendButton) {
+    sendButton.disabled = false;
+    sendButton.classList.toggle("is-stop", sending);
+    sendButton.textContent = sending ? "■" : "➜";
+    sendButton.setAttribute("aria-label", sending ? "Stop generating" : "Send question");
+    sendButton.title = sending ? "Stop generating" : "Send question";
+  }
+}
+
+function normalizeApiResponse(data) {
+  return {
+    answer: data.answer || "The chat API returned no answer.",
+    sections: (data.sections || []).map((section) => [section.title, section.content]),
+    table: data.tables?.[0]?.rows,
+    missing: data.missingInfo || "No missing information reported.",
+    retrievalMode: data.retrievalMode || "mock",
+    companion: data.companion,
+    sources: data.sources || [],
+    confidence:
+      typeof data.confidence === "number"
+        ? `${Math.round(data.confidence * 100)}%`
+        : "N/A",
+  };
+}
+
+async function readEventStream(response, onStatus, onToken) {
+  const reader = response.body?.getReader();
+  if (!reader) return normalizeApiResponse(await response.json());
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalResponse = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line);
+      if (event.type === "status") onStatus?.(event.message);
+      if (event.type === "token") onToken?.(event.delta);
+      if (event.type === "response") finalResponse = event.data;
+    }
+
+    if (done) break;
+  }
+
+  if (!finalResponse && buffer.trim()) {
+    const event = JSON.parse(buffer);
+    if (event.type === "token") onToken?.(event.delta);
+    if (event.type === "response") finalResponse = event.data;
+  }
+  if (!finalResponse) throw new Error("The chat stream ended before an answer arrived.");
+  return normalizeApiResponse(finalResponse);
+}
+
+async function requestAnswer(question, history = chatHistory.slice(-8), signal) {
   if (apiAvailable) {
     try {
       const response = await fetch(chatApiUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal,
         body: JSON.stringify({
           question,
-          history: chatHistory.slice(-8),
+          history,
           playerProfile,
+          stream: true,
         }),
       });
 
@@ -324,26 +542,23 @@ async function requestAnswer(question) {
         throw new Error("No chat API available.");
       }
 
-      const data = await response.json();
-      return {
-        answer: data.answer || "The chat API returned no answer.",
-        sections: (data.sections || []).map((section) => [section.title, section.content]),
-        table: data.tables?.[0]?.rows,
-        missing: data.missingInfo || "No missing information reported.",
-        retrievalMode: data.retrievalMode || "mock",
-        companion: data.companion,
-        sources: data.sources || [],
-        confidence:
-          typeof data.confidence === "number"
-            ? `${Math.round(data.confidence * 100)}%`
-            : "N/A",
-      };
-    } catch {
-      setApiStatus(false);
+      return await readEventStream(response, updateLoadingStatus, appendStreamToken);
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      setApiStatus("error");
     }
   }
 
-  return mockAnswer(question);
+  return {
+    answer:
+      "I lost the connection for a moment. Your message is still here, so try sending it once more and I’ll pick the conversation back up.",
+    sections: [],
+    sources: [],
+    retrievalMode: "error",
+    companion: {
+      suggestedPrompts: [question],
+    },
+  };
 }
 
 async function checkApiStatus() {
@@ -429,6 +644,15 @@ function updateRecent(question) {
 async function ask(question) {
   const trimmed = question.trim();
   if (!trimmed) return;
+  if (isSending) {
+    activeRequestController?.abort();
+    document.getElementById("loading")?.remove();
+    document.getElementById("streamingAssistant")?.remove();
+  }
+  const priorHistory = chatHistory.slice(-8);
+  const requestController = new AbortController();
+  activeRequestController = requestController;
+  setSending(true);
   setMenu(false);
   addUserMessage(trimmed);
   rememberTurn("user", trimmed);
@@ -436,12 +660,35 @@ async function ask(question) {
   input.value = "";
   input.style.height = "";
   addLoading();
-  const response = await requestAnswer(trimmed);
-  window.setTimeout(() => addAssistantMessage(response), 250);
+  try {
+    const response = await requestAnswer(trimmed, priorHistory, requestController.signal);
+    await addAssistantMessage(response);
+  } catch (error) {
+    document.getElementById("loading")?.remove();
+    document.getElementById("streamingAssistant")?.remove();
+    if (error?.name !== "AbortError") {
+      await addAssistantMessage({
+        answer: "That request hit a snag. Try it once more and I’ll pick up from here.",
+        sections: [],
+        sources: [],
+        retrievalMode: "error",
+      });
+    }
+  } finally {
+    if (activeRequestController === requestController) {
+      activeRequestController = null;
+      setSending(false);
+      if (!document.documentElement.classList.contains("is-mobile")) input.focus();
+    }
+  }
 }
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (isSending && !input.value.trim()) {
+    activeRequestController?.abort();
+    return;
+  }
   ask(input.value);
 });
 
@@ -505,10 +752,69 @@ messages.addEventListener("click", (event) => {
 
 clearChat?.addEventListener("click", () => {
   recent.splice(0);
+  chatHistory.splice(0);
+  saveChatHistory();
   if (recentList) recentList.innerHTML = "<p>Your last questions will appear here.</p>";
   renderEmptyState();
   setMenu(false);
   input.focus();
 });
+
+document.addEventListener("click", (event) => {
+  if (event.target.closest("#openMemory")) {
+    openMemoryDialog();
+    return;
+  }
+  if (event.target.closest("#closeMemory")) {
+    closeMemoryDialog();
+    return;
+  }
+  if (event.target.id === "memoryDialog") closeMemoryDialog();
+}, true);
+
+document.addEventListener("submit", (event) => {
+  const memoryForm = event.target.closest("#memoryForm");
+  if (!memoryForm) return;
+  event.preventDefault();
+  const data = new FormData(memoryForm);
+  playerProfile = cleanProfile({
+    ...playerProfile,
+    currentMonth: data.get("currentMonth"),
+    currentDate: data.get("currentDate"),
+    currentLevel: data.get("currentLevel"),
+    difficulty: data.get("difficulty"),
+    playstyle: data.get("playstyle"),
+    tartarusBlock: data.get("tartarusBlock"),
+    tartarusFloor: data.get("tartarusFloor"),
+    spoilerPreference: data.get("spoilerPreference"),
+    activeParty: String(data.get("activeParty") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .slice(0, 8),
+    ownedPersonas: String(data.get("ownedPersonas") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .slice(0, 24),
+    socialStats: {
+      academics: data.get("academics"),
+      charm: data.get("charm"),
+      courage: data.get("courage"),
+    },
+    currentGoal: data.get("currentGoal"),
+  });
+  savePlayerProfile();
+  closeMemoryDialog();
+}, true);
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest("#clearMemory")) return;
+  playerProfile = {};
+  window.localStorage.removeItem(playerProfileKey);
+  window.sessionStorage.removeItem("tartarusPlayerProfile");
+  populateMemoryForm();
+  renderMemorySummary();
+}, true);
 
 checkApiStatus();

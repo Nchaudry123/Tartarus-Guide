@@ -39,8 +39,18 @@ test("chat requests accept a bounded conversation payload", () => {
     conversationId: "session-123",
     history: [{ role: "assistant", content: "What level are you?" }],
     playerProfile: {
+      currentMonth: "June",
+      currentDate: "June 8",
       currentLevel: "18",
       activeParty: ["Yukari", "Junpei"],
+      tartarusBlock: "Arqa",
+      tartarusFloor: "47F",
+      ownedPersonas: ["Jack Frost", "Oberon"],
+      socialStats: {
+        academics: "3",
+        charm: "2",
+        courage: "4",
+      },
       spoilerPreference: "strict",
     },
     stream: true,

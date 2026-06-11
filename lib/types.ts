@@ -26,11 +26,21 @@ export type ChatRequest = {
 
 export type PlayerProfile = {
   currentMonth?: string;
+  currentDate?: string;
   currentLevel?: string;
   difficulty?: string;
   activeParty?: string[];
   recentBoss?: string;
+  recentEnemy?: string;
+  tartarusBlock?: string;
+  tartarusFloor?: string;
   currentSocialLinks?: string[];
+  ownedPersonas?: string[];
+  socialStats?: {
+    academics?: string;
+    charm?: string;
+    courage?: string;
+  };
   playstyle?: string;
   currentGoal?: string;
   spoilerPreference?: "strict" | "progress-aware" | "open";
