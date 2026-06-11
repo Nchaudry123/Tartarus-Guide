@@ -2,15 +2,28 @@ import { createHmac } from "node:crypto";
 import { z } from "zod";
 
 const shortText = z.string().trim().max(160);
+const SocialStatsSchema = z
+  .object({
+    academics: shortText.optional(),
+    charm: shortText.optional(),
+    courage: shortText.optional(),
+  })
+  .strict();
 
 const PlayerProfileSchema = z
   .object({
     currentMonth: shortText.optional(),
+    currentDate: shortText.optional(),
     currentLevel: shortText.optional(),
     difficulty: shortText.optional(),
     activeParty: z.array(shortText).max(8).optional(),
     recentBoss: shortText.optional(),
+    recentEnemy: shortText.optional(),
+    tartarusBlock: shortText.optional(),
+    tartarusFloor: shortText.optional(),
     currentSocialLinks: z.array(shortText).max(24).optional(),
+    ownedPersonas: z.array(shortText).max(24).optional(),
+    socialStats: SocialStatsSchema.optional(),
     playstyle: shortText.optional(),
     currentGoal: z.string().trim().max(500).optional(),
     spoilerPreference: z.enum(["strict", "progress-aware", "open"]).optional(),
