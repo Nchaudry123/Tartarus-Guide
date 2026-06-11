@@ -26,6 +26,8 @@ export const factTypes = [
   "strategy",
   "recommended_party",
   "fusion_recipe",
+  "arcana",
+  "base_level",
   "unlock_condition",
   "deadline",
   "reward",

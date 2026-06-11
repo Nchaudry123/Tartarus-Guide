@@ -224,8 +224,8 @@ function buildFacts(
 
   const datasetNote = `Structured data from the Persona 3 Reload fusion calculator, revision ${revision}.`;
   for (const [name, persona] of Object.entries(personas)) {
-    addFact(facts, name, "persona", "prerequisite", `Base level: ${persona.lvl}`, datasetNote);
-    addFact(facts, name, "persona", "tip", `Arcana: ${persona.race}`, datasetNote);
+    addFact(facts, name, "persona", "base_level", String(persona.lvl), datasetNote);
+    addFact(facts, name, "persona", "arcana", persona.race, datasetNote);
     addFact(
       facts,
       name,

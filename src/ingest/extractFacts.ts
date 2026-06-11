@@ -37,6 +37,8 @@ const exactFactTypes = new Set([
   "drains",
   "repels",
   "fusion_recipe",
+  "arcana",
+  "base_level",
   "deadline",
   "reward",
   "floor_range",
@@ -78,7 +80,9 @@ const factTypeAliases: Record<string, string> = {
   fusion: "fusion_recipe",
   recipe: "fusion_recipe",
   result: "fusion_recipe",
-  level: "prerequisite",
+  level: "base_level",
+  baselevel: "base_level",
+  arcana: "arcana",
   requiredskill: "prerequisite",
   baseskill: "prerequisite",
   requiredpersona: "prerequisite",
@@ -418,15 +422,15 @@ export function extractDeterministicPersonaFacts(chunks: TextChunk[]): Extracted
         confidence: 0.99,
         notes: "Extracted directly from the source Persona table.",
       };
-      facts.set(`${normalizeName(name)}:tip:arcana`, {
+      facts.set(`${normalizeName(name)}:arcana`, {
         ...shared,
-        fact_type: "tip",
-        value: `Arcana: ${arcana}`,
+        fact_type: "arcana",
+        value: arcana,
       });
-      facts.set(`${normalizeName(name)}:prerequisite:level`, {
+      facts.set(`${normalizeName(name)}:base_level`, {
         ...shared,
-        fact_type: "prerequisite",
-        value: `Base level: ${level}`,
+        fact_type: "base_level",
+        value: String(level),
       });
     }
   }
