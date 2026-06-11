@@ -194,6 +194,32 @@ test("extracts IGN boss affinities, floor, party, and strategy", () => {
   );
 });
 
+test("does not turn recommended party members into boss affinity entities", () => {
+  const facts = extractDeterministicBossFacts(
+    chunks(
+      "Strength and Fortune Boss Guide - Persona 3 Reload Guide - IGN",
+      "bosses",
+      "[Strength and Fortune Weaknesses and Resistances] Strength is weak to Strike. Fortune resists Wind. Junpei and Yukari will be the most effective here as the Surveillants use physical attacks.",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Strength" &&
+        fact.fact_type === "weakness" &&
+        fact.value === "Strike",
+    ),
+  );
+  assert.equal(
+    facts.some((fact) => ["Junpei", "Yukari"].includes(fact.entity_name)),
+    false,
+  );
+  assert.equal(
+    facts.some((fact) => /will be the most effective/i.test(fact.entity_name)),
+    false,
+  );
+});
+
 test("extracts Tartarus block and enemy floor ranges", () => {
   const facts = extractDeterministicLocationFacts(
     chunks(

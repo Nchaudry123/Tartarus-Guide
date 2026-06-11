@@ -21,6 +21,8 @@ Rules:
 - Use null only when the source explicitly says the detail is unknown or unavailable.
 - Keep each fact atomic: one entity, one fact_type, one value.
 - Separate enemies, bosses, personas, requests, social links, locations, items, equipment, mechanics, party members, Tartarus floors, activities, and skills.
+- A character mentioned as a recommended party member is not the boss or enemy subject. Never assign weaknesses, resistances, or boss mechanics to Junpei, Yukari, Akihiko, Mitsuru, Aigis, Koromaru, Ken, Shinjiro, or Fuuka unless the excerpt explicitly presents that character as the battle opponent.
+- Junpei, Akihiko, Shinjiro, Ken, Koromaru, and Ryoji use Linked Episodes in Persona 3 Reload, not Social Links. Do not create Social Link facts for them.
 - Capture aliases only when an excerpt gives them.
 - Prefer concise values. Preserve exact dates, floor ranges, answer choices, item names, skills, and elements.
 - Confidence must be 0 to 1 and should reflect how directly the excerpt supports the fact.
@@ -870,7 +872,15 @@ export function extractDeterministicBossFacts(chunks: TextChunk[]): ExtractedFac
       /(?:(?:is|are|has|have|will)\s+)?(weak to|resistant to|resists|nulls|nullifies|absorbs|drains|reflects|repels|blocks)\s+([\s\S]*?)(?=\s+and\s+(?:(?:is|are|has|have|will)\s+)?(?:weak to|resistant to|resists|nulls|nullifies|absorbs|drains|reflects|repels|blocks)\b|$)/gi;
     for (const relationSentence of prose.matchAll(relationSentencePattern)) {
       const entityName = cleanExactValue(relationSentence[1]).replace(/^the\s+/i, "");
-      if (!entityName || /\b(?:strategy|party|player|protagonist|attack)\b/i.test(entityName)) continue;
+      if (
+        !entityName ||
+        /\b(?:strategy|party|player|protagonist|attack|will be|most effective|best bet|bring|recommended)\b/i.test(
+          entityName,
+        ) ||
+        partyMemberNames.has(normalizeName(entityName))
+      ) {
+        continue;
+      }
       for (const predicate of relationSentence[2].matchAll(predicatePattern)) {
         const relationName = predicate[1].toLowerCase();
         const factType: ExtractedFact["fact_type"] =
@@ -996,6 +1006,7 @@ export function extractDeterministicFacts(chunks: TextChunk[]): ExtractedFact[] 
 
 function isSupportedFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
   if (!fact.value || fact.confidence < 0.65) return false;
+  if (!isPlausibleEntityFact(fact, chunks)) return false;
   if (!hasAffinityEvidence(fact, chunks)) return false;
 
   const sourceText = normalizeName(
@@ -1010,6 +1021,68 @@ function isSupportedFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
     const terms = meaningfulTerms(fact.value);
     if (terms.length > 0 && !terms.some((term) => sourceText.includes(term))) return false;
   }
+  return true;
+}
+
+const partyMemberNames = new Set(
+  [
+    "Yukari",
+    "Yukari Takeba",
+    "Junpei",
+    "Junpei Iori",
+    "Akihiko",
+    "Akihiko Sanada",
+    "Mitsuru",
+    "Mitsuru Kirijo",
+    "Aigis",
+    "Koromaru",
+    "Ken",
+    "Ken Amada",
+    "Shinjiro",
+    "Shinjiro Aragaki",
+    "Fuuka",
+    "Fuuka Yamagishi",
+  ].map(normalizeName),
+);
+
+const linkedEpisodeNames = new Set(
+  [
+    "Junpei",
+    "Junpei Iori",
+    "Akihiko",
+    "Akihiko Sanada",
+    "Shinjiro",
+    "Shinjiro Aragaki",
+    "Ken",
+    "Ken Amada",
+    "Koromaru",
+    "Ryoji",
+    "Ryoji Mochizuki",
+  ].map(normalizeName),
+);
+
+function isPlausibleEntityFact(fact: ExtractedFact, chunks: TextChunk[]): boolean {
+  const normalizedEntity = normalizeName(fact.entity_name);
+  if (
+    normalizedEntity.split(" ").length > 8 ||
+    /\b(?:will be|most effective|best bet|bring|party|recommended)\b/i.test(fact.entity_name)
+  ) {
+    return false;
+  }
+
+  if (fact.entity_type === "social_link" && linkedEpisodeNames.has(normalizedEntity)) {
+    return false;
+  }
+
+  if (["enemy", "boss"].includes(fact.entity_type) && partyMemberNames.has(normalizedEntity)) {
+    const title = chunks[0]?.pageTitle ?? "";
+    const explicitOpponentTitle = new RegExp(
+      `^${escapeRegExp(fact.entity_name)}\\b.*\\b(?:boss|weakness|how to beat|battle)\\b`,
+      "i",
+    );
+    return explicitOpponentTitle.test(title);
+  }
+
   return true;
 }
 

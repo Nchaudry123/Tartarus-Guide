@@ -18,6 +18,11 @@ import {
   requiresExactGameEvidence,
 } from "../../../src/quality/grounding";
 import { evaluateSpoilerPolicy } from "../../../src/quality/spoilers";
+import {
+  canonicalRelationshipAnswer,
+  relationshipContradictions,
+  relationshipFactsForPrompt,
+} from "../../../src/quality/relationships";
 
 export const runtime = "nodejs";
 
@@ -1731,6 +1736,27 @@ async function directRagResponse(
   if (isCasualMessage(question) && !conversation.previousTopic) {
     return casualChatResponse(question, playerProfile, normalizedHistory);
   }
+  const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
+  if (canonicalRelationship) {
+    const needsPlayerProgress =
+      canonicalRelationship.startsWith("There is no single best Social Link order");
+    return withMode({
+      answer: canonicalRelationship,
+      sections: [],
+      sources: [],
+      confidence: 0.99,
+      missingInfo: needsPlayerProgress
+        ? "Share your current in-game date and Social Stats for a personalized order."
+        : "No additional detail is needed.",
+      companion: {
+        intent: "Social Links",
+        profileUpdates: {},
+        followUpQuestions: needsPlayerProgress
+          ? ["What is your current in-game date, and what are your Academics, Charm, and Courage ranks?"]
+          : [],
+      },
+    }, "rag");
+  }
 
   const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
@@ -1904,7 +1930,9 @@ Rules:
 - Use tables only for exact weakness or item lists. Most answers should not need a table.
 - Keep section content short enough for a mobile chat bubble.
 - Prefer one natural answer plus no more than two short sections. Omit sections when a direct answer is enough.
-- If the user's question is broad or uncertain, ask the single best follow-up instead of dumping caveats.`;
+- If the user's question is broad or uncertain, ask the single best follow-up instead of dumping caveats.
+
+${relationshipFactsForPrompt()}`;
 
   const profileForPrompt = controllerProfile;
   const historyForPrompt = normalizedHistory
@@ -1975,6 +2003,40 @@ Your previous draft contained an affinity element that is not present in the str
         { jsonObject: true },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
+    }
+    const relationshipErrors = relationshipContradictions(normalized);
+    if (relationshipErrors.length) {
+      const correctionPrompt = `${userPrompt}
+
+Your previous draft contradicted canonical Persona 3 Reload relationship facts:
+${relationshipErrors.map((error) => `- ${error}`).join("\n")}
+
+Regenerate the JSON answer. Correct those claims, distinguish Social Links from Linked Episodes, and do not invent an Arcana, start date, schedule, location, or combat benefit.`;
+      const correctedRaw = await createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: correctionPrompt },
+        ],
+        { jsonObject: true },
+      );
+      normalized = normalizeRagResponse(
+        extractJson(correctedRaw),
+        responseSources,
+        responseCompanion,
+      );
+      if (relationshipContradictions(normalized).length) {
+        normalized = {
+          answer:
+            canonicalRelationshipAnswer(conversation.analysisQuestion) ??
+            "I can help with Social Links, but I need the exact character name and your current in-game date before giving a schedule or Arcana.",
+          sections: [],
+          tables: [],
+          sources: [],
+          confidence: 0.72,
+          missingInfo: "Tell me the exact character and current in-game date.",
+          companion: responseCompanion,
+        };
+      }
     }
     const response = withMode(
       applyGroundingGuardrails(
