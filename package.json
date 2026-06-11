@@ -23,9 +23,10 @@
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
     "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts",
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
+    "test:security": "tsx --test src/security/chatSecurity.test.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
-    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run typecheck && npm run eval:gate && next build"
+    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run typecheck && npm run eval:gate && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -33,7 +34,7 @@
     "dotenv": "^16.4.5",
     "framer-motion": "^11.11.10",
     "lucide-react": "^0.468.0",
-    "next": "16.2.7",
+    "next": "16.2.9",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "robots-parser": "^3.0.1",
@@ -44,9 +45,12 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.49",
+    "postcss": "8.5.15",
     "tailwindcss": "^3.4.16",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2"
+  },
+  "overrides": {
+    "postcss": "8.5.15"
   }
 }

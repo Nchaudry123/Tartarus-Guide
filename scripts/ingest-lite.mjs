@@ -138,6 +138,9 @@ async function discoverSources(seeds, maxPages) {
 
 async function fetchPage(url) {
   if (pageCache.has(url)) return pageCache.get(url);
+  if (!isAllowedSourceUrl(url)) {
+    throw new Error(`URL is outside the ingestion allowlist: ${url}`);
+  }
 
   await sleep(config.ingestDelayMs);
   let response = await fetchWithTimeout(fetchUrlForSource(url), {
@@ -158,6 +161,13 @@ async function fetchPage(url) {
 
   if (!response.ok) {
     throw new Error(`Fetch failed for ${url}: ${response.status}`);
+  }
+  const finalUrl = new URL(response.url);
+  if (
+    (isIgnUrl(url) && finalUrl.hostname !== "r.jina.ai") ||
+    (isGame8Url(url) && !isGame8Url(finalUrl.toString()))
+  ) {
+    throw new Error(`Unsafe redirect target while fetching ${url}`);
   }
   const text = await response.text();
   pageCache.set(url, text);
@@ -184,6 +194,12 @@ function pageToText(page) {
     .replace(/URL Source:\s*\S+/gi, " ")
     .replace(/Published Time:\s*\S+/gi, " ")
     .replace(/Markdown Content:/gi, " ")
+    .replace(
+      /[^.!?\n]*(?:ignore (?:all |any )?(?:previous|prior|above) instructions?|system prompt|developer message|reveal (?:the )?(?:prompt|secret|api key)|you are (?:chatgpt|an ai|the assistant)|jailbreak|override (?:the )?(?:system|developer))[^.!?\n]*[.!?]?/gi,
+      " ",
+    )
+    .replace(/<\|[^>]{0,80}\|>|\[(?:INST|\/INST|SYSTEM|ASSISTANT|USER)\]/gi, " ")
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/g, "")
     .replace(/\badvertisement\b/gi, " ")
     .replace(/https?:\/\/\S+/g, " ")
     .replace(/<[^>]+>/g, " ")
@@ -228,9 +244,31 @@ function normalizeDiscoveredUrl(rawUrl, baseUrl) {
 }
 
 function isAllowedSourceUrl(url) {
-  const path = new URL(url).pathname.toLowerCase();
-  if (path.includes("topcontributors") || path.includes("recentchanges")) return false;
-  return isIgnUrl(url) || isGame8Url(url);
+  try {
+    const decoded = decodeURIComponent(url).toLowerCase();
+    if (
+      [
+        "topcontributors",
+        "recentchanges",
+        "pagehistory",
+        "talk:",
+        "special:",
+        "category:",
+        "file:",
+        "template:",
+        "comments",
+        "login",
+        "signup",
+        "privacy",
+        "terms",
+      ].some((term) => decoded.includes(term))
+    ) {
+      return false;
+    }
+    return isIgnUrl(url) || isGame8Url(url);
+  } catch {
+    return false;
+  }
 }
 
 function isIgnUrl(url) {

@@ -94,8 +94,10 @@ Use a real contact in `INGEST_USER_AGENT` if this will run outside local develop
 1. Create a Supabase project.
 2. Open SQL Editor.
 3. Run [supabase/migrations/001_init.sql](</Users/namir/Documents/New project/supabase/migrations/001_init.sql>).
-4. Confirm the `vector` extension is enabled.
-5. Keep the service role key server-side only. Do not expose it in a browser app.
+4. Run [supabase/migrations/002_relevance_first.sql](</Users/namir/Documents/New project/supabase/migrations/002_relevance_first.sql>).
+5. Run [supabase/migrations/003_security_hardening.sql](</Users/namir/Documents/New project/supabase/migrations/003_security_hardening.sql>).
+6. Confirm the `vector` extension is enabled.
+7. Keep the service role key server-side only. Do not expose it in a browser app.
 
 The migration creates:
 
@@ -104,9 +106,16 @@ The migration creates:
 - `entities`
 - `facts`
 - `retrieval_logs`
+- `chat_rate_limits`
 - `match_chunks(...)` vector search RPC
 
 `sources.credibility_rank` is used to prefer IGN when multiple sources conflict. Lower rank means more trusted.
+
+The security migration enables Row Level Security without public client
+policies, revokes direct `anon` and `authenticated` access, limits database
+functions to the server-side service role, hashes retrieval queries instead of
+storing raw user text, expires logs after 30 days, and adds atomic rate-limit
+tracking.
 
 The default migration uses `vector(384)` for `sentence-transformers/all-MiniLM-L6-v2` Hugging Face embeddings. If you switch to a different embedding model, update `EMBEDDING_DIMENSIONS`, `chunks.embedding`, and the `match_chunks(query_embedding vector(...))` function before ingesting.
 
@@ -410,7 +419,32 @@ CHAT_API_KEY=...
 CHAT_BASE_URL=https://api.groq.com/openai/v1
 CHAT_MODEL=llama-3.3-70b-versatile
 USE_MOCK_CHAT=false
-ALLOWED_ORIGINS=https://nchaudry123.github.io
+ALLOWED_ORIGINS=https://tartarus-guide.vercel.app,https://nchaudry123.github.io
+RATE_LIMIT_SALT=...
+CHAT_RATE_LIMIT_PER_MINUTE=20
+CHAT_RATE_LIMIT_PER_DAY=250
+ALLOW_CHAT_DEBUG=false
 ```
 
-`ALLOWED_ORIGINS` is optional. Use it when GitHub Pages or another frontend calls the Vercel API route from a different origin. If omitted, the route allows all origins.
+The deployed app's own origin is allowed automatically. Add every separate
+frontend origin to `ALLOWED_ORIGINS` as an exact comma-separated URL. Unknown
+origins are rejected; the route never falls back to wildcard CORS.
+
+## Security
+
+- The public chat API accepts JSON only, caps request bodies at 32 KiB, validates
+  every field, limits history/profile sizes, and ignores client-requested debug
+  mode unless `ALLOW_CHAT_DEBUG=true`.
+- Supabase rate limiting applies per-minute and per-day limits using a keyed,
+  non-reversible client fingerprint. Use a long random `RATE_LIMIT_SALT`.
+- Retrieved pages are treated as untrusted data. Ingestion and answer generation
+  remove common prompt-injection markers and never follow instructions found in
+  source text.
+- IGN and Game8 ingestion is restricted to HTTPS allowlisted Persona 3 Reload
+  paths and rejects off-domain redirects.
+- Browser responses include CSP, frame denial, MIME sniffing protection,
+  restrictive permissions policy, referrer policy, and production HSTS.
+- Do not prefix server secrets with `NEXT_PUBLIC_`. Keep `.env`, raw source
+  caches, database dumps, and provider responses out of Git.
+- Run `npm run test:security` after changing the API route, ingestion allowlist,
+  CORS, or request contract.
