@@ -524,6 +524,10 @@ async function readEventStream(response, onStatus, onToken) {
 }
 
 async function requestAnswer(question, history = chatHistory.slice(-8), signal) {
+  if (!apiAvailable) {
+    return mockAnswer(question);
+  }
+
   if (apiAvailable) {
     try {
       const response = await fetch(chatApiUrl, {
@@ -576,7 +580,7 @@ async function checkApiStatus() {
 }
 
 function setApiStatus(mode) {
-  apiAvailable = mode !== "mock";
+  apiAvailable = mode === "rag" || mode === "empty";
   const isLive = mode === "rag";
   const isEmpty = mode === "empty";
   const isError = mode === "error";

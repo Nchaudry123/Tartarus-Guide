@@ -759,6 +759,10 @@ function hasDirectRagEnv(): boolean {
   );
 }
 
+function hasLiveRagConfig(): boolean {
+  return process.env.USE_MOCK_CHAT !== "true" && (hasDirectRagEnv() || Boolean(process.env.RAG_CHAT_ENDPOINT));
+}
+
 function extractJson(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -2429,10 +2433,10 @@ export async function POST(request: Request) {
   const question = body.question;
   try {
     if (question === "__status__") {
-      const retrievalMode = process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv() ? "mock" : "rag";
+      const retrievalMode = hasLiveRagConfig() ? "rag" : "mock";
       return NextResponse.json(
         withMode({
-          answer: retrievalMode === "rag" ? "RAG credentials are configured." : "Mock mode is active.",
+          answer: retrievalMode === "rag" ? "Live guide mode is configured." : "Mock mode is active.",
           sections: [],
           sources: [],
           confidence: retrievalMode === "rag" ? 0.8 : 0.4,
