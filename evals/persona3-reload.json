@@ -38,7 +38,9 @@
     "expectedIntent": "Enemy Weakness",
     "shouldUseSources": true,
     "requiredDomains": ["ign.com", "game8.co"],
-    "forbidUnsupportedExactness": true
+    "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true
   },
   {
     "id": "enemy-location-qualified",
@@ -46,7 +48,9 @@
     "question": "What are the weaknesses and resistances of the Dancing Hand in Thebel?",
     "expectedIntent": "Enemy Weakness",
     "shouldUseSources": true,
-    "forbidUnsupportedExactness": true
+    "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true
   },
   {
     "id": "priestess-boss",
@@ -494,6 +498,8 @@
     "mustUseStructuredFacts": true,
     "requiredDomains": ["ign.com", "game8.co"],
     "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
     "maxSources": 5
   },
   {
@@ -542,6 +548,7 @@
     "shouldUseSources": false,
     "mustIncludeAny": ["Linked Episode", "does not have a Social Link"],
     "mustNotInclude": ["Junpei (Magician)", "4/23", "Classroom 1F"],
+    "hallucinationSensitive": true,
     "maxSources": 0,
     "maxAnswerCharacters": 700
   },
@@ -554,6 +561,7 @@
     "shouldUseSources": false,
     "mustIncludeAny": ["Linked Episode", "does not have a Social Link"],
     "mustNotInclude": ["Akihiko (Emperor)"],
+    "hallucinationSensitive": true,
     "maxSources": 0,
     "maxAnswerCharacters": 700
   },
@@ -567,6 +575,7 @@
     "shouldUseSources": false,
     "mustIncludeAny": ["Kenji", "Kazushi", "Chihiro", "Yuko"],
     "mustNotInclude": ["Magician for Junpei", "Nozomi by spending time after school"],
+    "hallucinationSensitive": true,
     "maxSources": 0,
     "maxAnswerCharacters": 900
   },
@@ -579,6 +588,7 @@
     "shouldUseSources": false,
     "mustIncludeAny": ["school-limited", "Social Stats", "matching Arcana"],
     "mustNotInclude": ["Junpei", "Akihiko", "combat benefits"],
+    "hallucinationSensitive": true,
     "maxSources": 0,
     "maxAnswerCharacters": 1400
   },
@@ -630,6 +640,8 @@
     "shouldUseSources": true,
     "mustIncludeAny": ["pine resin", "Yukari", "6/6"],
     "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
     "maxSources": 5,
     "maxAnswerCharacters": 1200
   },
@@ -664,6 +676,8 @@
     "shouldUseSources": true,
     "mustIncludeAny": ["Vivid Carp Streamers"],
     "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
     "maxSources": 4,
     "maxAnswerCharacters": 900
   },
@@ -677,6 +691,7 @@
     "mustIncludeAny": ["Pierce", "Yukari", "Junpei", "Aigis"],
     "mustNotInclude": ["weak to fire"],
     "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
     "maxSources": 6,
     "maxAnswerCharacters": 1600
   },
@@ -689,6 +704,7 @@
     "shouldUseSources": true,
     "mustIncludeAny": ["no weakness", "Ice", "reflect"],
     "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
     "maxSources": 6,
     "maxAnswerCharacters": 1400
   }
