@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { ChatRequest, ChatResponse, PlayerProfile } from "../../../lib/types";
 import {
@@ -29,6 +30,7 @@ import {
   requestedExactFactTypes,
 } from "../../../src/quality/exactFacts";
 import type { FactMatch } from "../../../src/types/schema";
+import { TtlCache } from "../../../src/cache/ttlCache";
 
 export const runtime = "nodejs";
 
@@ -83,6 +85,53 @@ type ControllerDecision = {
 };
 
 const partyMembers = ["Yukari", "Junpei", "Akihiko", "Mitsuru", "Aigis", "Koromaru", "Ken", "Shinjiro", "Fuuka"];
+const responseCache = new TtlCache<ChatResponse>(128, 10 * 60_000);
+
+function responseCacheKey(body: Partial<ChatRequest>): string | null {
+  if (
+    body.debug ||
+    body.conversationId ||
+    body.history?.length ||
+    Object.values(body.playerProfile ?? {}).some((value) =>
+      Array.isArray(value) ? value.length > 0 : Boolean(value),
+    )
+  ) {
+    return null;
+  }
+
+  const question = body.question?.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!question || question.length < 8 || isCasualMessage(question)) return null;
+  return createHash("sha256").update(question).digest("hex");
+}
+
+function progressMessage(intent: CompanionIntent, action: ControllerAction): string {
+  if (action === "search_guides") {
+    return intent === "Boss Help"
+      ? "Reviewing boss mechanics..."
+      : intent === "Tartarus Navigation"
+        ? "Mapping floors and encounters..."
+        : "Reviewing strategy notes...";
+  }
+
+  switch (intent) {
+    case "Enemy Weakness":
+      return "Checking affinities...";
+    case "Fusion Advice":
+      return "Validating fusion details...";
+    case "Social Links":
+      return "Checking schedules and unlocks...";
+    case "Quest Help":
+      return "Checking requirements and rewards...";
+    case "Daily Schedule Planning":
+      return "Checking the calendar...";
+    case "Tartarus Navigation":
+      return "Mapping floors and encounters...";
+    case "Boss Help":
+      return "Cross-checking boss mechanics...";
+    default:
+      return "Checking the details...";
+  }
+}
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
@@ -1443,7 +1492,11 @@ function extractiveRagResponse(
   }, "rag");
 }
 
-async function externalRagResponse(question: string, conversationId?: string): Promise<ChatResponse | null> {
+async function externalRagResponse(
+  question: string,
+  conversationId?: string,
+  signal?: AbortSignal,
+): Promise<ChatResponse | null> {
   const endpoint = process.env.RAG_CHAT_ENDPOINT;
   if (!endpoint || process.env.USE_MOCK_CHAT === "true") {
     return null;
@@ -1451,6 +1504,7 @@ async function externalRagResponse(question: string, conversationId?: string): P
 
   const response = await fetch(endpoint, {
     method: "POST",
+    signal,
     headers: {
       "content-type": "application/json",
     },
@@ -1550,6 +1604,7 @@ Decide the next action.`;
 
     return normalizeControllerDecision(extractJson(rawDecision), analysis);
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     console.error("Conversation routing failed.");
     return normalizeControllerDecision({}, analysis);
   }
@@ -1790,12 +1845,14 @@ async function directRagResponse(
   history: ChatRequest["history"] = [],
   debug = false,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
   }
 
   onProgress?.("Understanding your question...");
+  signal?.throwIfAborted();
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
   const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
@@ -1830,10 +1887,18 @@ async function directRagResponse(
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
   ]);
+  const complete = (
+    messages: Array<{ role: "system" | "user"; content: string }>,
+    options: {
+      jsonObject?: boolean;
+      model?: string;
+      maxCompletionTokens?: number;
+    } = {},
+  ) => createChatCompletion(messages, { ...options, signal });
 
   const controller =
     deterministicControllerDecision(conversation.analysisQuestion, analysis, playerProfile) ??
-    (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, createChatCompletion));
+    (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, complete));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const spoilerDecision = evaluateSpoilerPolicy({
     question: conversation.analysisQuestion,
@@ -1877,24 +1942,21 @@ async function directRagResponse(
     }, "rag");
   }
 
-  onProgress?.(
-    controller.action === "search_structured_facts"
-      ? "Checking exact game facts..."
-      : controller.action === "search_guides"
-        ? "Reviewing the guide index..."
-        : "Checking facts and strategy guides...",
-  );
+  onProgress?.(progressMessage(controller.intent, controller.action));
   const retrievalQueries = uniqueStrings([
     ...controller.retrievalQueries,
     controller.retrievalQuery,
   ]).slice(0, 2);
-  const context = await buildPlannedContext({
-    queries: retrievalQueries,
-    includeFacts: controller.action !== "search_guides",
-    includeChunks: controller.action !== "search_structured_facts",
-    factLimit: 12,
-    chunkLimit: 7,
-  });
+  const context = await buildPlannedContext(
+    {
+      queries: retrievalQueries,
+      includeFacts: controller.action !== "search_guides",
+      includeChunks: controller.action !== "search_structured_facts",
+      factLimit: 12,
+      chunkLimit: 7,
+    },
+    signal,
+  );
   if (
     controller.intent === "Fusion Advice" ||
     /\b(fuse|fusion|recipe|persona|worth|good to get|should i get)\b/i.test(conversation.analysisQuestion)
@@ -2050,8 +2112,8 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   ];
 
   try {
-    onProgress?.("Building a grounded answer...");
-    const rawAnswer = await createChatCompletion(messages, { jsonObject: true }).catch(() => createChatCompletion(messages));
+    onProgress?.("Putting the answer together...");
+    const rawAnswer = await complete(messages, { jsonObject: true }).catch(() => complete(messages));
     const responseCompanion = {
       intent: controller.intent,
       profileUpdates: controller.profileUpdates,
@@ -2071,7 +2133,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
       const correctionPrompt = `${userPrompt}
 
 Your previous draft contained an affinity element that is not present in the structured facts. Regenerate the JSON answer using only explicitly supported weakness, resistance, nullify, drain, or repel values. Do not recommend an unsupported element as if it were confirmed.`;
-      const correctedRaw = await createChatCompletion(
+      const correctedRaw = await complete(
         [
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
@@ -2088,7 +2150,7 @@ Your previous draft contradicted canonical Persona 3 Reload relationship facts:
 ${relationshipErrors.map((error) => `- ${error}`).join("\n")}
 
 Regenerate the JSON answer. Correct those claims, distinguish Social Links from Linked Episodes, and do not invent an Arcana, start date, schedule, location, or combat benefit.`;
-      const correctedRaw = await createChatCompletion(
+      const correctedRaw = await complete(
         [
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
@@ -2134,6 +2196,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
     }
     return response;
   } catch (error) {
+    if (signal?.aborted) throw error;
     console.error("Grounded response generation failed.");
     return extractiveRagResponse(question, context, analysis);
   }
@@ -2142,10 +2205,19 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
 async function resolveChatRequest(
   body: Partial<ChatRequest>,
   onProgress?: (message: string) => void,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const question = body.question?.trim() ?? "";
-  onProgress?.("Opening the strategy terminal...");
-  const external = await externalRagResponse(question, body.conversationId);
+  signal?.throwIfAborted();
+  const cacheKey = responseCacheKey(body);
+  const cached = cacheKey ? responseCache.get(cacheKey) : undefined;
+  if (cached) {
+    onProgress?.("Loading a recent verified answer...");
+    return cached;
+  }
+
+  onProgress?.("Reading your question...");
+  const external = await externalRagResponse(question, body.conversationId, signal);
   if (external) return external;
 
   const direct = await directRagResponse(
@@ -2154,8 +2226,17 @@ async function resolveChatRequest(
     body.history,
     body.debug,
     onProgress,
+    signal,
   );
-  return direct ?? withMode(mockResponse(question), "mock");
+  const response = direct ?? withMode(mockResponse(question), "mock");
+  if (
+    cacheKey &&
+    response.retrievalMode === "rag" &&
+    (response.confidence ?? 0) >= 0.72
+  ) {
+    responseCache.set(cacheKey, response);
+  }
+  return response;
 }
 
 function streamedChatResponse(request: Request, body: ChatRequest): Response {
@@ -2167,11 +2248,22 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
       };
 
       try {
-        const response = await resolveChatRequest(body, (message) => {
-          emit({ type: "status", message });
-        });
+        const response = await resolveChatRequest(
+          body,
+          (message) => emit({ type: "status", message }),
+          request.signal,
+        );
+        const tokens = response.answer.match(/\S+\s*/g) ?? [response.answer];
+        for (const delta of tokens) {
+          request.signal.throwIfAborted();
+          emit({ type: "token", delta });
+          await new Promise((resolve) => setTimeout(resolve, 6));
+        }
         emit({ type: "response", data: response });
       } catch (error) {
+        if (request.signal.aborted) {
+          return;
+        }
         console.error("Streaming chat response failed.");
         emit({ type: "response", data: withMode(mockResponse(body.question ?? ""), "error") });
       } finally {
@@ -2257,7 +2349,9 @@ export async function POST(request: Request) {
       return streamedChatResponse(request, body);
     }
 
-    return NextResponse.json(await resolveChatRequest(body), { headers: corsHeaders(request) });
+    return NextResponse.json(await resolveChatRequest(body, undefined, request.signal), {
+      headers: corsHeaders(request),
+    });
   } catch (error) {
     console.error("Chat request failed.");
     return NextResponse.json(withMode(mockResponse(question), "error"), { headers: corsHeaders(request) });

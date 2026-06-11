@@ -95,7 +95,11 @@ function diversifyChunks(chunks: ChunkMatch[], limit: number): ChunkMatch[] {
   return selected;
 }
 
-export async function buildPlannedContext(plan: RetrievalPlan): Promise<RetrievalContext> {
+export async function buildPlannedContext(
+  plan: RetrievalPlan,
+  signal?: AbortSignal,
+): Promise<RetrievalContext> {
+  signal?.throwIfAborted();
   const queries = [...new Set(plan.queries.map((query) => query.trim()).filter(Boolean))].slice(0, 2);
   if (!queries.length) throw new Error("Retrieval plan requires at least one query.");
 
@@ -107,8 +111,8 @@ export async function buildPlannedContext(plan: RetrievalPlan): Promise<Retrieva
   const results = await Promise.all(
     queries.map(async (query) => {
       const [facts, chunks] = await Promise.all([
-        includeFacts ? searchFacts(query, factLimit) : Promise.resolve([]),
-        includeChunks ? searchChunks(query, chunkLimit) : Promise.resolve([]),
+        includeFacts ? searchFacts(query, factLimit, signal) : Promise.resolve([]),
+        includeChunks ? searchChunks(query, chunkLimit, signal) : Promise.resolve([]),
       ]);
       return { facts, chunks };
     }),
@@ -119,6 +123,7 @@ export async function buildPlannedContext(plan: RetrievalPlan): Promise<Retrieva
   // confidence-only sort that can elevate broad guide facts over exact matches.
   const facts = dedupeFacts(results.flatMap((result) => result.facts)).slice(0, factLimit);
   const chunks = diversifyChunks(results.flatMap((result) => result.chunks), chunkLimit);
+  signal?.throwIfAborted();
 
   const sourceMap = new Map<string, { title: string; url: string; domain: string }>();
   for (const fact of facts) {
@@ -174,8 +179,8 @@ export async function buildPlannedContext(plan: RetrievalPlan): Promise<Retrieva
   };
 }
 
-export async function buildContext(query: string): Promise<RetrievalContext> {
-  return buildPlannedContext({ queries: [query] });
+export async function buildContext(query: string, signal?: AbortSignal): Promise<RetrievalContext> {
+  return buildPlannedContext({ queries: [query] }, signal);
 }
 
 export function formatContext(context: RetrievalContext): string {

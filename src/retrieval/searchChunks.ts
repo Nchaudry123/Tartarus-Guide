@@ -110,25 +110,33 @@ async function keywordFallback(
     .slice(0, limit) as ChunkMatch[];
 }
 
-export async function searchChunks(query: string, limit = 8): Promise<ChunkMatch[]> {
+export async function searchChunks(
+  query: string,
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<ChunkMatch[]> {
+  signal?.throwIfAborted();
   const analysis = analyzeRetrievalQuery(query);
   const keywordPromise = keywordFallback(query, limit * 2, analysis).catch((error) => {
     console.error("Keyword retrieval failed:", error);
     return [] as ChunkMatch[];
   });
-  const vectorPromise = createEmbedding(query)
-    .then((embedding) =>
-      supabase.rpc("match_chunks", {
+  const vectorPromise = createEmbedding(query, signal)
+    .then((embedding) => {
+      let request = supabase.rpc("match_chunks", {
         query_embedding: `[${embedding.join(",")}]`,
         match_count: limit * 2,
         similarity_threshold: 0.34,
-      }),
-    )
+      });
+      if (signal) request = request.abortSignal(signal);
+      return request;
+    })
     .then(({ data, error }) => {
       if (error) throw error;
       return (data ?? []) as ChunkMatch[];
     })
     .catch((error) => {
+      if (signal?.aborted) throw error;
       console.error("Vector retrieval failed:", error);
       return [] as ChunkMatch[];
     });
