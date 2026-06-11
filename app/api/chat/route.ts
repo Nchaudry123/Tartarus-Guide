@@ -23,6 +23,12 @@ import {
   relationshipContradictions,
   relationshipFactsForPrompt,
 } from "../../../src/quality/relationships";
+import {
+  exactFactLabel,
+  exactFactMatches,
+  requestedExactFactTypes,
+} from "../../../src/quality/exactFacts";
+import type { FactMatch } from "../../../src/types/schema";
 
 export const runtime = "nodejs";
 
@@ -1182,6 +1188,68 @@ function structuredFusionResponse(
   return response;
 }
 
+function structuredExactFactResponse(
+  question: string,
+  facts: FactMatch[],
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  if (!requestedExactFactTypes(question).length) return null;
+  const matches = exactFactMatches(question, facts, factMatchesQuestionSubject);
+  if (!matches.length) return null;
+
+  const entityName = matches[0].entity.name;
+  const selected = matches
+    .filter((fact) => fact.entity.id === matches[0].entity.id)
+    .filter(
+      (fact, index, rows) =>
+        rows.findIndex(
+          (candidate) =>
+            candidate.fact_type === fact.fact_type &&
+            candidate.value.toLowerCase() === fact.value.toLowerCase(),
+        ) === index,
+    )
+    .slice(0, 6);
+  const details = selected.map(
+    (fact) => `${exactFactLabel(fact.fact_type)}: ${fact.value}`,
+  );
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  for (const fact of selected) {
+    sourceMap.set(fact.source.url, {
+      title: fact.source.title,
+      url: fact.source.url,
+      domain: fact.source.domain,
+    });
+  }
+
+  const response = withMode(
+    {
+      answer:
+        details.length === 1
+          ? `${entityName} — ${details[0]}.`
+          : `${entityName}:\n${details.map((detail) => `- ${detail}`).join("\n")}`,
+      sections: [],
+      tables: [],
+      sources: [...sourceMap.values()],
+      confidence: Math.max(...selected.map((fact) => fact.confidence)),
+      missingInfo: "No additional detail is needed for these confirmed facts.",
+      companion,
+    },
+    "rag",
+  );
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: selected.length,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: ["The answer was rendered directly from validated structured fields."],
+    };
+  }
+  return response;
+}
+
 function exactSubjectSources(
   question: string,
   context: {
@@ -1850,6 +1918,14 @@ async function directRagResponse(
     );
     if (exactResponse) return exactResponse;
   }
+  const exactFactResponse = structuredExactFactResponse(
+    conversation.analysisQuestion,
+    context.facts,
+    companion,
+    debug,
+    context.queries,
+  );
+  if (exactFactResponse) return exactFactResponse;
   if (
     exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
     !hasStructuredAffinitySupport(conversation.analysisQuestion, context.facts)

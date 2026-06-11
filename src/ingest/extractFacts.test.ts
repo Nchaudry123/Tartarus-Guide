@@ -5,6 +5,7 @@ import {
   extractDeterministicBossFacts,
   extractDeterministicCalendarFacts,
   extractDeterministicLocationFacts,
+  extractDeterministicPersonaFacts,
   extractDeterministicRequestFacts,
   extractDeterministicSocialLinkFacts,
 } from "./extractFacts";
@@ -40,6 +41,32 @@ test("extracts request schedule, deadline, reward, and prerequisite without infe
   assert(facts.some((fact) => fact.fact_type === "prerequisite" && fact.value === "Complete Request 31"));
   assert(facts.some((fact) => fact.fact_type === "deadline" && fact.value === "8/4"));
   assert(facts.some((fact) => fact.fact_type === "reward" && fact.value === "Onyx x1"));
+});
+
+test("stores Persona Arcana and base level as dedicated exact fields", () => {
+  const facts = extractDeterministicPersonaFacts(
+    chunks(
+      "All Magician Personas",
+      "personas",
+      "Persona: Jack Frost (lvl 8)",
+    ).map((chunk) => ({ ...chunk, sectionTitle: "All Magician Personas" })),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Jack Frost" &&
+        fact.fact_type === "arcana" &&
+        fact.value === "Magician",
+    ),
+  );
+  assert(
+    facts.some(
+      (fact) =>
+        fact.entity_name === "Jack Frost" &&
+        fact.fact_type === "base_level" &&
+        fact.value === "8",
+    ),
+  );
 });
 
 test("extracts Social Link unlocks, schedules, locations, and highest-point answers", () => {

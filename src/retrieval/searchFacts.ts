@@ -41,7 +41,7 @@ const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /resist|resistance/i, types: ["resistance", "nullifies", "drains", "repels"] },
   { pattern: /beat|boss|strategy|fight|kill/i, types: ["strategy", "recommended_party", "weakness", "resistance"] },
   { pattern: /fuse|fusion|recipe/i, types: ["fusion_recipe", "prerequisite", "unlock_condition"] },
-  { pattern: /level|arcana|stats?|inherit/i, types: ["prerequisite", "tip", "unlock_condition"] },
+  { pattern: /level|arcana|stats?|inherit/i, types: ["base_level", "arcana", "prerequisite", "tip", "unlock_condition"] },
   { pattern: /skill|learn|move/i, types: ["tip", "item_effect", "prerequisite"] },
   { pattern: /social link|s-link|answer|choice/i, types: ["answer_choice", "schedule", "unlock_condition", "tip"] },
   {
