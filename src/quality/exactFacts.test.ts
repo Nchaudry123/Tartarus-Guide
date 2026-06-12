@@ -37,6 +37,12 @@ test("detects exact metadata questions", () => {
     "base_level",
     "prerequisite",
   ]);
+  assert.deepEqual(requestedExactFactTypes("When can I start the Emperor Social Link?"), [
+    "unlock_condition",
+    "schedule",
+    "deadline",
+    "prerequisite",
+  ]);
   assert.deepEqual(requestedExactFactTypes("How should I build my party?"), []);
 });
 

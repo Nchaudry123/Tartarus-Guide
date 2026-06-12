@@ -683,6 +683,39 @@ textarea:focus-visible {
   overflow: hidden;
   transform: translateY(.4rem);
 }
+.answer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .85rem;
+  color: rgba(223,252,255,.74);
+  font-size: .74rem;
+  font-weight: 850;
+  line-height: 1.35;
+}
+.answer-meta span,
+.answer-meta strong {
+  display: inline-flex;
+  min-height: 1.5rem;
+  align-items: center;
+  border: 1px solid rgba(85,247,255,.38);
+  background: rgba(85,247,255,.1);
+  color: var(--cyan);
+  padding: .18rem .48rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.answer-meta strong {
+  color: var(--ice);
+}
+.answer-meta em {
+  flex: 1 1 14rem;
+  min-width: 0;
+  color: rgba(239,250,255,.76);
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
 .table-wrap { margin: 1rem 0; overflow-x: auto; background: white; color: var(--navy); border: 2px solid var(--navy); }
 .table-wrap h3 { background: var(--navy); color: var(--cyan); padding: .6rem .85rem; }
 table { width: 100%; min-width: 420px; border-collapse: collapse; }

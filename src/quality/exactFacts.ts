@@ -23,13 +23,13 @@ export const deterministicExactFactTypes = new Set<FactType>([
 const exactQuestionTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /\barcana\b/i, types: ["arcana"] },
   { pattern: /\b(?:base |recommended |what |which )?level\b/i, types: ["base_level", "prerequisite"] },
-  { pattern: /\b(?:when|date|day|schedule|available|availability)\b/i, types: ["schedule", "deadline"] },
+  { pattern: /\b(?:when|date|day|schedule|available|availability|start)\b/i, types: ["unlock_condition", "schedule", "deadline"] },
   { pattern: /\b(?:deadline|due)\b/i, types: ["deadline"] },
   { pattern: /\b(?:reward|receive|get for completing)\b/i, types: ["reward"] },
   { pattern: /\b(?:floor|floors|block)\b/i, types: ["floor_range", "location"] },
   { pattern: /\b(?:where|location|find)\b/i, types: ["location", "floor_range"] },
   { pattern: /\b(?:unlock|start|prerequisite|requirement)\b/i, types: ["unlock_condition", "prerequisite"] },
-  { pattern: /\b(?:classroom answer|correct answer|answer choice)\b/i, types: ["answer_choice"] },
+  { pattern: /\b(?:classroom answer|correct answer|best answer|answer choice)\b/i, types: ["answer_choice"] },
   { pattern: /\b(?:effect|what does .+ do)\b/i, types: ["item_effect"] },
 ];
 
@@ -50,6 +50,8 @@ export function exactFactMatches(
 ): FactMatch[] {
   const requested = requestedExactFactTypes(question);
   if (!requested.length) return [];
+  const rank = question.match(/\brank\s*(\d{1,2})\b/i)?.[1];
+  const rankPrefix = rank ? new RegExp(`\\bRank\\s*${rank}\\s*->`, "i") : null;
   return facts
     .filter(
       (fact) =>
@@ -61,6 +63,7 @@ export function exactFactMatches(
     )
     .sort(
       (a, b) =>
+        Number(Boolean(rankPrefix?.test(b.value))) - Number(Boolean(rankPrefix?.test(a.value))) ||
         requested.indexOf(a.fact_type) - requested.indexOf(b.fact_type) ||
         b.confidence - a.confidence ||
         a.source.credibility_rank - b.source.credibility_rank,

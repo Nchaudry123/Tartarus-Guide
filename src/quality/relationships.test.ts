@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   canonicalRelationshipAnswer,
   relationshipContradictions,
+  socialLinkEntityAliasesForQuestion,
 } from "./relationships";
 
 test("corrects party-member Social Link requests deterministically", () => {
@@ -18,6 +19,13 @@ test("offers actual school Social Links for an ambiguous classmate request", () 
   assert.match(answer, /Kenji Tomochika/);
   assert.match(answer, /Chihiro Fushimi/);
   assert.doesNotMatch(answer, /Junpei/);
+});
+
+test("maps Social Link Arcana questions to their character entity", () => {
+  assert.deepEqual(
+    socialLinkEntityAliasesForQuestion("When can I start the Emperor Social Link?"),
+    ["Hidetoshi Odagiri", "Emperor"],
+  );
 });
 
 test("gives a cautious early Social Link priority rule without inventing party links", () => {
