@@ -15,6 +15,16 @@ export type ChatTable = {
   rows: string[][];
 };
 
+export type BossPrepCard = {
+  boss: string;
+  weakness?: string;
+  avoid?: string;
+  recommendedLevel?: string;
+  party?: string;
+  danger?: string;
+  plan?: string;
+};
+
 export type ChatRequest = {
   question: string;
   conversationId?: string;
@@ -50,6 +60,7 @@ export type ChatResponse = {
   answer: string;
   sections?: ChatSection[];
   tables?: ChatTable[];
+  bossPrep?: BossPrepCard;
   sources: ChatSource[];
   confidence?: number;
   missingInfo?: string;

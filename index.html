@@ -59,6 +59,21 @@
           </div>
           <button type="button" id="openMemory" aria-haspopup="dialog">Edit</button>
         </section>
+        <section class="spoiler-panel" aria-labelledby="spoilerPanelTitle">
+          <div class="spoiler-panel-head">
+            <p id="spoilerPanelTitle">Spoiler Mode</p>
+            <strong id="spoilerSliderLabel">Spoiler-safe</strong>
+          </div>
+          <label class="spoiler-slider-wrap">
+            <span class="sr-only">Spoiler preference</span>
+            <input id="spoilerSlider" type="range" min="0" max="2" step="1" value="0" />
+          </label>
+          <div class="spoiler-scale" aria-hidden="true">
+            <span>Safe</span>
+            <span>Progress</span>
+            <span>Open</span>
+          </div>
+        </section>
         <section class="recent-panel">
           <div class="recent-head">
             <h3>Recent</h3>
