@@ -150,6 +150,14 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(do you like|what do you think (?:of|about)|your opinion|favorite)\b/.test(text)) {
     return "General Discussion";
   }
+  if (
+    /\b(?:bloody maria|emperor and empress|priestess|hanged man|lovers|hierophant|chariot|justice|hermit|fortune|strength)\b/.test(
+      text,
+    ) &&
+    /\b(?:beat|handle|fight|strategy|boss|party)\b/.test(text)
+  ) {
+    return "Boss Help";
+  }
   if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
   if (/\b(achievement|achievements|trophy|trophies|platinum|missable|completion|complete|100%)\b/.test(text)) {
     return "Achievement Hunting";
@@ -425,6 +433,10 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
       question,
     ) &&
     !/\b(?:this|that|the)\s+boss\b/i.test(question);
+  const hasNamedBoss =
+    /\b(?:bloody maria|emperor and empress|priestess|hanged man|lovers|hierophant|chariot|justice|hermit|fortune|strength)\b/i.test(
+      question,
+    );
 
   if (
     intent === "Team Building" &&
@@ -433,7 +445,7 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   ) {
     followUpQuestions.push("What level are you right now, and who is on your active team?");
   }
-  if (intent === "Boss Help" && !mergedProfile.recentBoss && !hasExplicitBossTarget) {
+  if (intent === "Boss Help" && !mergedProfile.recentBoss && !hasExplicitBossTarget && !hasNamedBoss) {
     followUpQuestions.push(
       /\bnext full moon\b/i.test(question)
         ? "What in-game month and date are you on, and which full moon operation is next?"
