@@ -366,7 +366,7 @@ textarea:focus-visible {
   display: grid;
   width: 100%;
   gap: .25rem;
-  padding-right: 2.2rem;
+  padding-right: 1rem;
 }
 .saved-item strong {
   min-width: 0;
@@ -380,19 +380,28 @@ textarea:focus-visible {
   letter-spacing: .02em;
   text-transform: uppercase;
 }
-.saved-item .saved-remove {
-  position: absolute;
-  right: .35rem;
-  top: .35rem;
-  display: grid;
-  width: 1.6rem;
-  min-height: 1.6rem;
-  place-items: center;
-  padding: 0;
+.saved-actions {
+  display: flex;
+  gap: .35rem;
+  justify-content: flex-end;
+  margin-top: .35rem;
+}
+.saved-actions button {
+  min-height: 1.65rem;
+  padding: .22rem .46rem;
   color: var(--ice);
-  background: var(--blue);
+  background: rgba(7,92,255,.62);
   box-shadow: none;
   clip-path: none;
+  font-family: var(--body);
+  font-size: .68rem;
+  font-style: normal;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.saved-actions button[data-remove-saved] {
+  width: 1.65rem;
+  padding: 0;
 }
 .menu-toggle { display: none; }
 

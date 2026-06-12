@@ -231,7 +231,10 @@ function renderSavedAnswers() {
             <strong>${escapeHtml(compactTitle(item.question))}</strong>
             <span>${escapeHtml(formatSavedDate(item.savedAt))}</span>
           </button>
-          <button class="saved-remove" type="button" data-remove-saved="${escapeHtml(item.id)}" aria-label="Remove saved answer">×</button>
+          <div class="saved-actions">
+            <button type="button" data-copy-saved="${escapeHtml(item.id)}">Copy</button>
+            <button type="button" data-remove-saved="${escapeHtml(item.id)}" aria-label="Remove saved answer">×</button>
+          </div>
         </article>
       `,
     )
@@ -276,6 +279,51 @@ async function openSavedAnswer(id) {
     savedId: saved.id,
   });
   setMenu(false);
+}
+
+function savedAnswerMarkdown(saved) {
+  const sources = (saved.response?.sources || [])
+    .map((source) => `- ${source.title} (${source.domain}): ${source.url}`)
+    .join("\n");
+  return [
+    `# ${saved.question}`,
+    "",
+    saved.answer,
+    sources ? "\nSources:" : "",
+    sources,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function copySavedAnswer(id, button) {
+  const saved = savedAnswers.find((item) => item.id === id);
+  if (!saved) return;
+  const text = savedAnswerMarkdown(saved);
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    if (button) {
+      const previous = button.textContent;
+      button.textContent = "Copied";
+      window.setTimeout(() => {
+        button.textContent = previous || "Copy";
+      }, 1400);
+    }
+  } catch {
+    showInputHint("Copy failed. Try opening the saved answer first.");
+  }
 }
 
 function compactHistoryText(value, maxLength = 140) {
@@ -1120,6 +1168,11 @@ messages.addEventListener("click", (event) => {
 });
 
 savedList?.addEventListener("click", (event) => {
+  const copyButton = event.target.closest("button[data-copy-saved]");
+  if (copyButton) {
+    void copySavedAnswer(copyButton.dataset.copySaved, copyButton);
+    return;
+  }
   const removeButton = event.target.closest("button[data-remove-saved]");
   if (removeButton) {
     removeSavedAnswer(removeButton.dataset.removeSaved);
