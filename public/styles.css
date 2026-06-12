@@ -362,6 +362,23 @@ textarea:focus-visible {
 .saved-item {
   position: relative;
 }
+.saved-search {
+  display: block;
+  margin: -.25rem 0 .72rem;
+}
+.saved-search input {
+  width: 100%;
+  border: 1px solid rgba(85,247,255,.45);
+  background: rgba(223,252,255,.9);
+  color: var(--navy);
+  padding: .58rem .72rem;
+  font-weight: 900;
+  outline: none;
+}
+.saved-search input:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(85,247,255,.22);
+}
 .saved-item > button:first-child {
   display: grid;
   width: 100%;

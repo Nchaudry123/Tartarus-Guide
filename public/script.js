@@ -4,6 +4,7 @@ const messages = document.getElementById("messages");
 const categoryList = document.getElementById("categoryList");
 const recentList = document.getElementById("recentList");
 const savedList = document.getElementById("savedList");
+const savedSearch = document.getElementById("savedSearch");
 const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
@@ -223,7 +224,20 @@ function renderSavedAnswers() {
     savedList.innerHTML = "<p>Saved answers will appear here.</p>";
     return;
   }
-  savedList.innerHTML = savedAnswers
+  const query = normalizeQueuedQuestion(savedSearch?.value || "");
+  const filtered = query
+    ? savedAnswers.filter((item) => {
+        const sourceText = (item.response?.sources || [])
+          .map((source) => `${source.title} ${source.domain}`)
+          .join(" ");
+        return normalizeQueuedQuestion(`${item.question} ${item.answer} ${sourceText}`).includes(query);
+      })
+    : savedAnswers;
+  if (!filtered.length) {
+    savedList.innerHTML = "<p>No saved answers match that search.</p>";
+    return;
+  }
+  savedList.innerHTML = filtered
     .map(
       (item) => `
         <article class="saved-item">
@@ -1199,6 +1213,10 @@ savedList?.addEventListener("click", (event) => {
   if (openButton) {
     void openSavedAnswer(openButton.dataset.openSaved);
   }
+});
+
+savedSearch?.addEventListener("input", () => {
+  renderSavedAnswers();
 });
 
 clearChat?.addEventListener("click", () => {
