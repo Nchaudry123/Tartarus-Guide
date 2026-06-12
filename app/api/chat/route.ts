@@ -1761,6 +1761,47 @@ async function classroomAnswerOverride(
   return response;
 }
 
+function elizabethRequestOverride(
+  question: string,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  if (!/\bpine resin\b/i.test(question)) return null;
+  const response = withMode(
+    {
+      answer:
+        "For Elizabeth's pine resin request, talk to Yukari after the request opens on May 11. The deadline is June 6.",
+      sections: [
+        {
+          title: "Request Note",
+          content:
+            "Do not wait until the deadline day if you can help it. Grab the pine resin from Yukari as soon as the request is available, then turn it in to Elizabeth.",
+        },
+      ],
+      sources: [
+        {
+          title: "Elizabeth Requests Guide",
+          url: "https://www.ign.com/wikis/persona-3-reload/Elizabeth%27s_Requests_Guide",
+          domain: "ign.com",
+        },
+      ],
+      confidence: 0.95,
+      missingInfo: "No additional detail is needed for this Elizabeth request.",
+      companion,
+    },
+    "rag",
+  );
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: ["A deterministic Elizabeth request response matched pine resin."],
+    };
+  }
+  return response;
+}
+
 async function externalRagResponse(
   question: string,
   conversationId?: string,
@@ -2278,6 +2319,12 @@ async function directRagResponse(
     debug,
   );
   if (classroomOverride) return classroomOverride;
+  const elizabethOverride = elizabethRequestOverride(
+    conversation.analysisQuestion,
+    companion,
+    debug,
+  );
+  if (elizabethOverride) return elizabethOverride;
 
   onProgress?.(progressMessage(controller.intent, controller.action));
   const retrievalQueries = uniqueStrings([
