@@ -19,7 +19,10 @@ const recent = [];
 const chatHistory = loadChatHistory();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
+let isProcessingQueue = false;
 let activeRequestController = null;
+let queuedQuestionId = 0;
+const chatQueue = [];
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -328,13 +331,26 @@ function mockAnswer(question) {
   };
 }
 
-function addUserMessage(text) {
+function addUserMessage(text, options = {}) {
   clearEmpty();
   const node = document.createElement("article");
-  node.className = "message user-message";
-  node.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
+  node.className = `message user-message${options.queued ? " is-queued" : ""}`;
+  node.innerHTML = `
+    <div class="bubble">
+      <span class="message-text">${escapeHtml(text)}</span>
+      <span class="queue-label">Queued</span>
+    </div>
+  `;
   messages.appendChild(node);
   scrollMessagesToBottom({ force: true });
+  return node;
+}
+
+function setUserMessageQueued(node, queued) {
+  if (!node) return;
+  node.classList.toggle("is-queued", queued);
+  const label = node.querySelector(".queue-label");
+  if (label) label.textContent = queued ? "Queued" : "";
 }
 
 function addLoading() {
@@ -461,12 +477,18 @@ function setSending(sending) {
   isSending = sending;
   form?.classList.toggle("is-sending", sending);
   form?.setAttribute("aria-busy", String(sending));
+  updateSendButtonState();
+}
+
+function updateSendButtonState() {
   if (sendButton) {
+    const hasDraft = Boolean(input?.value.trim());
     sendButton.disabled = false;
-    sendButton.classList.toggle("is-stop", sending);
-    sendButton.textContent = sending ? "■" : "➜";
-    sendButton.setAttribute("aria-label", sending ? "Stop generating" : "Send question");
-    sendButton.title = sending ? "Stop generating" : "Send question";
+    sendButton.classList.toggle("is-stop", isSending && !hasDraft);
+    sendButton.classList.toggle("is-queue", isSending && hasDraft);
+    sendButton.textContent = isSending ? (hasDraft ? "Queue" : "■") : "➜";
+    sendButton.setAttribute("aria-label", isSending ? (hasDraft ? "Queue question" : "Stop generating") : "Send question");
+    sendButton.title = isSending ? (hasDraft ? "Queue question" : "Stop generating") : "Send question";
   }
 }
 
@@ -606,32 +628,52 @@ function updateRecent(question) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = item;
-    button.addEventListener("click", () => ask(item));
+    button.addEventListener("click", () => queueQuestion(item));
     recentList.appendChild(button);
   });
 }
 
-async function ask(question) {
+function queueQuestion(question) {
   const trimmed = question.trim();
   if (!trimmed) return;
-  if (isSending) {
-    activeRequestController?.abort();
-    document.getElementById("loading")?.remove();
-    document.getElementById("streamingAssistant")?.remove();
+  const node = addUserMessage(trimmed, { queued: isSending || isProcessingQueue || chatQueue.length > 0 });
+  chatQueue.push({
+    id: ++queuedQuestionId,
+    question: trimmed,
+    node,
+  });
+  updateRecent(trimmed);
+  input.value = "";
+  input.style.height = "";
+  updateSendButtonState();
+  void processChatQueue();
+}
+
+async function processChatQueue() {
+  if (isProcessingQueue) return;
+  isProcessingQueue = true;
+  try {
+    while (chatQueue.length) {
+      const item = chatQueue.shift();
+      setUserMessageQueued(item.node, false);
+      await askQueuedQuestion(item.question);
+    }
+  } finally {
+    isProcessingQueue = false;
+    setSending(false);
   }
+}
+
+async function askQueuedQuestion(question) {
   const priorHistory = chatHistory.slice(-8);
   const requestController = new AbortController();
   activeRequestController = requestController;
   setSending(true);
   setMenu(false);
-  addUserMessage(trimmed);
-  rememberTurn("user", trimmed);
-  updateRecent(trimmed);
-  input.value = "";
-  input.style.height = "";
+  rememberTurn("user", question);
   addLoading();
   try {
-    const response = await requestAnswer(trimmed, priorHistory, requestController.signal);
+    const response = await requestAnswer(question, priorHistory, requestController.signal);
     await addAssistantMessage(response);
   } catch (error) {
     document.getElementById("loading")?.remove();
@@ -647,7 +689,7 @@ async function ask(question) {
   } finally {
     if (activeRequestController === requestController) {
       activeRequestController = null;
-      setSending(false);
+      setSending(chatQueue.length > 0);
       if (!document.documentElement.classList.contains("is-mobile")) input.focus();
     }
   }
@@ -659,7 +701,7 @@ form.addEventListener("submit", (event) => {
     activeRequestController?.abort();
     return;
   }
-  ask(input.value);
+  queueQuestion(input.value);
 });
 
 input.addEventListener("keydown", (event) => {
@@ -672,6 +714,7 @@ input.addEventListener("keydown", (event) => {
 input.addEventListener("input", () => {
   input.style.height = "auto";
   input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+  updateSendButtonState();
 });
 
 input.addEventListener("focus", () => {
@@ -692,7 +735,7 @@ messages.addEventListener("scroll", () => {
 
 categoryList?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");
-  if (button) ask(button.dataset.prompt);
+  if (button) queueQuestion(button.dataset.prompt);
 });
 
 function setMenu(open) {
@@ -717,7 +760,7 @@ enterApp.addEventListener("click", () => {
 
 messages.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");
-  if (button) ask(button.dataset.prompt);
+  if (button) queueQuestion(button.dataset.prompt);
 });
 
 clearChat?.addEventListener("click", () => {
