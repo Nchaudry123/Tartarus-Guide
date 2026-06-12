@@ -14,6 +14,8 @@ const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 const sendButton = form?.querySelector('button[type="submit"]');
 const chatHistoryKey = "tartarusChatHistoryV2";
 const playerProfileKey = "tartarusPlayerProfileV2";
+const defaultInputPlaceholder = input?.placeholder || "Ask anything about Persona 3 Reload...";
+const maxQueuedQuestions = 5;
 
 const recent = [];
 const chatHistory = loadChatHistory();
@@ -21,8 +23,10 @@ let playerProfile = loadPlayerProfile();
 let isSending = false;
 let isProcessingQueue = false;
 let activeRequestController = null;
+let activeQuestion = "";
 let queuedQuestionId = 0;
 const chatQueue = [];
+let inputHintTimer = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -353,6 +357,28 @@ function setUserMessageQueued(node, queued) {
   if (label) label.textContent = queued ? "Queued" : "";
 }
 
+function updateQueuedLabels() {
+  chatQueue.forEach((item, index) => {
+    const label = item.node?.querySelector(".queue-label");
+    if (label) label.textContent = `Queued ${index + 1}/${chatQueue.length}`;
+  });
+}
+
+function normalizeQueuedQuestion(question) {
+  return String(question || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function showInputHint(message) {
+  if (!input) return;
+  window.clearTimeout(inputHintTimer);
+  input.placeholder = message;
+  input.classList.add("has-input-hint");
+  inputHintTimer = window.setTimeout(() => {
+    input.placeholder = defaultInputPlaceholder;
+    input.classList.remove("has-input-hint");
+  }, 2200);
+}
+
 function addLoading() {
   const node = document.createElement("div");
   node.className = "loading";
@@ -636,12 +662,27 @@ function updateRecent(question) {
 function queueQuestion(question) {
   const trimmed = question.trim();
   if (!trimmed) return;
+  const normalized = normalizeQueuedQuestion(trimmed);
+  const lastQueued = chatQueue[chatQueue.length - 1];
+  const isDuplicate =
+    normalized &&
+    (normalized === normalizeQueuedQuestion(activeQuestion) ||
+      normalized === normalizeQueuedQuestion(lastQueued?.question));
+  if (isDuplicate) {
+    showInputHint("That question is already in progress.");
+    return;
+  }
+  if ((isSending || isProcessingQueue) && chatQueue.length >= maxQueuedQuestions) {
+    showInputHint(`Queue is full. Let one answer finish first.`);
+    return;
+  }
   const node = addUserMessage(trimmed, { queued: isSending || isProcessingQueue || chatQueue.length > 0 });
   chatQueue.push({
     id: ++queuedQuestionId,
     question: trimmed,
     node,
   });
+  updateQueuedLabels();
   updateRecent(trimmed);
   input.value = "";
   input.style.height = "";
@@ -655,6 +696,7 @@ async function processChatQueue() {
   try {
     while (chatQueue.length) {
       const item = chatQueue.shift();
+      updateQueuedLabels();
       setUserMessageQueued(item.node, false);
       await askQueuedQuestion(item.question);
     }
@@ -668,6 +710,7 @@ async function askQueuedQuestion(question) {
   const priorHistory = chatHistory.slice(-8);
   const requestController = new AbortController();
   activeRequestController = requestController;
+  activeQuestion = question;
   setSending(true);
   setMenu(false);
   rememberTurn("user", question);
@@ -689,6 +732,7 @@ async function askQueuedQuestion(question) {
   } finally {
     if (activeRequestController === requestController) {
       activeRequestController = null;
+      activeQuestion = "";
       setSending(chatQueue.length > 0);
       if (!document.documentElement.classList.contains("is-mobile")) input.focus();
     }

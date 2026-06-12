@@ -843,6 +843,10 @@ footer span {
   border-color: var(--cyan);
   box-shadow: 0 0 0 3px rgba(85,247,255,.7), 0 0 24px rgba(85,247,255,.22);
 }
+.chat-form textarea.has-input-hint::placeholder {
+  color: var(--blue);
+  opacity: .95;
+}
 .chat-form button {
   width: 5.4rem;
   border: 0;
