@@ -13,12 +13,16 @@ const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 const sendButton = form?.querySelector('button[type="submit"]');
 const chatHistoryKey = "tartarusChatHistoryV2";
+const exactAnswerCacheKey = "tartarusExactAnswerCacheV1";
 const playerProfileKey = "tartarusPlayerProfileV2";
 const defaultInputPlaceholder = input?.placeholder || "Ask anything about Persona 3 Reload...";
 const maxQueuedQuestions = 5;
+const maxCachedExactAnswers = 24;
+const exactAnswerCacheTtlMs = 1000 * 60 * 30;
 
 const recent = [];
 const chatHistory = loadChatHistory();
+const exactAnswerCache = loadExactAnswerCache();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
 let isProcessingQueue = false;
@@ -99,8 +103,34 @@ function loadChatHistory() {
   }
 }
 
+function loadExactAnswerCache() {
+  try {
+    const entries = JSON.parse(window.sessionStorage.getItem(exactAnswerCacheKey) || "[]");
+    const now = Date.now();
+    return Array.isArray(entries)
+      ? entries.filter(
+          (entry) =>
+            entry &&
+            typeof entry.key === "string" &&
+            entry.response &&
+            now - Number(entry.createdAt || 0) < exactAnswerCacheTtlMs,
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function saveChatHistory() {
   window.sessionStorage.setItem(chatHistoryKey, JSON.stringify(chatHistory));
+}
+
+function saveExactAnswerCache() {
+  try {
+    window.sessionStorage.setItem(exactAnswerCacheKey, JSON.stringify(exactAnswerCache.slice(-maxCachedExactAnswers)));
+  } catch {
+    // Session storage can be unavailable in private browsing; caching is optional.
+  }
 }
 
 function savePlayerProfile() {
@@ -368,6 +398,57 @@ function normalizeQueuedQuestion(question) {
   return String(question || "").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+function exactAnswerCacheKeyFor(question) {
+  return normalizeQueuedQuestion(question).replace(/[?!.]+$/g, "");
+}
+
+function isExactLookupQuestion(question) {
+  const text = normalizeQueuedQuestion(question);
+  return (
+    /\b(?:weak to|weakness|weaknesses|resist|resists|null|drain|repel)\b/.test(text) ||
+    /\b(?:classroom|quiz|exam|answer)\b/.test(text) ||
+    /\b(?:elizabeth|request|pine resin|juzumaru|kouha)\b/.test(text)
+  );
+}
+
+function getCachedExactAnswer(question) {
+  if (!isExactLookupQuestion(question)) return null;
+  const key = exactAnswerCacheKeyFor(question);
+  const now = Date.now();
+  const entry = exactAnswerCache.find((item) => item.key === key && now - item.createdAt < exactAnswerCacheTtlMs);
+  if (!entry) return null;
+  return {
+    ...entry.response,
+    companion: {
+      ...(entry.response.companion || {}),
+      suggestedPrompts: entry.response.companion?.suggestedPrompts || [],
+    },
+  };
+}
+
+function rememberExactAnswer(question, response) {
+  if (!isExactLookupQuestion(question)) return;
+  if (!response?.answer || response.retrievalMode === "error" || response.retrievalMode === "mock") return;
+  if (!Array.isArray(response.sources) || response.sources.length === 0) return;
+  const key = exactAnswerCacheKeyFor(question);
+  const cachedResponse = {
+    answer: response.answer,
+    sections: response.sections || [],
+    table: response.table || null,
+    missing: response.missing,
+    retrievalMode: response.retrievalMode,
+    companion: response.companion
+      ? { suggestedPrompts: response.companion.suggestedPrompts || [] }
+      : undefined,
+    sources: response.sources || [],
+  };
+  const existingIndex = exactAnswerCache.findIndex((entry) => entry.key === key);
+  if (existingIndex >= 0) exactAnswerCache.splice(existingIndex, 1);
+  exactAnswerCache.push({ key, createdAt: Date.now(), response: cachedResponse });
+  exactAnswerCache.splice(0, Math.max(0, exactAnswerCache.length - maxCachedExactAnswers));
+  saveExactAnswerCache();
+}
+
 function showInputHint(message) {
   if (!input) return;
   window.clearTimeout(inputHintTimer);
@@ -569,6 +650,12 @@ async function requestAnswer(question, history = chatHistory.slice(-8), signal) 
     return mockAnswer(question);
   }
 
+  const cachedAnswer = getCachedExactAnswer(question);
+  if (cachedAnswer) {
+    updateLoadingStatus("Using the recent exact answer...");
+    return cachedAnswer;
+  }
+
   if (apiAvailable) {
     try {
       const response = await fetch(chatApiUrl, {
@@ -587,7 +674,9 @@ async function requestAnswer(question, history = chatHistory.slice(-8), signal) 
         throw new Error("No chat API available.");
       }
 
-      return await readEventStream(response, updateLoadingStatus, appendStreamToken);
+      const answer = await readEventStream(response, updateLoadingStatus, appendStreamToken);
+      rememberExactAnswer(question, answer);
+      return answer;
     } catch (error) {
       if (error?.name === "AbortError") throw error;
       setApiStatus("error");
