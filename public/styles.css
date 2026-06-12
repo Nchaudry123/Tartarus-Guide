@@ -1471,9 +1471,27 @@ footer span {
   gap: .48rem;
 }
 
+:root.is-mobile.is-chat-scrolling .message {
+  animation: none;
+}
+
+:root.is-mobile.is-chat-scrolling .message.user-message .bubble,
+:root.is-mobile.is-chat-scrolling .assistant-message .bubble {
+  box-shadow: 3px 4px 0 rgba(2,7,32,.16);
+  transition: none;
+}
+
 :root.is-mobile .assistant-avatar {
   width: 2.35rem;
   height: 2.35rem;
+}
+
+:root.is-mobile.is-chat-scrolling .assistant-avatar {
+  box-shadow: none;
+}
+
+:root.is-mobile.is-chat-scrolling .assistant-avatar img {
+  filter: brightness(1.18) saturate(1.05);
 }
 
 :root.is-mobile .assistant-message .bubble {
