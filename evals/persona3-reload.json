@@ -16,6 +16,28 @@
     "shouldUseSources": false
   },
   {
+    "id": "silly-jiggle-filter",
+    "category": "conversation",
+    "origin": "user_transcript",
+    "question": "can she make it jiggle",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["jiggle", "unserious", "physics"],
+    "mustNotInclude": ["Elizabeth's requests are side quests", "5/10", "Malebolge Door", "Velvet Room then"],
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "silly-elizabeth-jiggle-filter",
+    "category": "conversation",
+    "origin": "user_transcript",
+    "question": "Elizabeth, can she make it jiggle",
+    "expectedIntent": "General Discussion",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["Velvet Room", "jiggle", "physics"],
+    "mustNotInclude": ["Elizabeth's requests are side quests", "5/10", "Malebolge Door", "Request 2"],
+    "maxAnswerCharacters": 700
+  },
+  {
     "id": "vague-team",
     "category": "team",
     "question": "My team feels weak.",
