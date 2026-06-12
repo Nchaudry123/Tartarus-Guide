@@ -145,6 +145,41 @@ function rememberTurn(role, content) {
   saveChatHistory();
 }
 
+function compactHistoryText(value, maxLength = 140) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
+}
+
+function buildPackedHistory() {
+  const cleanHistory = chatHistory
+    .filter((message) => message?.content?.trim() && (message.role === "user" || message.role === "assistant"))
+    .slice(-12);
+  if (cleanHistory.length <= 6) return cleanHistory;
+
+  const recentTurns = cleanHistory.slice(-5);
+  const olderTurns = cleanHistory.slice(0, -5);
+  const olderUsers = olderTurns
+    .filter((message) => message.role === "user")
+    .map((message) => compactHistoryText(message.content, 110))
+    .slice(-4);
+  const olderAssistants = olderTurns
+    .filter((message) => message.role === "assistant")
+    .map((message) => compactHistoryText(message.content, 130))
+    .slice(-3);
+  const summaryParts = [
+    olderUsers.length ? `Earlier user topics: ${olderUsers.join(" | ")}` : "",
+    olderAssistants.length ? `Earlier assistant guidance: ${olderAssistants.join(" | ")}` : "",
+  ].filter(Boolean);
+
+  return [
+    {
+      role: "assistant",
+      content: compactHistoryText(`Earlier conversation context. ${summaryParts.join(". ")}`, 700),
+    },
+    ...recentTurns,
+  ];
+}
+
 function mergeProfileUpdates(updates) {
   if (!updates || typeof updates !== "object") return;
   const mergedSocialStats = cleanProfile({
@@ -796,7 +831,7 @@ async function processChatQueue() {
 }
 
 async function askQueuedQuestion(question) {
-  const priorHistory = chatHistory.slice(-8);
+  const priorHistory = buildPackedHistory();
   const requestController = new AbortController();
   activeRequestController = requestController;
   activeQuestion = question;
