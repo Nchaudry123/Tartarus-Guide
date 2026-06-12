@@ -808,5 +808,56 @@
     "hallucinationSensitive": true,
     "maxSources": 6,
     "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "latency-exact-weakness-shape",
+    "category": "latency",
+    "origin": "curated",
+    "question": "What is Dancing Hand weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Fire"],
+    "exactAnswer": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 700,
+    "maxResponseMs": 9000
+  },
+  {
+    "id": "latency-classroom-answer-shape",
+    "category": "latency",
+    "origin": "curated",
+    "question": "what is the classroom answer on april 18?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Middens"],
+    "exactAnswer": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 700,
+    "maxResponseMs": 9000
+  },
+  {
+    "id": "latency-elizabeth-request-shape",
+    "category": "latency",
+    "origin": "curated",
+    "question": "When is the pine resin request due and who gives it to me?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["June 6", "Yukari", "pine resin"],
+    "exactAnswer": true,
+    "maxSources": 5,
+    "maxAnswerCharacters": 900,
+    "maxResponseMs": 9000
+  },
+  {
+    "id": "latency-boss-response-shape",
+    "category": "latency",
+    "origin": "curated",
+    "question": "How do I beat Priestess?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Priestess", "Fire", "Ice"],
+    "maxSources": 6,
+    "maxAnswerCharacters": 1200,
+    "maxResponseMs": 10000
   }
 ]
