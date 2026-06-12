@@ -6,9 +6,6 @@ const recentList = document.getElementById("recentList");
 const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
-const ragStatus = document.getElementById("ragStatus");
-const chatModeLabel = document.getElementById("chatModeLabel");
-const modeCardText = document.getElementById("modeCardText");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -300,7 +297,7 @@ function mockAnswer(question) {
     return {
       answer: "Fusion help is wired as a first-class response type. The live guide should avoid guessing recipes unless a trusted fusion fact is available.",
       sections: [["Fusion Rule", "Exact recipes, skill inheritance, and unlock conditions should come from structured facts. If the guide index is missing them, the answer should say so."]],
-      missing: "Connect the RAG backend for exact Persona fusion recipes.",
+      missing: "Live guide mode is not available in this preview.",
       confidence: "40%",
       retrievalMode: "mock",
       sources: [
@@ -313,10 +310,10 @@ function mockAnswer(question) {
     };
   }
   return {
-    answer: "This is the frontend preview for Tartarus Guide. The interface is ready for natural Persona 3 Reload questions; connect the real RAG backend to replace this mock response.",
+    answer: "This is the frontend preview for Tartarus Guide. The interface is ready for natural Persona 3 Reload questions; live guide answers will appear when the chat service is available.",
     sections: [
       ["What Works Now", "The chat UI, suggested prompts, loading state, source display, quick menu, and mock response format are in place."],
-      ["Next Connection", "Point the Next `/api/chat` route at the Supabase retrieval pipeline or an external backend endpoint."],
+      ["Next Connection", "Start the Next chat service or use the deployed site for live source-backed answers."],
     ],
     missing: "Live retrieval is not enabled yet.",
     confidence: "50%",
@@ -388,27 +385,6 @@ async function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
   mergeProfileUpdates(response.companion?.profileUpdates);
-  const confidenceValue = Number.parseInt(String(response.confidence || "0"), 10);
-  const reliabilityLabel =
-    response.retrievalMode === "mock"
-      ? "Preview"
-      : confidenceValue >= 85
-        ? "Verified"
-        : confidenceValue >= 60
-          ? "Cautious"
-          : "Needs detail";
-  const missingInfo =
-    response.missing &&
-    !/^(no additional detail|no missing information)/i.test(response.missing)
-      ? response.missing
-      : "";
-  const answerMeta = `
-    <div class="answer-meta" aria-label="Answer confidence">
-      <span>${escapeHtml(reliabilityLabel)}</span>
-      ${response.confidence ? `<strong>${escapeHtml(response.confidence)}</strong>` : ""}
-      ${missingInfo ? `<em>${escapeHtml(missingInfo)}</em>` : ""}
-    </div>
-  `;
   const sections = (response.sections || [])
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
     .join("");
@@ -447,7 +423,6 @@ async function addAssistantMessage(response) {
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
-        ${answerMeta}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -504,10 +479,6 @@ function normalizeApiResponse(data) {
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,
     sources: data.sources || [],
-    confidence:
-      typeof data.confidence === "number"
-        ? `${Math.round(data.confidence * 100)}%`
-        : "N/A",
   };
 }
 
@@ -603,33 +574,6 @@ async function checkApiStatus() {
 
 function setApiStatus(mode) {
   apiAvailable = mode === "rag" || mode === "empty";
-  const isLive = mode === "rag";
-  const isEmpty = mode === "empty";
-  const isError = mode === "error";
-  if (ragStatus) {
-    ragStatus.classList.toggle("is-live", isLive);
-    ragStatus.classList.toggle("is-error", isError);
-    ragStatus.querySelector("strong").textContent = isLive ? "RAG Online" : isEmpty ? "RAG Connected" : isError ? "API Fallback" : "Preview Mode";
-    ragStatus.querySelector("small").textContent = isLive
-      ? "Live guide active"
-      : isEmpty
-        ? "No matching source yet"
-        : isError
-          ? "Mock fallback active"
-          : "Mock responses active";
-  }
-  if (chatModeLabel) {
-    chatModeLabel.textContent = isLive ? "RAG API" : isEmpty ? "No Match" : isError ? "Fallback" : "Mock API";
-  }
-  if (modeCardText) {
-    modeCardText.textContent = isLive
-      ? "Connected to live guide mode. Answers use your Persona 3 Reload guide index."
-      : isEmpty
-        ? "The API is connected, but this question did not match the current knowledge base."
-        : isError
-          ? "The API route responded, but retrieval failed and the terminal used a fallback answer."
-          : "Static preview uses mock answers until the deployed API has live credentials.";
-  }
 }
 
 function clearEmpty() {
