@@ -3,12 +3,9 @@ const input = document.getElementById("questionInput");
 const messages = document.getElementById("messages");
 const categoryList = document.getElementById("categoryList");
 const recentList = document.getElementById("recentList");
-const savedList = document.getElementById("savedList");
-const savedSearch = document.getElementById("savedSearch");
 const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
-const clearSaved = document.getElementById("clearSaved");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -29,7 +26,6 @@ const recent = [];
 const chatHistory = loadChatHistory();
 const exactAnswerCache = loadExactAnswerCache();
 const savedAnswers = loadSavedAnswers();
-const messageSavePayloads = new Map();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
 let isProcessingQueue = false;
@@ -166,7 +162,7 @@ function saveSavedAnswers() {
   try {
     window.localStorage.setItem(savedAnswersKey, JSON.stringify(savedAnswers.slice(0, maxSavedAnswers)));
   } catch {
-    showInputHint("Saved answers are unavailable in this browser.");
+    showInputHint("Recent chats are unavailable in this browser.");
   }
 }
 
@@ -200,7 +196,7 @@ function formatSavedDate(value) {
       minute: "2-digit",
     }).format(new Date(value));
   } catch {
-    return "Saved";
+    return "Recent";
   }
 }
 
@@ -218,37 +214,21 @@ function normalizeResponseForSave(response) {
   };
 }
 
-function renderSavedAnswers() {
-  if (!savedList) return;
+function renderRecentAnswers() {
+  if (!recentList) return;
   if (!savedAnswers.length) {
-    savedList.innerHTML = "<p>Saved answers will appear here.</p>";
+    recentList.innerHTML = "<p>Recent chats stay saved on this device.</p>";
     return;
   }
-  const query = normalizeQueuedQuestion(savedSearch?.value || "");
-  const filtered = query
-    ? savedAnswers.filter((item) => {
-        const sourceText = (item.response?.sources || [])
-          .map((source) => `${source.title} ${source.domain}`)
-          .join(" ");
-        return normalizeQueuedQuestion(`${item.question} ${item.answer} ${sourceText}`).includes(query);
-      })
-    : savedAnswers;
-  if (!filtered.length) {
-    savedList.innerHTML = "<p>No saved answers match that search.</p>";
-    return;
-  }
-  savedList.innerHTML = filtered
+  recentList.innerHTML = savedAnswers
+    .slice(0, 6)
     .map(
       (item) => `
-        <article class="saved-item">
-          <button type="button" data-open-saved="${escapeHtml(item.id)}">
+        <article class="recent-item">
+          <button type="button" data-open-recent="${escapeHtml(item.id)}">
             <strong>${escapeHtml(compactTitle(item.question))}</strong>
             <span>${escapeHtml(formatSavedDate(item.savedAt))}</span>
           </button>
-          <div class="saved-actions">
-            <button type="button" data-copy-saved="${escapeHtml(item.id)}">Copy</button>
-            <button type="button" data-remove-saved="${escapeHtml(item.id)}" aria-label="Remove saved answer">×</button>
-          </div>
         </article>
       `,
     )
@@ -270,16 +250,8 @@ function saveAnswerSnapshot(payload) {
   savedAnswers.unshift(saved);
   savedAnswers.splice(maxSavedAnswers);
   saveSavedAnswers();
-  renderSavedAnswers();
+  renderRecentAnswers();
   return saved;
-}
-
-function removeSavedAnswer(id) {
-  const index = savedAnswers.findIndex((item) => item.id === id);
-  if (index < 0) return;
-  savedAnswers.splice(index, 1);
-  saveSavedAnswers();
-  renderSavedAnswers();
 }
 
 async function openSavedAnswer(id) {
@@ -290,65 +262,8 @@ async function openSavedAnswer(id) {
   await addAssistantMessage(saved.response, {
     question: saved.question,
     skipRemember: true,
-    savedId: saved.id,
-    savedQuestion: saved.question,
   });
   setMenu(false);
-}
-
-function startSavedFollowUp(question) {
-  if (!input) return;
-  input.value = `Follow up on "${compactTitle(question, 44)}": `;
-  input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
-  updateSendButtonState();
-  input.focus();
-  scrollMessagesToBottom({ force: true });
-}
-
-function savedAnswerMarkdown(saved) {
-  const sources = (saved.response?.sources || [])
-    .map((source) => `- ${source.title} (${source.domain}): ${source.url}`)
-    .join("\n");
-  return [
-    `# ${saved.question}`,
-    "",
-    saved.answer,
-    sources ? "\nSources:" : "",
-    sources,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-async function copySavedAnswer(id, button) {
-  const saved = savedAnswers.find((item) => item.id === id);
-  if (!saved) return;
-  const text = savedAnswerMarkdown(saved);
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-    } else {
-      const area = document.createElement("textarea");
-      area.value = text;
-      area.setAttribute("readonly", "");
-      area.style.position = "fixed";
-      area.style.opacity = "0";
-      document.body.appendChild(area);
-      area.select();
-      document.execCommand("copy");
-      area.remove();
-    }
-    if (button) {
-      const previous = button.textContent;
-      button.textContent = "Copied";
-      window.setTimeout(() => {
-        button.textContent = previous || "Copy";
-      }, 1400);
-    }
-  } catch {
-    showInputHint("Copy failed. Try opening the saved answer first.");
-  }
 }
 
 function compactHistoryText(value, maxLength = 140) {
@@ -482,7 +397,7 @@ function closeMemoryDialog() {
 }
 
 renderMemorySummary();
-renderSavedAnswers();
+renderRecentAnswers();
 
 function escapeHtml(value) {
   return String(value)
@@ -801,20 +716,6 @@ async function addAssistantMessage(response, options = {}) {
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
   const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
-  const savePayloadId = makeId("save-payload");
-  messageSavePayloads.set(savePayloadId, {
-    question: options.question || activeQuestion || "Saved guide answer",
-    response,
-  });
-  const isSaved = savedAnswers.some(
-    (item) => normalizeQueuedQuestion(item.question) === normalizeQueuedQuestion(options.question || activeQuestion),
-  );
-  const saveAction = `
-    <div class="message-actions">
-      <button type="button" data-save-answer="${escapeHtml(savePayloadId)}">${isSaved || options.savedId ? "Saved" : "Save"}</button>
-      ${options.savedQuestion ? `<button type="button" data-followup-saved="${escapeHtml(options.savedQuestion)}">Follow up</button>` : ""}
-    </div>
-  `;
   let node = document.getElementById("streamingAssistant");
   const streamed = Boolean(node);
   if (!node) node = document.createElement("article");
@@ -826,7 +727,6 @@ async function addAssistantMessage(response, options = {}) {
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
-        ${saveAction}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -842,7 +742,13 @@ async function addAssistantMessage(response, options = {}) {
     answerNode.innerHTML = renderText(response.answer);
   }
   node.querySelector(".message-extra")?.classList.remove("is-pending");
-  if (!options.skipRemember) rememberTurn("assistant", response.answer);
+  if (!options.skipRemember) {
+    rememberTurn("assistant", response.answer);
+    saveAnswerSnapshot({
+      question: options.question || activeQuestion || "Recent guide answer",
+      response,
+    });
+  }
   scrollMessagesToBottom();
 }
 
@@ -1018,15 +924,6 @@ function renderEmptyState() {
 function updateRecent(question) {
   recent.unshift(question);
   recent.splice(5);
-  if (!recentList) return;
-  recentList.innerHTML = "";
-  recent.forEach((item) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = item;
-    button.addEventListener("click", () => queueQuestion(item));
-    recentList.appendChild(button);
-  });
 }
 
 function queueQuestion(question) {
@@ -1179,60 +1076,27 @@ enterApp.addEventListener("click", () => {
 });
 
 messages.addEventListener("click", (event) => {
-  const saveButton = event.target.closest("button[data-save-answer]");
-  if (saveButton) {
-    const payload = messageSavePayloads.get(saveButton.dataset.saveAnswer);
-    const saved = saveAnswerSnapshot(payload);
-    if (saved) {
-      saveButton.textContent = "Saved";
-      saveButton.classList.add("is-saved");
-    }
-    return;
-  }
-  const savedFollowUpButton = event.target.closest("button[data-followup-saved]");
-  if (savedFollowUpButton) {
-    startSavedFollowUp(savedFollowUpButton.dataset.followupSaved);
-    return;
-  }
   const button = event.target.closest("button[data-prompt]");
   if (button) queueQuestion(button.dataset.prompt);
 });
 
-savedList?.addEventListener("click", (event) => {
-  const copyButton = event.target.closest("button[data-copy-saved]");
-  if (copyButton) {
-    void copySavedAnswer(copyButton.dataset.copySaved, copyButton);
-    return;
-  }
-  const removeButton = event.target.closest("button[data-remove-saved]");
-  if (removeButton) {
-    removeSavedAnswer(removeButton.dataset.removeSaved);
-    return;
-  }
-  const openButton = event.target.closest("button[data-open-saved]");
+recentList?.addEventListener("click", (event) => {
+  const openButton = event.target.closest("button[data-open-recent]");
   if (openButton) {
-    void openSavedAnswer(openButton.dataset.openSaved);
+    void openSavedAnswer(openButton.dataset.openRecent);
   }
-});
-
-savedSearch?.addEventListener("input", () => {
-  renderSavedAnswers();
 });
 
 clearChat?.addEventListener("click", () => {
   recent.splice(0);
   chatHistory.splice(0);
+  savedAnswers.splice(0);
   saveChatHistory();
-  if (recentList) recentList.innerHTML = "<p>Your last questions will appear here.</p>";
+  saveSavedAnswers();
+  renderRecentAnswers();
   renderEmptyState();
   setMenu(false);
   input.focus();
-});
-
-clearSaved?.addEventListener("click", () => {
-  savedAnswers.splice(0);
-  saveSavedAnswers();
-  renderSavedAnswers();
 });
 
 document.addEventListener("click", (event) => {
