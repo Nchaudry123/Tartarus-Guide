@@ -23,6 +23,23 @@ export const socialLinkArcana = {
   Aigis: "Aeon",
 } as const;
 
+export function socialLinkEntityAliasesForQuestion(question: string): string[] {
+  if (!/\b(social links?|s-?links?|arcana|rank|hang out|relationship)\b/i.test(question)) {
+    return [];
+  }
+
+  return Object.entries(socialLinkArcana)
+    .filter(([name, arcana]) => {
+      const namePattern = name.replace(/\s+/g, "\\s+");
+      const arcanaPattern = arcana.replace(/\s+/g, "\\s+");
+      return (
+        new RegExp(`\\b${namePattern}\\b`, "i").test(question) ||
+        new RegExp(`\\b${arcanaPattern}\\b`, "i").test(question)
+      );
+    })
+    .flatMap(([name, arcana]) => [name, arcana]);
+}
+
 export const linkedEpisodeCharacters = [
   "Junpei Iori",
   "Akihiko Sanada",

@@ -28,7 +28,7 @@
     "test:cache": "tsx --test src/cache/ttlCache.test.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
-    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && npm run eval:gate && next build"
+    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && CHAT_RATE_LIMIT_PER_MINUTE=500 CHAT_RATE_LIMIT_PER_DAY=1000 npm run eval:gate && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

@@ -42,6 +42,7 @@ const entityStopWords = new Set([
 
 const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
   { pattern: /weak|weakness|vulnerable/i, types: ["weakness"] },
+  { pattern: /affinit/i, types: ["weakness", "resistance", "nullifies", "drains", "repels"] },
   { pattern: /resist|resistance/i, types: ["resistance", "nullifies", "drains", "repels"] },
   { pattern: /beat|boss|strategy|fight|kill/i, types: ["strategy", "recommended_party", "weakness", "resistance"] },
   { pattern: /fuse|fusion|recipe/i, types: ["fusion_recipe", "prerequisite", "unlock_condition"] },
@@ -113,6 +114,27 @@ export async function searchFacts(
     throw entityError;
   }
   let entities = directEntities ?? [];
+  if (entityTypes.length > 0 && likelyTerms.length > 0) {
+    let broadEntityQuery = supabase
+      .from("entities")
+      .select("id,name,type,aliases,normalized_name")
+      .limit(30);
+    const orTerms = likelyTerms
+      .map((term) => term.replace(/[,%().]/g, " "))
+      .filter(Boolean)
+      .map((term) => `normalized_name.ilike.%${term}%,name.ilike.%${term}%`)
+      .join(",");
+    broadEntityQuery = broadEntityQuery.or(orTerms);
+    if (signal) broadEntityQuery = broadEntityQuery.abortSignal(signal);
+    const { data: broadEntities, error: broadEntityError } = await broadEntityQuery;
+    if (broadEntityError) throw broadEntityError;
+    const broadMatches = (broadEntities ?? []).filter(
+      (entity) => entityCandidateScore(analysis, entity.name, entity.aliases ?? []) >= 0.72,
+    );
+    entities = [
+      ...new Map([...entities, ...broadMatches].map((entity) => [entity.id, entity])).values(),
+    ];
+  }
   if (entities.length === 0 && analysis.entityCandidates.length > 0) {
     let fallbackQuery = supabase
       .from("entities")

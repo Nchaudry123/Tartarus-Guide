@@ -388,6 +388,27 @@ async function addAssistantMessage(response) {
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
   mergeProfileUpdates(response.companion?.profileUpdates);
+  const confidenceValue = Number.parseInt(String(response.confidence || "0"), 10);
+  const reliabilityLabel =
+    response.retrievalMode === "mock"
+      ? "Preview"
+      : confidenceValue >= 85
+        ? "Verified"
+        : confidenceValue >= 60
+          ? "Cautious"
+          : "Needs detail";
+  const missingInfo =
+    response.missing &&
+    !/^(no additional detail|no missing information)/i.test(response.missing)
+      ? response.missing
+      : "";
+  const answerMeta = `
+    <div class="answer-meta" aria-label="Answer confidence">
+      <span>${escapeHtml(reliabilityLabel)}</span>
+      ${response.confidence ? `<strong>${escapeHtml(response.confidence)}</strong>` : ""}
+      ${missingInfo ? `<em>${escapeHtml(missingInfo)}</em>` : ""}
+    </div>
+  `;
   const sections = (response.sections || [])
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
     .join("");
@@ -426,6 +447,7 @@ async function addAssistantMessage(response) {
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
+        ${answerMeta}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
