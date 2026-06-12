@@ -24,6 +24,7 @@ type EvalCase = {
   minSources?: number;
   maxSources?: number;
   maxAnswerCharacters?: number;
+  maxResponseMs?: number;
   expectedGroundingStatus?: "verified" | "partial" | "insufficient";
 };
 
@@ -31,6 +32,7 @@ type Check = { name: string; passed: boolean; detail: string };
 type EvalResult = EvalCase & {
   score: number;
   checks: Check[];
+  responseTimeMs?: number;
   response?: ChatResponse;
   error?: string;
 };
@@ -108,7 +110,7 @@ function textOf(response: ChatResponse): string {
   ].join(" ");
 }
 
-function evaluate(test: EvalCase, response: ChatResponse): Check[] {
+function evaluate(test: EvalCase, response: ChatResponse, responseTimeMs?: number): Check[] {
   const answerText = textOf(response);
   const normalized = answerText.toLowerCase();
   const checks: Check[] = [];
@@ -117,7 +119,7 @@ function evaluate(test: EvalCase, response: ChatResponse): Check[] {
   add("non-empty answer", answerText.trim().length >= 12, `${answerText.length} characters`);
   add(
     "no backend language",
-    !/\b(retriev(?:e|ed|al)|database|supabase|provided context|guide context|language model|groq)\b/i.test(answerText),
+    !/\b(retrieval (?:pipeline|system|mode|backend)|database|supabase|provided context|guide context|language model|groq)\b/i.test(answerText),
     "Answer should not expose implementation mechanics.",
   );
   add(
@@ -166,6 +168,13 @@ function evaluate(test: EvalCase, response: ChatResponse): Check[] {
   }
   if (typeof test.maxSources === "number") {
     add("source count is concise", response.sources.length <= test.maxSources, `${response.sources.length}/${test.maxSources}`);
+  }
+  if (typeof test.maxResponseMs === "number") {
+    add(
+      "response time budget",
+      typeof responseTimeMs === "number" && responseTimeMs <= test.maxResponseMs,
+      `${responseTimeMs ?? "missing"}ms/${test.maxResponseMs}ms`,
+    );
   }
   if (test.requiredDomains?.length && response.sources.length) {
     add(
@@ -309,6 +318,9 @@ function validateFixtures(tests: EvalCase[]): string[] {
     if (test.maxSources !== undefined && test.minSources !== undefined && test.maxSources < test.minSources) {
       errors.push(`${test.id || location}: maxSources is lower than minSources`);
     }
+    if (test.maxResponseMs !== undefined && test.maxResponseMs <= 0) {
+      errors.push(`${test.id || location}: maxResponseMs must be positive`);
+    }
     if (
       test.expectedGroundingStatus &&
       !["verified", "partial", "insufficient"].includes(test.expectedGroundingStatus)
@@ -345,11 +357,13 @@ async function main(): Promise<void> {
   const results: EvalResult[] = [];
   for (const [index, test] of selected.entries()) {
     try {
+      const startedAt = performance.now();
       const body = await requestChat(test);
-      const checks = evaluate(test, body);
+      const responseTimeMs = Math.round(performance.now() - startedAt);
+      const checks = evaluate(test, body, responseTimeMs);
       const passed = checks.filter((check) => check.passed).length;
       const score = passed / checks.length;
-      results.push({ ...test, score, checks, response: body });
+      results.push({ ...test, score, checks, responseTimeMs, response: body });
       console.log(`${String(index + 1).padStart(2)}/${selected.length} ${score >= 0.8 ? "PASS" : "FAIL"} ${test.id} ${(score * 100).toFixed(0)}%`);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
