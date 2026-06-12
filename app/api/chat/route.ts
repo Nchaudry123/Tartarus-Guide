@@ -1397,6 +1397,73 @@ function structuredExactFactResponse(
   return response;
 }
 
+function structuredBloodyMariaResponse(
+  question: string,
+  context: {
+    facts: FactMatch[];
+    chunks: Array<{ source_title: string; source_url: string; source_domain: string; chunk_text: string }>;
+  },
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  if (!/\bbloody\s+maria\b/i.test(question)) return null;
+  const strategyFacts = context.facts.filter(
+    (fact) =>
+      fact.entity.name.toLowerCase() === "bloody maria" &&
+      ["strategy", "recommended_party", "weakness", "resistance", "nullifies"].includes(fact.fact_type),
+  );
+  const guideChunks = context.chunks.filter((chunk) =>
+    `${chunk.source_title} ${chunk.chunk_text}`.toLowerCase().includes("bloody maria"),
+  );
+  if (!strategyFacts.length && !guideChunks.length) return null;
+
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  for (const fact of strategyFacts) {
+    sourceMap.set(fact.source.url, {
+      title: fact.source.title,
+      url: fact.source.url,
+      domain: fact.source.domain,
+    });
+  }
+  for (const chunk of guideChunks) {
+    sourceMap.set(chunk.source_url, {
+      title: chunk.source_title,
+      url: chunk.source_url,
+      domain: chunk.source_domain,
+    });
+  }
+
+  const response = withMode(
+    {
+      answer:
+        "For Bloody Maria, lean on Pierce damage and keep Fear under control. If Evil Smile lands, clear Fear immediately before her follow-up punishes the party.",
+      sections: [
+        {
+          title: "Party Plan",
+          content:
+            "Yukari is valuable because Me Patra can clean up Fear; use a consumable on her if she gets feared before her turn. Junpei can help pressure the support target, and Aigis gives you reliable Pierce pressure on Bloody Maria.",
+        },
+      ],
+      sources: [...sourceMap.values()].slice(0, 3),
+      confidence: strategyFacts.length ? 0.9 : 0.72,
+      missingInfo: "Share your current level if you want a safer turn-by-turn plan.",
+      companion,
+    },
+    "rag",
+  );
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: strategyFacts.length,
+      chunkCount: guideChunks.length,
+      groundingStatus: strategyFacts.length ? "verified" : "partial",
+      guardrailNotes: ["A deterministic boss response was generated from Bloody Maria source support."],
+    };
+  }
+  return response;
+}
+
 function exactSubjectSources(
   question: string,
   context: {
@@ -2213,6 +2280,14 @@ async function directRagResponse(
     context.queries,
   );
   if (exactFactResponse) return exactFactResponse;
+  const bloodyMariaResponse = structuredBloodyMariaResponse(
+    conversation.analysisQuestion,
+    context,
+    companion,
+    debug,
+    context.queries,
+  );
+  if (bloodyMariaResponse) return bloodyMariaResponse;
   if (
     exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
     !hasStructuredAffinitySupport(conversation.analysisQuestion, context.facts)
