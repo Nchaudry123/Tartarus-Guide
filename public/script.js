@@ -3,9 +3,11 @@ const input = document.getElementById("questionInput");
 const messages = document.getElementById("messages");
 const categoryList = document.getElementById("categoryList");
 const recentList = document.getElementById("recentList");
+const savedList = document.getElementById("savedList");
 const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
+const clearSaved = document.getElementById("clearSaved");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -15,14 +17,18 @@ const sendButton = form?.querySelector('button[type="submit"]');
 const chatHistoryKey = "tartarusChatHistoryV2";
 const exactAnswerCacheKey = "tartarusExactAnswerCacheV1";
 const playerProfileKey = "tartarusPlayerProfileV2";
+const savedAnswersKey = "tartarusSavedAnswersV1";
 const defaultInputPlaceholder = input?.placeholder || "Ask anything about Persona 3 Reload...";
 const maxQueuedQuestions = 5;
 const maxCachedExactAnswers = 24;
+const maxSavedAnswers = 30;
 const exactAnswerCacheTtlMs = 1000 * 60 * 30;
 
 const recent = [];
 const chatHistory = loadChatHistory();
 const exactAnswerCache = loadExactAnswerCache();
+const savedAnswers = loadSavedAnswers();
+const messageSavePayloads = new Map();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
 let isProcessingQueue = false;
@@ -124,6 +130,25 @@ function loadExactAnswerCache() {
   }
 }
 
+function loadSavedAnswers() {
+  try {
+    const entries = JSON.parse(window.localStorage.getItem(savedAnswersKey) || "[]");
+    return Array.isArray(entries)
+      ? entries
+          .filter(
+            (entry) =>
+              entry &&
+              typeof entry.id === "string" &&
+              typeof entry.question === "string" &&
+              typeof entry.answer === "string",
+          )
+          .slice(0, maxSavedAnswers)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function saveChatHistory() {
   window.sessionStorage.setItem(chatHistoryKey, JSON.stringify(chatHistory));
 }
@@ -133,6 +158,14 @@ function saveExactAnswerCache() {
     window.sessionStorage.setItem(exactAnswerCacheKey, JSON.stringify(exactAnswerCache.slice(-maxCachedExactAnswers)));
   } catch {
     // Session storage can be unavailable in private browsing; caching is optional.
+  }
+}
+
+function saveSavedAnswers() {
+  try {
+    window.localStorage.setItem(savedAnswersKey, JSON.stringify(savedAnswers.slice(0, maxSavedAnswers)));
+  } catch {
+    showInputHint("Saved answers are unavailable in this browser.");
   }
 }
 
@@ -146,6 +179,103 @@ function rememberTurn(role, content) {
   chatHistory.push({ role, content });
   chatHistory.splice(0, Math.max(0, chatHistory.length - 12));
   saveChatHistory();
+}
+
+function makeId(prefix = "item") {
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function compactTitle(value, maxLength = 58) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3).trim()}...` : text;
+}
+
+function formatSavedDate(value) {
+  try {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    }).format(new Date(value));
+  } catch {
+    return "Saved";
+  }
+}
+
+function normalizeResponseForSave(response) {
+  return {
+    answer: response.answer || "",
+    sections: response.sections || [],
+    table: response.table || null,
+    missing: response.missing,
+    retrievalMode: response.retrievalMode || "rag",
+    companion: response.companion
+      ? { suggestedPrompts: response.companion.suggestedPrompts || [] }
+      : undefined,
+    sources: response.sources || [],
+  };
+}
+
+function renderSavedAnswers() {
+  if (!savedList) return;
+  if (!savedAnswers.length) {
+    savedList.innerHTML = "<p>Saved answers will appear here.</p>";
+    return;
+  }
+  savedList.innerHTML = savedAnswers
+    .map(
+      (item) => `
+        <article class="saved-item">
+          <button type="button" data-open-saved="${escapeHtml(item.id)}">
+            <strong>${escapeHtml(compactTitle(item.question))}</strong>
+            <span>${escapeHtml(formatSavedDate(item.savedAt))}</span>
+          </button>
+          <button class="saved-remove" type="button" data-remove-saved="${escapeHtml(item.id)}" aria-label="Remove saved answer">×</button>
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function saveAnswerSnapshot(payload) {
+  if (!payload?.question || !payload.response?.answer) return null;
+  const normalizedQuestion = normalizeQueuedQuestion(payload.question);
+  const existingIndex = savedAnswers.findIndex((item) => normalizeQueuedQuestion(item.question) === normalizedQuestion);
+  const saved = {
+    id: existingIndex >= 0 ? savedAnswers[existingIndex].id : makeId("saved"),
+    question: payload.question,
+    answer: payload.response.answer,
+    response: normalizeResponseForSave(payload.response),
+    savedAt: new Date().toISOString(),
+  };
+  if (existingIndex >= 0) savedAnswers.splice(existingIndex, 1);
+  savedAnswers.unshift(saved);
+  savedAnswers.splice(maxSavedAnswers);
+  saveSavedAnswers();
+  renderSavedAnswers();
+  return saved;
+}
+
+function removeSavedAnswer(id) {
+  const index = savedAnswers.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  savedAnswers.splice(index, 1);
+  saveSavedAnswers();
+  renderSavedAnswers();
+}
+
+async function openSavedAnswer(id) {
+  const saved = savedAnswers.find((item) => item.id === id);
+  if (!saved) return;
+  clearEmpty();
+  addUserMessage(saved.question);
+  await addAssistantMessage(saved.response, {
+    question: saved.question,
+    skipRemember: true,
+    savedId: saved.id,
+  });
+  setMenu(false);
 }
 
 function compactHistoryText(value, maxLength = 140) {
@@ -279,6 +409,7 @@ function closeMemoryDialog() {
 }
 
 renderMemorySummary();
+renderSavedAnswers();
 
 function escapeHtml(value) {
   return String(value)
@@ -564,7 +695,7 @@ function appendStreamToken(delta) {
   }, 40);
 }
 
-async function addAssistantMessage(response) {
+async function addAssistantMessage(response, options = {}) {
   flushStreamTokens();
   resetStreamBuffer();
   document.getElementById("loading")?.remove();
@@ -597,6 +728,19 @@ async function addAssistantMessage(response) {
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
   const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
+  const savePayloadId = makeId("save-payload");
+  messageSavePayloads.set(savePayloadId, {
+    question: options.question || activeQuestion || "Saved guide answer",
+    response,
+  });
+  const isSaved = savedAnswers.some(
+    (item) => normalizeQueuedQuestion(item.question) === normalizeQueuedQuestion(options.question || activeQuestion),
+  );
+  const saveAction = `
+    <div class="message-actions">
+      <button type="button" data-save-answer="${escapeHtml(savePayloadId)}">${isSaved || options.savedId ? "Saved" : "Save"}</button>
+    </div>
+  `;
   let node = document.getElementById("streamingAssistant");
   const streamed = Boolean(node);
   if (!node) node = document.createElement("article");
@@ -608,6 +752,7 @@ async function addAssistantMessage(response) {
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
+        ${saveAction}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -623,7 +768,7 @@ async function addAssistantMessage(response) {
     answerNode.innerHTML = renderText(response.answer);
   }
   node.querySelector(".message-extra")?.classList.remove("is-pending");
-  rememberTurn("assistant", response.answer);
+  if (!options.skipRemember) rememberTurn("assistant", response.answer);
   scrollMessagesToBottom();
 }
 
@@ -868,7 +1013,7 @@ async function askQueuedQuestion(question) {
   addLoading();
   try {
     const response = await requestAnswer(question, priorHistory, requestController.signal);
-    await addAssistantMessage(response);
+    await addAssistantMessage(response, { question });
   } catch (error) {
     resetStreamBuffer();
     document.getElementById("loading")?.remove();
@@ -960,8 +1105,30 @@ enterApp.addEventListener("click", () => {
 });
 
 messages.addEventListener("click", (event) => {
+  const saveButton = event.target.closest("button[data-save-answer]");
+  if (saveButton) {
+    const payload = messageSavePayloads.get(saveButton.dataset.saveAnswer);
+    const saved = saveAnswerSnapshot(payload);
+    if (saved) {
+      saveButton.textContent = "Saved";
+      saveButton.classList.add("is-saved");
+    }
+    return;
+  }
   const button = event.target.closest("button[data-prompt]");
   if (button) queueQuestion(button.dataset.prompt);
+});
+
+savedList?.addEventListener("click", (event) => {
+  const removeButton = event.target.closest("button[data-remove-saved]");
+  if (removeButton) {
+    removeSavedAnswer(removeButton.dataset.removeSaved);
+    return;
+  }
+  const openButton = event.target.closest("button[data-open-saved]");
+  if (openButton) {
+    void openSavedAnswer(openButton.dataset.openSaved);
+  }
 });
 
 clearChat?.addEventListener("click", () => {
@@ -972,6 +1139,12 @@ clearChat?.addEventListener("click", () => {
   renderEmptyState();
   setMenu(false);
   input.focus();
+});
+
+clearSaved?.addEventListener("click", () => {
+  savedAnswers.splice(0);
+  saveSavedAnswers();
+  renderSavedAnswers();
 });
 
 document.addEventListener("click", (event) => {
