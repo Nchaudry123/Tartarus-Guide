@@ -1934,6 +1934,39 @@ function deterministicControllerDecision(
     };
   }
 
+  if (/\b(?:classroom|school question|quiz|exam)\b/i.test(question) && /\b(?:answer|correct|choice)\b/i.test(question)) {
+    const query = `${question} classroom answer`;
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: query,
+      retrievalQueries: [query],
+      followUpQuestions: [],
+    };
+  }
+
+  if (analysis.intent === "Quest Help" && !analysis.followUpQuestions.length) {
+    const query = `${subject ?? question} Elizabeth request deadline reward location`;
+    return {
+      ...base,
+      action: "search_both",
+      retrievalQuery: query,
+      retrievalQueries: [query],
+      followUpQuestions: [],
+    };
+  }
+
+  if (analysis.intent === "Boss Help" && !analysis.followUpQuestions.length) {
+    const query = `${subject ?? question} mechanics strategy recommended party`;
+    return {
+      ...base,
+      action: "search_both",
+      retrievalQuery: query,
+      retrievalQueries: [query],
+      followUpQuestions: [],
+    };
+  }
+
   if (analysis.intent === "Team Building") {
     const namedMembers = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
     const isNamedComparison =
