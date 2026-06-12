@@ -324,6 +324,46 @@ function isCasualMessage(question: string): boolean {
   return false;
 }
 
+function isSillyQuestion(question: string): boolean {
+  const text = question.toLowerCase().trim();
+  return (
+    /\b(jiggle|jiggle physics|gyatt|rizz|skibidi|goon|gooning|baddie|thicc|dummy thick|mommy|waifu|smash or pass)\b/.test(text) ||
+    /\b(can|could|would)\s+(?:she|he|they|elizabeth|mitsuru|yukari|aigis|fuuka)\b.{0,80}\b(jiggle|rizz|twerk|throw it back)\b/.test(text) ||
+    /\b(?:is|are)\b.{0,60}\b(?:caked up|dummy thick|breedable)\b/.test(text)
+  );
+}
+
+function sillyQuestionResponse(question: string, profileUpdates: PlayerProfile = {}): ChatResponse {
+  const mentionsElizabeth = /\belizabeth\b/i.test(question);
+  const answer = mentionsElizabeth
+    ? "The Velvet Room has officially declined to comment on jiggle physics. Elizabeth can hand you a request list, not a physics dissertation."
+    : "SEES Navigator is not calibrated for jiggle-physics analysis. Theurgy gauge says: extremely unserious.";
+
+  return withMode({
+    answer,
+    sections: [
+      {
+        title: "Actual Help Mode",
+        content:
+          "If this is secretly a real Persona 3 Reload question, give me the boss, request, Social Link, floor, or Persona and I’ll lock back in.",
+      },
+    ],
+    sources: [],
+    confidence: 0.93,
+    missingInfo: "Send a real gameplay target when you want sourced help.",
+    companion: {
+      intent: "General Discussion",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: sanitizeSuggestedPrompts([
+        "Help me with an Elizabeth request",
+        "I'm stuck on a boss",
+        "What should I do in Tartarus?",
+      ]),
+    },
+  }, "rag");
+}
+
 function hasGuideIntent(question: string): boolean {
   return detectIntent(question) !== "General Discussion";
 }
@@ -2469,6 +2509,9 @@ async function directRagResponse(
   signal?.throwIfAborted();
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
+  if (isSillyQuestion(question) || isSillyQuestion(conversation.analysisQuestion)) {
+    return sillyQuestionResponse(question, extractProfileUpdates(question));
+  }
   const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
   const clarificationRecovery = rejectedClarificationResponse(question, conversation, analysis);
   if (clarificationRecovery) return clarificationRecovery;
