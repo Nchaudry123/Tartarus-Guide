@@ -277,8 +277,19 @@ async function openSavedAnswer(id) {
     question: saved.question,
     skipRemember: true,
     savedId: saved.id,
+    savedQuestion: saved.question,
   });
   setMenu(false);
+}
+
+function startSavedFollowUp(question) {
+  if (!input) return;
+  input.value = `Follow up on "${compactTitle(question, 44)}": `;
+  input.style.height = "auto";
+  input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+  updateSendButtonState();
+  input.focus();
+  scrollMessagesToBottom({ force: true });
 }
 
 function savedAnswerMarkdown(saved) {
@@ -787,6 +798,7 @@ async function addAssistantMessage(response, options = {}) {
   const saveAction = `
     <div class="message-actions">
       <button type="button" data-save-answer="${escapeHtml(savePayloadId)}">${isSaved || options.savedId ? "Saved" : "Save"}</button>
+      ${options.savedQuestion ? `<button type="button" data-followup-saved="${escapeHtml(options.savedQuestion)}">Follow up</button>` : ""}
     </div>
   `;
   let node = document.getElementById("streamingAssistant");
@@ -1161,6 +1173,11 @@ messages.addEventListener("click", (event) => {
       saveButton.textContent = "Saved";
       saveButton.classList.add("is-saved");
     }
+    return;
+  }
+  const savedFollowUpButton = event.target.closest("button[data-followup-saved]");
+  if (savedFollowUpButton) {
+    startSavedFollowUp(savedFollowUpButton.dataset.followupSaved);
     return;
   }
   const button = event.target.closest("button[data-prompt]");
