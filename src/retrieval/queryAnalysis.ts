@@ -17,7 +17,12 @@ const stopWords = new Set([
   "guide",
   "help",
   "need",
+  "mechanic",
+  "mechanics",
+  "party",
   "persona",
+  "prepare",
+  "recommended",
   "reload",
   "should",
   "strategy",
@@ -251,7 +256,15 @@ export function matchesPrimarySubject(
     analysis.phrases.find((candidate) => candidate.includes(" ") && candidate.length >= 6) ??
     analysis.entityCandidates.find(
       (candidate) => candidate.includes(" ") && candidate.length >= 6,
-    );
+    ) ??
+    (["enemy", "boss", "fusion", "social_link", "request"].includes(analysis.category)
+      ? analysis.entityCandidates.find(
+          (candidate) =>
+            candidate.length >= 4 &&
+            !stopWords.has(candidate) &&
+            !/\b(?:mechanics?|recommended|party|strategy|prepare|guide|answer|choice|rank|request)\b/.test(candidate),
+        )
+      : undefined);
   if (!subject) return true;
   const normalized = normalizeName(text);
   if (normalized.includes(subject)) return true;

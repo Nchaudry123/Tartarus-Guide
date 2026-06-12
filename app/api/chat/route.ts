@@ -1618,6 +1618,141 @@ function relevantResponseSources(
   return context.sources.slice(0, 4);
 }
 
+function chatResponseClaimText(response: {
+  answer: string;
+  sections?: Array<{ title: string; content: string }>;
+  tables?: Array<{ title: string; columns: string[]; rows: string[][] }>;
+}): string {
+  return [
+    response.answer,
+    ...(response.sections ?? []).map((section) => section.content),
+    ...(response.tables ?? []).flatMap((table) => table.rows.flat()),
+  ].join(" ");
+}
+
+const answerEntityIgnoreList = new Set(
+  [
+    "All-Out Attack",
+    "Boss Plan",
+    "Direct Answer",
+    "Fusion Type",
+    "General Plan",
+    "Other Recipes",
+    "Party Plan",
+    "Persona",
+    "Persona 3",
+    "Persona 3 Reload",
+    "Quick Strategy",
+    "Reload",
+    "Safe Battle Plan",
+    "Safe Plan",
+    "SEES",
+    "Tartarus",
+    "Tartarus Guide",
+  ].map((value) => value.toLowerCase()),
+);
+
+const sensitiveSingleWordClaims = [
+  ...partyMembers,
+  "Aigis",
+  "Akihiko",
+  "Fuuka",
+  "Junpei",
+  "Ken",
+  "Koromaru",
+  "Mitsuru",
+  "Shinjiro",
+  "Yukari",
+  "Priestess",
+  "Emperor",
+  "Empress",
+  "Hierophant",
+  "Lovers",
+  "Chariot",
+  "Justice",
+  "Hermit",
+  "Fortune",
+  "Strength",
+  "Hanged Man",
+  "Nyx",
+  "Thebel",
+  "Arqa",
+  "Yabbashah",
+  "Tziah",
+  "Harabah",
+  "Adamah",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function unsupportedNamedClaims(
+  question: string,
+  response: ChatResponse,
+  context: {
+    facts: Array<{
+      fact_type?: string;
+      value?: string;
+      entity: { name: string; type?: string };
+      source: { title?: string; url: string };
+    }>;
+    chunks: Array<{
+      source_title?: string;
+      section_title: string | null;
+      chunk_text: string;
+    }>;
+  },
+): string[] {
+  const responseText = chatResponseClaimText(response);
+  const evidenceText = [
+    question,
+    ...context.facts.flatMap((fact) => [
+      fact.entity.name,
+      fact.entity.type ?? "",
+      fact.fact_type ?? "",
+      fact.value ?? "",
+      fact.source.title ?? "",
+      fact.source.url,
+    ]),
+    ...context.chunks.flatMap((chunk) => [
+      chunk.source_title ?? "",
+      chunk.section_title ?? "",
+      chunk.chunk_text,
+    ]),
+  ].join(" ");
+  const normalizedEvidence = evidenceText.toLowerCase();
+  const normalizedQuestion = question.toLowerCase();
+  const candidates = new Set<string>();
+
+  for (const term of sensitiveSingleWordClaims) {
+    if (new RegExp(`\\b${term.replace(/\s+/g, "\\s+")}\\b`, "i").test(responseText)) {
+      candidates.add(term);
+    }
+  }
+
+  const unsupported = [...candidates].filter((candidate) => {
+    const normalized = candidate.toLowerCase();
+    if (answerEntityIgnoreList.has(normalized)) return false;
+    if (/^(assign|members|may)$/i.test(candidate)) return false;
+    if (normalized === "electric" && /\b(elec|electric|electricity)\b/i.test(evidenceText)) return false;
+    if (/^(if|when|while|keep|bring|avoid|share|tell|use|focus|open|clear|safe|quick|boss|party|strategy)$/i.test(candidate)) {
+      return false;
+    }
+    return !normalizedQuestion.includes(normalized) && !normalizedEvidence.includes(normalized);
+  });
+
+  return [...new Set(unsupported)].slice(0, 5);
+}
+
 function applyGroundingGuardrails(
   question: string,
   intent: CompanionIntent,
@@ -1625,10 +1760,13 @@ function applyGroundingGuardrails(
   context: {
     facts: Array<{
       confidence: number;
+      fact_type?: string;
+      value?: string;
       entity: { name: string };
-      source: { url: string };
+      source: { title?: string; url: string };
     }>;
     chunks: Array<{
+      source_title?: string;
       source_url: string;
       section_title: string | null;
       chunk_text: string;
@@ -1659,6 +1797,32 @@ function applyGroundingGuardrails(
     groundingStatus: assessment.status,
     guardrailNotes: assessment.notes,
   };
+  const unsupportedNames = unsupportedNamedClaims(question, response, context);
+  if (unsupportedNames.length && intent !== "General Discussion") {
+    const prompt = exactDetailPrompt(intent);
+    return {
+      ...response,
+      answer:
+        "I can’t safely confirm every named detail in that draft, so I won’t guess. Give me the exact enemy, boss, Social Link, date, or request and I’ll answer from confirmed guide support.",
+      sections: [],
+      tables: [],
+      sources: [],
+      confidence: Math.min(0.4, assessment.confidenceCeiling),
+      missingInfo: prompt,
+      companion: {
+        ...response.companion,
+        followUpQuestions: [prompt],
+      },
+      diagnostics: {
+        ...diagnostics,
+        groundingStatus: "insufficient",
+        guardrailNotes: [
+          ...diagnostics.guardrailNotes,
+          `Blocked unsupported named claim(s): ${unsupportedNames.join(", ")}`,
+        ],
+      },
+    };
+  }
 
   if (requiresExactEvidence && assessment.status === "insufficient") {
     const prompt = exactDetailPrompt(intent);
@@ -2658,6 +2822,22 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
       const correctionPrompt = `${userPrompt}
 
 Your previous draft contained an affinity element that is not present in the structured facts. Regenerate the JSON answer using only explicitly supported weakness, resistance, nullify, drain, or repel values. Do not recommend an unsupported element as if it were confirmed.`;
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: correctionPrompt },
+        ],
+        { jsonObject: true },
+      );
+      normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
+    }
+    const unsupportedNames = unsupportedNamedClaims(conversation.analysisQuestion, normalized, context);
+    if (unsupportedNames.length && controller.intent !== "General Discussion") {
+      const correctionPrompt = `${userPrompt}
+
+Your previous draft introduced named game details that are not supported by the retrieved facts or guide excerpts: ${unsupportedNames.join(", ")}.
+
+Regenerate the JSON answer without those unsupported named details. Keep the answer useful by relying only on the supplied facts/excerpts, the user's own question, and cautious general tactics.`;
       const correctedRaw = await complete(
         [
           { role: "system", content: systemPrompt },
