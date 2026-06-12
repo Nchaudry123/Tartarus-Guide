@@ -541,6 +541,23 @@ textarea:focus-visible {
   box-shadow: 6px 7px 0 rgba(2,7,32,.24);
   clip-path: polygon(4% 0,100% 0,100% 100%,0 100%,0 24%);
 }
+.message.user-message .queue-label {
+  display: none;
+  margin-top: .45rem;
+  color: var(--blue);
+  font-family: var(--display);
+  font-size: .7rem;
+  font-style: italic;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+.message.user-message.is-queued .bubble {
+  opacity: .72;
+  filter: saturate(.78);
+}
+.message.user-message.is-queued .queue-label {
+  display: block;
+}
 .assistant-message {
   align-items: flex-start;
 }
@@ -847,6 +864,16 @@ footer span {
   color: var(--ice);
   cursor: pointer;
   font-size: 1rem;
+}
+.chat-form button.is-queue {
+  min-width: 5.4rem;
+  background: var(--cyan);
+  color: var(--navy);
+  font-family: var(--display);
+  font-size: .82rem;
+  font-style: italic;
+  letter-spacing: .06em;
+  text-transform: uppercase;
 }
 .chat-form.is-sending textarea {
   border-color: rgba(85,247,255,.42);
