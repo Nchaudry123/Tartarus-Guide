@@ -9,6 +9,8 @@ const clearChat = document.getElementById("clearChat");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
+const spoilerSlider = document.getElementById("spoilerSlider");
+const spoilerSliderLabel = document.getElementById("spoilerSliderLabel");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 const sendButton = form?.querySelector('button[type="submit"]');
@@ -170,6 +172,7 @@ function savePlayerProfile() {
   window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
   window.sessionStorage.removeItem("tartarusPlayerProfile");
   renderMemorySummary();
+  syncSpoilerSlider();
 }
 
 function rememberTurn(role, content) {
@@ -205,6 +208,7 @@ function normalizeResponseForSave(response) {
     answer: response.answer || "",
     sections: response.sections || [],
     table: response.table || null,
+    bossPrep: response.bossPrep || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode || "rag",
     companion: response.companion
@@ -361,6 +365,22 @@ function renderMemorySummary() {
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
 }
 
+const spoilerModes = [
+  { value: "strict", label: "Spoiler-safe", hint: "No story spoilers" },
+  { value: "progress-aware", label: "Progress-aware", hint: "Use my current date/month" },
+  { value: "open", label: "Spoilers open", hint: "Full spoilers allowed" },
+];
+
+function syncSpoilerSlider() {
+  if (!spoilerSlider || !spoilerSliderLabel) return;
+  const index = spoilerModes.findIndex((mode) => mode.value === (playerProfile.spoilerPreference || "strict"));
+  const safeIndex = index >= 0 ? index : 0;
+  const mode = spoilerModes[safeIndex];
+  spoilerSlider.value = String(safeIndex);
+  spoilerSliderLabel.textContent = mode.label;
+  spoilerSliderLabel.title = mode.hint;
+}
+
 function populateMemoryForm() {
   const memoryForm = document.getElementById("memoryForm");
   if (!memoryForm) return;
@@ -397,6 +417,7 @@ function closeMemoryDialog() {
 }
 
 renderMemorySummary();
+syncSpoilerSlider();
 renderRecentAnswers();
 
 function escapeHtml(value) {
@@ -423,6 +444,39 @@ function renderText(value) {
     .filter(Boolean)
     .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`)
     .join("");
+}
+
+function renderBossPrepCard(card) {
+  if (!card || !card.boss) return "";
+  const rows = [
+    ["Weakness", card.weakness],
+    ["Avoid", card.avoid],
+    ["Level", card.recommendedLevel],
+    ["Party", card.party],
+    ["Danger", card.danger],
+    ["Plan", card.plan],
+  ].filter(([, value]) => value);
+  if (!rows.length) return "";
+  return `
+    <aside class="boss-prep-card" aria-label="${escapeHtml(card.boss)} boss prep card">
+      <div class="boss-prep-head">
+        <span>Boss Prep</span>
+        <strong>${escapeHtml(card.boss)}</strong>
+      </div>
+      <dl>
+        ${rows
+          .map(
+            ([label, value]) => `
+              <div>
+                <dt>${escapeHtml(label)}</dt>
+                <dd>${escapeHtml(value)}</dd>
+              </div>
+            `,
+          )
+          .join("")}
+      </dl>
+    </aside>
+  `;
 }
 
 function motionEnabled() {
@@ -697,6 +751,7 @@ async function addAssistantMessage(response, options = {}) {
         .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
         .join("")}</tbody></table></div>`
     : "";
+  const bossPrep = renderBossPrepCard(response.bossPrep);
   const sourceLinks = (response.sources || [])
     .map(
       (item) =>
@@ -727,6 +782,7 @@ async function addAssistantMessage(response, options = {}) {
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
+        ${bossPrep}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -791,6 +847,7 @@ function normalizeApiResponse(data) {
     answer: data.answer || "The chat API returned no answer.",
     sections: (data.sections || []).map((section) => [section.title, section.content]),
     table: data.tables?.[0]?.rows,
+    bossPrep: data.bossPrep || null,
     missing: data.missingInfo || "No missing information reported.",
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,
@@ -1085,6 +1142,16 @@ recentList?.addEventListener("click", (event) => {
   if (openButton) {
     void openSavedAnswer(openButton.dataset.openRecent);
   }
+});
+
+spoilerSlider?.addEventListener("input", () => {
+  const mode = spoilerModes[Number(spoilerSlider.value)] || spoilerModes[0];
+  playerProfile = cleanProfile({
+    ...playerProfile,
+    spoilerPreference: mode.value,
+  });
+  savePlayerProfile();
+  showInputHint(`${mode.label}: ${mode.hint}`);
 });
 
 clearChat?.addEventListener("click", () => {

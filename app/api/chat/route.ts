@@ -1202,6 +1202,81 @@ function joinNatural(values: string[]): string {
   return `${values.slice(0, -1).join(", ")}, and ${values.at(-1)}`;
 }
 
+function compactCardValue(value: string, maxLength = 150): string {
+  const text = compactText(value.replace(/\s+/g, " ").trim(), maxLength);
+  return text.replace(/[.;:,]+$/g, "");
+}
+
+function firstFactValue(facts: FactMatch[], type: FactMatch["fact_type"]): string | undefined {
+  return facts.find((fact) => fact.fact_type === type && fact.value.trim())?.value.trim();
+}
+
+function buildBossPrepCard(
+  question: string,
+  context: {
+    facts: FactMatch[];
+    chunks: Array<{ source_title: string; section_title?: string | null; chunk_text: string }>;
+  },
+): ChatResponse["bossPrep"] | undefined {
+  const bossFacts = context.facts.filter(
+    (fact) => fact.entity.type === "boss" && factMatchesQuestionSubject(question, fact.entity.name),
+  );
+  const selectedFacts = bossFacts.length
+    ? bossFacts.filter((fact) => fact.entity.id === bossFacts[0].entity.id)
+    : context.facts.filter((fact) => fact.entity.type === "boss");
+  const bossName = selectedFacts[0]?.entity.name ?? likelyExactSubject(question);
+  if (!bossName) return undefined;
+
+  const evidenceText = [
+    ...selectedFacts.map((fact) => fact.value),
+    ...context.chunks
+      .filter((chunk) => `${chunk.source_title} ${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(bossName.toLowerCase()))
+      .map((chunk) => chunk.chunk_text),
+  ].join(" ");
+
+  const valuesFor = (type: FactMatch["fact_type"]) =>
+    uniqueStrings(selectedFacts.filter((fact) => fact.fact_type === type).map((fact) => fact.value.trim()).filter(Boolean));
+  const weaknesses = valuesFor("weakness");
+  const defensiveAffinities = [
+    ...valuesFor("resistance").map((value) => `Resists ${value}`),
+    ...valuesFor("nullifies").map((value) => `Nullifies ${value}`),
+    ...valuesFor("drains").map((value) => `Drains ${value}`),
+    ...valuesFor("repels").map((value) => `Repels ${value}`),
+  ];
+  const recommendedLevel =
+    evidenceText.match(/\bRecommended Level:\s*([0-9+ ]+)/i)?.[1]?.trim() ??
+    evidenceText.match(/\brecommended level\s*(?:is|:)?\s*([0-9+ ]+)/i)?.[1]?.trim();
+  const strategy =
+    firstFactValue(selectedFacts, "strategy") ??
+    evidenceText.match(/(?:watch out for|avoid|use|bring|focus)[^.]{20,180}\./i)?.[0];
+
+  return {
+    boss: bossName,
+    weakness: weaknesses.length ? joinNatural(weaknesses) : "Not confirmed",
+    avoid: defensiveAffinities.length ? defensiveAffinities.slice(0, 2).join(" · ") : undefined,
+    recommendedLevel: recommendedLevel ? compactCardValue(recommendedLevel, 40) : undefined,
+    party: firstFactValue(selectedFacts, "recommended_party")
+      ? compactCardValue(firstFactValue(selectedFacts, "recommended_party")!, 120)
+      : undefined,
+    danger: strategy ? compactCardValue(strategy, 140) : undefined,
+    plan: "Stabilize first, confirm affinities, then commit damage once the dangerous mechanic is handled.",
+  };
+}
+
+function withBossPrep(
+  response: ChatResponse,
+  question: string,
+  intent: CompanionIntent,
+  context: {
+    facts: FactMatch[];
+    chunks: Array<{ source_title: string; section_title?: string | null; chunk_text: string }>;
+  },
+): ChatResponse {
+  if (intent !== "Boss Help" || response.bossPrep) return response;
+  const bossPrep = buildBossPrepCard(question, context);
+  return bossPrep ? { ...response, bossPrep } : response;
+}
+
 function structuredAffinityResponse(
   question: string,
   facts: Array<{
@@ -1499,6 +1574,14 @@ function structuredBloodyMariaResponse(
             "Yukari is valuable because Me Patra can clean up Fear; use a consumable on her if she gets feared before her turn. Junpei can help pressure the support target, and Aigis gives you reliable Pierce pressure on Bloody Maria.",
         },
       ],
+      bossPrep: {
+        boss: "Bloody Maria",
+        weakness: "Not confirmed",
+        avoid: "Fear follow-up pressure",
+        party: "Yukari for Me Patra; Aigis for Pierce pressure",
+        danger: "Evil Smile can set up Fear before a punishing follow-up",
+        plan: "Clear Fear immediately, keep healing stable, and lean on Pierce pressure.",
+      },
       sources: [...sourceMap.values()].slice(0, 3),
       confidence: strategyFacts.length ? 0.9 : 0.72,
       missingInfo: "Share your current level if you want a safer turn-by-turn plan.",
@@ -1576,6 +1659,15 @@ function structuredPriestessBossResponse(
             "Bring broad elemental coverage on the protagonist, keep the party topped off before the train sequence gets tense, and focus damage on Priestess whenever the field is stable. If adds appear, remove them fast, then go back to the boss.",
         },
       ],
+      bossPrep: {
+        boss: "Priestess",
+        weakness: "Not confirmed",
+        avoid: "Ice attacks into Priestess",
+        recommendedLevel: "10+",
+        party: "Yukari for healing; protagonist covers elements",
+        danger: "Timed Full Moon fight with summoned enemies",
+        plan: "Heal early, clear adds fast, then refocus damage on Priestess.",
+      },
       sources: [...sourceMap.values()].slice(0, 3),
       confidence: priestessFacts.length || guideChunks.length ? 0.9 : 0.78,
       missingInfo: "Share your level and party if you want a turn-by-turn version for your exact setup.",
@@ -2925,10 +3017,15 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
       }
     }
     const response = withMode(
-      applyGroundingGuardrails(
+      withBossPrep(
+        applyGroundingGuardrails(
+          conversation.analysisQuestion,
+          controller.intent,
+          normalized,
+          context,
+        ),
         conversation.analysisQuestion,
         controller.intent,
-        normalized,
         context,
       ),
       "rag",
