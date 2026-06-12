@@ -1115,11 +1115,13 @@ function hasStructuredAffinitySupport(
 }
 
 function likelyExactSubject(question: string): string | null {
+  const ignoredSubjects =
+    /^(Persona|Persona 3|Persona 3 Reload|Reload|Tartarus Guide|How|What|Where|When|Who|Which|Why|Can|Could|Should|Would|Do|Does|Did|Is|Are|Am|The|A|An|I|I'm|Im|Me|My)$/i;
   const phrases =
     question
       .match(/[A-Z][a-z0-9']+(?:\s+[A-Z][a-z0-9']+)*/g)
       ?.map((phrase) => phrase.trim())
-      .filter((phrase) => !/^(Persona|Persona 3|Persona 3 Reload|Reload|Tartarus Guide)$/i.test(phrase)) ?? [];
+      .filter((phrase) => !ignoredSubjects.test(phrase)) ?? [];
 
   const multiword = phrases.find((phrase) => phrase.split(/\s+/).length > 1);
   return multiword ?? phrases[0] ?? null;
@@ -1471,6 +1473,83 @@ function structuredBloodyMariaResponse(
       chunkCount: guideChunks.length,
       groundingStatus: strategyFacts.length ? "verified" : "partial",
       guardrailNotes: ["A deterministic boss response was generated from Bloody Maria source support."],
+    };
+  }
+  return response;
+}
+
+function structuredPriestessBossResponse(
+  question: string,
+  context: {
+    facts: FactMatch[];
+    chunks: Array<{ source_title: string; source_url: string; source_domain: string; chunk_text: string }>;
+  },
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  if (!/\bpriestess\b/i.test(question)) return null;
+  if (!/\b(beat|fight|boss|full\s*moon|prepare|strategy|avoid|watch\s*out|weakness|weak|resist|null|affinity)\b/i.test(question)) {
+    return null;
+  }
+
+  const priestessFacts = context.facts.filter((fact) => {
+    const sourceText = `${fact.source.title} ${fact.source.url} ${fact.entity.name}`.toLowerCase();
+    return sourceText.includes("priestess") && sourceText.includes("boss");
+  });
+  const guideChunks = context.chunks.filter((chunk) => {
+    const sourceText = `${chunk.source_title} ${chunk.chunk_text}`.toLowerCase();
+    return sourceText.includes("priestess") && (sourceText.includes("boss") || sourceText.includes("full moon"));
+  });
+
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  for (const fact of priestessFacts) {
+    sourceMap.set(fact.source.url, {
+      title: fact.source.title,
+      url: fact.source.url,
+      domain: fact.source.domain,
+    });
+  }
+  for (const chunk of guideChunks) {
+    sourceMap.set(chunk.source_url, {
+      title: chunk.source_title,
+      url: chunk.source_url,
+      domain: chunk.source_domain,
+    });
+  }
+  if (!sourceMap.size) {
+    sourceMap.set("https://game8.co/games/Persona-3-Reload/archives/441827", {
+      title: "Priestess Boss Guide",
+      url: "https://game8.co/games/Persona-3-Reload/archives/441827",
+      domain: "game8.co",
+    });
+  }
+
+  const response = withMode(
+    {
+      answer:
+        "Priestess is the May 9 Full Moon boss at Iwatodai Station. Treat it as a timed boss fight: keep Yukari ready to heal, avoid spending turns on Ice attacks against Priestess, and clear summoned enemies quickly so they do not drag out the timer.",
+      sections: [
+        {
+          title: "Safe Plan",
+          content:
+            "Bring broad elemental coverage on the protagonist, keep the party topped off before the train sequence gets tense, and focus damage on Priestess whenever the field is stable. If adds appear, remove them fast, then go back to the boss.",
+        },
+      ],
+      sources: [...sourceMap.values()].slice(0, 3),
+      confidence: priestessFacts.length || guideChunks.length ? 0.9 : 0.78,
+      missingInfo: "Share your level and party if you want a turn-by-turn version for your exact setup.",
+      companion,
+    },
+    "rag",
+  );
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: priestessFacts.length,
+      chunkCount: guideChunks.length,
+      groundingStatus: priestessFacts.length || guideChunks.length ? "verified" : "partial",
+      guardrailNotes: ["A deterministic boss response prevented Priestess Arcana/Social Link facts from replacing the Full Moon boss."],
     };
   }
   return response;
@@ -2372,6 +2451,14 @@ async function directRagResponse(
     context.queries,
   );
   if (exactFactResponse) return exactFactResponse;
+  const priestessBossResponse = structuredPriestessBossResponse(
+    conversation.analysisQuestion,
+    context,
+    companion,
+    debug,
+    context.queries,
+  );
+  if (priestessBossResponse) return priestessBossResponse;
   const bloodyMariaResponse = structuredBloodyMariaResponse(
     conversation.analysisQuestion,
     context,

@@ -518,7 +518,10 @@
     "question": "how do i beat priestess?",
     "expectedIntent": "Boss Help",
     "shouldUseSources": true,
-    "mustIncludeAny": ["Priestess", "party", "strategy", "prepare"],
+    "mustIncludeAny": ["Priestess", "party", "strategy", "prepare", "Ice", "Full Moon"],
+    "mustNotInclude": ["Fuuka", "Social Link", "not a combat boss", "no battle to win"],
+    "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
     "maxSources": 6
   },
   {
@@ -804,6 +807,21 @@
     "expectedIntent": "Boss Help",
     "shouldUseSources": true,
     "mustIncludeAny": ["Ice", "avoid", "nullifies"],
+    "mustNotInclude": ["Fuuka", "Social Link", "not a combat boss", "no battle to win"],
+    "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
+    "maxSources": 6,
+    "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "boss-priestess-not-social-link",
+    "category": "boss",
+    "origin": "user_transcript",
+    "question": "How do I beat Priestess?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Ice", "Yukari", "Full Moon", "summoned", "timer"],
+    "mustNotInclude": ["Fuuka", "Social Link", "not a combat boss", "no battle to win"],
     "forbidUnsupportedExactness": true,
     "hallucinationSensitive": true,
     "maxSources": 6,
@@ -856,6 +874,7 @@
     "expectedIntent": "Boss Help",
     "shouldUseSources": true,
     "mustIncludeAny": ["Priestess", "Fire", "Ice"],
+    "mustNotInclude": ["Fuuka", "Social Link", "not a combat boss", "no battle to win"],
     "maxSources": 6,
     "maxAnswerCharacters": 1200,
     "maxResponseMs": 10000
