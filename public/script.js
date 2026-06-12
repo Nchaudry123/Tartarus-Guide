@@ -33,6 +33,7 @@ const chatQueue = [];
 let inputHintTimer = null;
 let streamTokenBuffer = "";
 let streamFlushTimer = null;
+let chatScrollTimer = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -926,6 +927,11 @@ input.addEventListener("blur", () => {
 
 messages.addEventListener("scroll", () => {
   autoStickToBottom = isNearMessagesBottom();
+  document.documentElement.classList.add("is-chat-scrolling");
+  window.clearTimeout(chatScrollTimer);
+  chatScrollTimer = window.setTimeout(() => {
+    document.documentElement.classList.remove("is-chat-scrolling");
+  }, 140);
 });
 
 categoryList?.addEventListener("click", (event) => {
