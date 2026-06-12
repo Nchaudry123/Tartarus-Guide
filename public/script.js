@@ -31,6 +31,8 @@ let activeQuestion = "";
 let queuedQuestionId = 0;
 const chatQueue = [];
 let inputHintTimer = null;
+let streamTokenBuffer = "";
+let streamFlushTimer = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -517,8 +519,7 @@ function updateLoadingStatus(message) {
   scrollMessagesToBottom();
 }
 
-function appendStreamToken(delta) {
-  if (!delta) return;
+function ensureStreamingMessage() {
   document.getElementById("loading")?.remove();
   let node = document.getElementById("streamingAssistant");
   if (!node) {
@@ -534,12 +535,37 @@ function appendStreamToken(delta) {
     `;
     messages.appendChild(node);
   }
+  return node;
+}
+
+function flushStreamTokens() {
+  if (!streamTokenBuffer) return;
+  const node = ensureStreamingMessage();
   const answer = node.querySelector(".answer");
-  if (answer) answer.textContent += delta;
+  if (answer) answer.textContent += streamTokenBuffer;
+  streamTokenBuffer = "";
   scrollMessagesToBottom({ force: true, behavior: "auto" });
 }
 
+function resetStreamBuffer() {
+  if (streamFlushTimer) window.clearTimeout(streamFlushTimer);
+  streamFlushTimer = null;
+  streamTokenBuffer = "";
+}
+
+function appendStreamToken(delta) {
+  if (!delta) return;
+  streamTokenBuffer += delta;
+  if (streamFlushTimer) return;
+  streamFlushTimer = window.setTimeout(() => {
+    streamFlushTimer = null;
+    flushStreamTokens();
+  }, 40);
+}
+
 async function addAssistantMessage(response) {
+  flushStreamTokens();
+  resetStreamBuffer();
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
   mergeProfileUpdates(response.companion?.profileUpdates);
@@ -843,6 +869,7 @@ async function askQueuedQuestion(question) {
     const response = await requestAnswer(question, priorHistory, requestController.signal);
     await addAssistantMessage(response);
   } catch (error) {
+    resetStreamBuffer();
     document.getElementById("loading")?.remove();
     document.getElementById("streamingAssistant")?.remove();
     if (error?.name !== "AbortError") {
