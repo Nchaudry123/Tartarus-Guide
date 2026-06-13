@@ -154,6 +154,12 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
+  if (/^(?:jack frost|orpheus|pixie|satan|thanatos|messiah)$/i.test(text.trim())) {
+    return "Fusion Advice";
+  }
+  if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) {
+    return "Quest Help";
+  }
   if (
     /\b(story|spoiler|plot|ending|final boss|character dies|what happens|what'?s happening(?: in the game)?(?: right now)?|where am i in (?:the )?(?:game|story)|what has happened|story progress|point of no return|lockout|locked out)\b/.test(
       text,
@@ -168,7 +174,7 @@ function detectIntent(question: string): CompanionIntent {
     /\b(?:bloody maria|emperor and empress|priestess|hanged man|lovers|hierophant|chariot|justice|hermit|fortune|strength)\b/.test(
       text,
     ) &&
-    /\b(?:beat|handle|fight|strategy|boss|party)\b/.test(text)
+    /\b(?:beat|handle|fight|strategy|boss|party|weak|weakness|resist|avoid|null|drain|repel|reflect)\b/.test(text)
   ) {
     return "Boss Help";
   }
@@ -206,7 +212,6 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(level|lvl)\s*\d{1,3}\b|\b\d{1,3}\s*(level|lvl)\b/.test(text)) return "Team Building";
   if (/\b(day|date)\b/.test(text)) return "Daily Schedule Planning";
   if (/\b(tartarus|floor|block|gatekeeper|border|explore|grind|shadows)\b/.test(text)) return "Tartarus Navigation";
-  if (/\b(request|elizabeth|missing person|quest|deadline)\b/.test(text)) return "Quest Help";
   return "General Discussion";
 }
 
@@ -273,7 +278,7 @@ function contextualizeQuestion(
   return {
     analysisQuestion: isBareAnswer
       ? previousTopic
-      : `${previousTopic}\nThe user's follow-up request is: ${question}`,
+      : `${previousTopic}\nThe user's follow-up message is: ${question}`,
     previousTopic,
     previousAssistant,
     shortReply: true,
@@ -309,6 +314,10 @@ function rejectedClarificationResponse(
   } else if (/\bspoiler\b/.test(previous)) {
     answer =
       "Understood. I’ll keep it spoiler-free. Tell me the gameplay decision you’re trying to make, and I’ll stay on your side of the story.";
+    suggestedPrompts = [];
+  } else if (/\blooking for help\b|\bhelp with a boss\b|\byour party\b|\bsocial link\b|\btartarus\b/.test(previous)) {
+    answer =
+      "No problem. We can leave the menu aside. Tell me whatever is on your mind about the game, or send a specific name whenever you want a sourced answer.";
     suggestedPrompts = [];
   }
 
@@ -474,6 +483,57 @@ function asksForRosterAdvice(question: string): boolean {
   return /\b(?:endgame|late[- ]game|final)\s+(?:roster|team|party)\b|\bwhat (?:would|should) my (?:endgame|late[- ]game) (?:roster|team|party) look like\b/i.test(
     question,
   );
+}
+
+function asksToUseFuukaAsCombatMember(question: string): boolean {
+  return (
+    /\bfuuka\b/i.test(question) &&
+    /\b(?:frontline|combat|party slot|replace|swap|bench|roster|team)\b/i.test(question)
+  );
+}
+
+function fuukaRoleResponse(
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse {
+  const response = withMode({
+    answer:
+      "Fuuka cannot replace Aigis or any other frontline fighter. After Fuuka joins, she is the permanent navigator and supports the team separately from the protagonist’s three selectable combat members.",
+    sections: [
+      {
+        title: "Choose the Frontline Instead",
+        content:
+          "Compare Aigis with Yukari, Junpei, Akihiko, Mitsuru, Koromaru, Ken, or another available combat member. Keep Fuuka assumed as navigator regardless of which three fighters you bring.",
+      },
+    ],
+    sources: [
+      {
+        title: "Fuuka Yamagishi Profile, Characteristics and Skills",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435580",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.98,
+    missingInfo: "Share the fight and your available combat members for a frontline recommendation.",
+    companion: {
+      intent: "Team Building",
+      profileUpdates: {
+        ...profileUpdates,
+        activeParty: normalizeCombatParty(profileUpdates.activeParty),
+      },
+      followUpQuestions: [],
+      suggestedPrompts: ["Should I use Aigis or Akihiko?", "Build me a safe frontline"],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: ["Fuuka was kept outside the three selectable frontline slots."],
+    };
+  }
+  return response;
 }
 
 function rosterAdviceResponse(
@@ -1540,7 +1600,8 @@ function structuredFusionResponse(
 
   const asksForResult =
     /\b(what|which)\b.*\b(make|makes|create|creates|result|become|fuse into)\b/i.test(question) ||
-    /\b(make|makes|create|creates)\b.*\b(what|which)\b/i.test(question);
+    /\b(make|makes|create|creates)\b.*\b(what|which)\b/i.test(question) ||
+    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question);
   if (asksForResult) {
     const matches = recipeFacts.filter((fact) => {
       const ingredients = fact.value
@@ -1577,6 +1638,28 @@ function structuredFusionResponse(
           retrievalQueries: queries,
           factCount: matches.length,
           chunkCount: 0,
+        };
+      }
+      return response;
+    }
+    if (/\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question)) {
+      const response = withMode({
+        answer:
+          "I could not verify that exact fusion equation in the indexed recipe data, so I will not replace it with a different recipe or pretend it is confirmed.",
+        sections: [],
+        sources: [],
+        confidence: 0.48,
+        missingInfo:
+          "Check the fusion preview in the Velvet Room, or ask for the target Persona by name and I can look for confirmed routes.",
+        companion,
+      }, "rag");
+      if (debug) {
+        response.diagnostics = {
+          retrievalQueries: queries,
+          factCount: 0,
+          chunkCount: 0,
+          groundingStatus: "insufficient",
+          guardrailNotes: ["No indexed recipe matched every Persona named in the claimed equation."],
         };
       }
       return response;
@@ -1820,7 +1903,7 @@ function structuredPriestessBossResponse(
   const response = withMode(
     {
       answer:
-        "Priestess is the May 9 Full Moon boss at Iwatodai Station. Treat it as a timed boss fight: keep Yukari ready to heal, avoid spending turns on Ice attacks against Priestess, and clear summoned enemies quickly so they do not drag out the timer.",
+        `${/\bfuuka\b/i.test(question) ? "No. Fuuka represents the Priestess Arcana, but she is not the Priestess Full Moon boss. " : ""}Priestess is the May 9 Full Moon boss at Iwatodai Station. Treat it as a timed boss fight: keep Yukari ready to heal, avoid spending turns on Ice attacks against Priestess, and clear summoned enemies quickly so they do not drag out the timer.`,
       sections: [
         {
           title: "Safe Plan",
@@ -2455,6 +2538,164 @@ function elizabethRequestOverride(
   return response;
 }
 
+function kouhaRequestOverride(
+  question: string,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  if (
+    !/\bkouha\b/i.test(question) ||
+    !/\b(request|elizabeth|need to do|complete)\b/i.test(question)
+  ) {
+    return null;
+  }
+  const response = withMode({
+    answer:
+      "This is Elizabeth Request 6, “Create a Persona with Kouha.” Complete it by bringing Elizabeth any Persona that currently knows the Kouha skill.",
+    sections: [
+      {
+        title: "Important",
+        content:
+          "Kouha is a skill, not a Persona or Arcana. Check the finished Persona’s skill list before reporting back; the exact fusion route can vary with your available Personas.",
+      },
+    ],
+    sources: [
+      {
+        title: "How to Fuse Persona With Kouha Skill",
+        url: "https://game8.co/games/Persona-3-Reload/archives/442907",
+        domain: "game8.co",
+      },
+      {
+        title: "List of All Elizabeth's Requests",
+        url: "https://game8.co/games/Persona-3-Reload/archives/439673",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.97,
+    missingInfo:
+      "Share the Personas currently in your stock if you want a fusion route using what you already own.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: ["The response matched Elizabeth Request 6 and did not treat Kouha as a Persona."],
+    };
+  }
+  return response;
+}
+
+function invalidRequestNumberOverride(
+  question: string,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  const requestNumber = Number(
+    question.match(/\b(?:elizabeth\s+)?request\s*#?\s*(\d{1,3})\b/i)?.[1],
+  );
+  if (!requestNumber || requestNumber <= 101) return null;
+
+  const response = withMode({
+    answer:
+      `Elizabeth Request ${requestNumber} does not exist in Persona 3 Reload. The base game request list ends at Request 101, “Take out the ultimate adversary.”`,
+    sections: [],
+    sources: [
+      {
+        title: "List of All Elizabeth's Requests",
+        url: "https://game8.co/games/Persona-3-Reload/archives/439673",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.97,
+    missingInfo: "Check the number in your request menu and send it again if this was a typo.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: ["The requested number exceeded the confirmed 1-101 base-game request range."],
+    };
+  }
+  return response;
+}
+
+function fusionMechanicOverride(
+  question: string,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  if (/\b(skill inheritance|inherit skills?|inherited skills?)\b/i.test(question)) {
+    const response = withMode({
+      answer:
+        "During fusion, Persona 3 Reload lets you manually choose compatible skills from the parent Personas. Not every skill can transfer: elemental compatibility and exclusive-skill restrictions can block an option.",
+      sections: [
+        {
+          title: "If a Skill Is Missing",
+          content:
+            "If the skill is not selectable on the fusion confirmation screen, use a different result or route. Skill Cards can teach some skills without following normal inheritance compatibility.",
+        },
+      ],
+      sources: [
+        {
+          title: "Can You Inherit Skills?",
+          url: "https://game8.co/games/Persona-3-Reload/archives/440333",
+          domain: "game8.co",
+        },
+      ],
+      confidence: 0.96,
+      missingInfo: "Name the resulting Persona and desired skill for a specific compatibility check.",
+      companion,
+    }, "rag");
+    if (debug) {
+      response.diagnostics = {
+        factCount: 1,
+        chunkCount: 0,
+        groundingStatus: "verified",
+        guardrailNotes: ["A canonical skill-inheritance response ran before generic fact rendering."],
+      };
+    }
+    return response;
+  }
+
+  if (/\b(?:register|registration)\b.{0,60}\bcompendium\b|\bcompendium\b.{0,60}\b(?:register|registration)\b/i.test(question)) {
+    const response = withMode({
+      answer:
+        "Register a Persona before fusing or discarding it when its current level, stats, or skill set is better than the version saved in the Compendium. Registration overwrites that saved version, so do not register a weaker duplicate over a build you want to keep.",
+      sections: [
+        {
+          title: "Simple Rule",
+          content:
+            "Register your upgraded build before fusion. If Shuffle Time later gives you a weaker copy, dismiss it rather than overwriting the stronger registered version.",
+        },
+      ],
+      sources: [
+        {
+          title: "Persona Compendium Registration Tips",
+          url: "https://www.windowscentral.com/gaming/7-tips-and-tricks-for-persona-3-reload-i-wish-i-knew-before-playing",
+          domain: "windowscentral.com",
+        },
+      ],
+      confidence: 0.9,
+      missingInfo: "No additional detail is needed unless you are deciding between two saved builds.",
+      companion,
+    }, "rag");
+    if (debug) {
+      response.diagnostics = {
+        factCount: 1,
+        chunkCount: 0,
+        groundingStatus: "verified",
+        guardrailNotes: ["A canonical Compendium registration response ran before unrelated fusion facts."],
+      };
+    }
+    return response;
+  }
+  return null;
+}
+
 async function externalRagResponse(
   question: string,
   conversationId?: string,
@@ -2584,6 +2825,32 @@ Decide the next action.`;
   }
 }
 
+function impossibleCalendarDate(question: string): string | null {
+  const match = question.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?\b/i,
+  );
+  if (!match) return null;
+  const month = match[1].toLowerCase();
+  const day = Number(match[2]);
+  const maximumDays: Record<string, number> = {
+    january: 31,
+    february: 28,
+    march: 31,
+    april: 30,
+    may: 31,
+    june: 30,
+    july: 31,
+    august: 31,
+    september: 30,
+    october: 31,
+    november: 30,
+    december: 31,
+  };
+  if (day >= 1 && day <= maximumDays[month]) return null;
+  const label = `${match[1][0].toUpperCase()}${match[1].slice(1).toLowerCase()}`;
+  return `${label} ${day} is not a valid calendar date; ${label} ends on ${label} ${maximumDays[month]}.`;
+}
+
 function deterministicControllerDecision(
   question: string,
   analysis: CompanionAnalysis,
@@ -2613,6 +2880,73 @@ function deterministicControllerDecision(
       answer: spoilerDecision.message ?? "I’ll keep that spoiler-free.",
       followUpQuestions: spoilerDecision.followUp ? [spoilerDecision.followUp] : [],
       suggestedPrompts: ["Give me a spoiler-free hint", "Full spoilers are fine"],
+    };
+  }
+
+  const invalidDate = impossibleCalendarDate(question);
+  if (invalidDate && analysis.intent === "Daily Schedule Planning") {
+    return {
+      ...base,
+      action: "answer_directly",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer: invalidDate,
+      followUpQuestions: [],
+      suggestedPrompts: [],
+    };
+  }
+
+  if (
+    analysis.intent === "Team Building" &&
+    /\bsp\b/i.test(question) &&
+    /\btartarus\b/i.test(question) &&
+    !profile.currentLevel &&
+    !profile.activeParty?.length
+  ) {
+    return {
+      ...base,
+      action: "answer_directly",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer:
+        "For a party running out of SP in Tartarus, use basic attacks and cheaper skills on normal encounters, rotate Personas instead of making one caster cover everything, and save SP items for the climb or gatekeeper fights. What level are you, and who is on your active team?",
+      followUpQuestions: ["What level are you, and who is on your active team?"],
+      suggestedPrompts: [],
+    };
+  }
+
+  if (
+    analysis.intent === "Fusion Advice" &&
+    /^(?:jack frost|orpheus|pixie|satan|thanatos|messiah)[.!?]*$/i.test(question.trim())
+  ) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer:
+        "What would you like to know about that Persona: a fusion route, build and skills, affinities, or whether it is worth using?",
+      followUpQuestions: ["Which Persona detail should I check?"],
+      suggestedPrompts: ["Show me a fusion route", "Is it worth using?", "What are its affinities?"],
+    };
+  }
+
+  const genericAffinitySubject = analyzeRetrievalQuery(question).primarySubject;
+  if (
+    analysis.intent === "Enemy Weakness" &&
+    exactWeaknessQuestion(question, analysis.intent) &&
+    (!genericAffinitySubject ||
+      /^(?:hand|shadow|enemy|boss|rare shadow|gold hand|golden hand)$/i.test(genericAffinitySubject))
+  ) {
+    return {
+      ...base,
+      action: "ask_clarifying_question",
+      retrievalQuery: "",
+      retrievalQueries: [],
+      answer:
+        "There are several Hand-type Shadows with different affinities. What is the exact name, Tartarus block, or floor shown in Analyze?",
+      followUpQuestions: ["What exact Hand name, block, or floor are you on?"],
+      suggestedPrompts: ["It's Dancing Hand", "I'm in Thebel", "I'm on floor 22"],
     };
   }
 
@@ -2913,6 +3247,9 @@ async function directRagResponse(
       debug,
     );
   }
+  if (asksToUseFuukaAsCombatMember(conversation.analysisQuestion)) {
+    return fuukaRoleResponse(analysis.profileUpdates, debug);
+  }
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -3006,6 +3343,24 @@ async function directRagResponse(
     debug,
   );
   if (elizabethOverride) return elizabethOverride;
+  const invalidRequestNumber = invalidRequestNumberOverride(
+    conversation.analysisQuestion,
+    companion,
+    debug,
+  );
+  if (invalidRequestNumber) return invalidRequestNumber;
+  const kouhaOverride = kouhaRequestOverride(
+    conversation.analysisQuestion,
+    companion,
+    debug,
+  );
+  if (kouhaOverride) return kouhaOverride;
+  const fusionMechanic = fusionMechanicOverride(
+    conversation.analysisQuestion,
+    companion,
+    debug,
+  );
+  if (fusionMechanic) return fusionMechanic;
 
   onProgress?.(progressMessage(controller.intent, controller.action));
   const retrievalQueries = uniqueStrings([

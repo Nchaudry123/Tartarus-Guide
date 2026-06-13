@@ -300,7 +300,23 @@
     "question": "What is the hand Shadow weak to?",
     "expectedIntent": "Enemy Weakness",
     "shouldClarify": true,
-    "maxSources": 4
+    "shouldUseSources": false,
+    "mustIncludeAny": ["exact name", "block", "floor"],
+    "mustNotInclude": ["Kumbhanda", "weak to Fire", "weak to Ice", "weak to Electric"],
+    "hallucinationSensitive": true,
+    "maxSources": 0
+  },
+  {
+    "id": "enemy-generic-gold-hand",
+    "category": "enemy",
+    "question": "What is the gold hand weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "mustIncludeAny": ["exact name", "block", "floor"],
+    "mustNotInclude": ["Treasure Hand is weak", "Precious Hand is weak"],
+    "hallucinationSensitive": true,
+    "maxSources": 0
   },
   {
     "id": "enemy-floor-context",
@@ -373,7 +389,9 @@
     "question": "How does skill inheritance work when I fuse Personas?",
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": true,
-    "mustIncludeAny": ["skill", "inherit", "fusion"],
+    "mustIncludeAll": ["manually", "compatible", "Skill Cards"],
+    "mustNotInclude": ["Level 20 unlocks", "Persona slots"],
+    "hallucinationSensitive": true,
     "maxSources": 5
   },
   {
@@ -382,7 +400,9 @@
     "question": "When should I register Personas in the Compendium?",
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": true,
-    "mustIncludeAny": ["Compendium", "register", "skills"],
+    "mustIncludeAll": ["register", "before", "overwrites"],
+    "mustNotInclude": ["Level 20 unlocks", "Persona slots"],
+    "hallucinationSensitive": true,
     "maxSources": 5
   },
   {
@@ -626,7 +646,9 @@
     "question": "jack frost",
     "expectedIntent": "Fusion Advice",
     "shouldClarify": true,
-    "maxSources": 4
+    "shouldUseSources": false,
+    "mustIncludeAny": ["fusion route", "skills", "affinities", "worth using"],
+    "maxSources": 0
   },
   {
     "id": "real-user-social-priority",
@@ -769,7 +791,10 @@
     "question": "what do i need to do for the persona with kouha request?",
     "expectedIntent": "Quest Help",
     "shouldUseSources": true,
-    "mustIncludeAny": ["Kouha", "Persona", "Request 5"],
+    "mustIncludeAll": ["Kouha", "Persona", "Request 6", "skill"],
+    "mustNotInclude": ["Request 5", "Lovers Arcana", "Kouga", "New Moon"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
     "maxSources": 5,
     "maxAnswerCharacters": 1200
   },
@@ -940,6 +965,85 @@
     "hallucinationSensitive": true,
     "maxSources": 6,
     "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "enemy-invented-name-refusal",
+    "category": "enemy",
+    "origin": "curated",
+    "question": "What is Crystal Executioner weak to?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["not have a confirmed weakness", "will not guess"],
+    "mustNotInclude": ["weak to Fire", "weak to Ice", "weak to Electric", "weak to Light"],
+    "hallucinationSensitive": true,
+    "maxSources": 0,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "request-impossible-number",
+    "category": "requests",
+    "origin": "curated",
+    "question": "How do I finish Elizabeth request 999?",
+    "expectedIntent": "Quest Help",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["does not exist", "Request 101"],
+    "mustNotInclude": ["Request 99 being the final one", "go into the 90s"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "boss-priestess-fuuka-false-premise",
+    "category": "boss",
+    "origin": "curated",
+    "question": "Is the Priestess boss just Fuuka?",
+    "expectedIntent": "Boss Help",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["No", "Fuuka", "Priestess Arcana", "Full Moon boss"],
+    "mustNotInclude": ["Fuuka is the Priestess boss"],
+    "hallucinationSensitive": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "schedule-impossible-date",
+    "category": "schedule",
+    "origin": "curated",
+    "question": "What is the classroom answer on April 31?",
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": false,
+    "mustIncludeAll": ["not a valid calendar date", "April 30"],
+    "mustNotInclude": ["classroom answer is"],
+    "hallucinationSensitive": true,
+    "maxSources": 0,
+    "maxAnswerCharacters": 500
+  },
+  {
+    "id": "fusion-false-equation",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "Does Orpheus plus Pixie fuse into Satan?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": false,
+    "mustIncludeAny": ["could not verify", "will not replace"],
+    "mustNotInclude": ["Orpheus with Arsene", "Arsene + Slime", "fuses into Satan"],
+    "hallucinationSensitive": true,
+    "maxSources": 0,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "team-fuuka-frontline-false-premise",
+    "category": "team",
+    "origin": "curated",
+    "question": "Should I replace Aigis with Fuuka in my frontline?",
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["cannot replace", "permanent navigator", "three", "Aigis"],
+    "mustNotInclude": ["replace Aigis with Fuuka", "Fuuka as a frontline"],
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 1000
   },
   {
     "id": "latency-exact-weakness-shape",
