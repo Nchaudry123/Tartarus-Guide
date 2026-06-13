@@ -32,6 +32,10 @@ import {
 } from "../../../src/quality/exactFacts";
 import type { FactMatch } from "../../../src/types/schema";
 import { TtlCache } from "../../../src/cache/ttlCache";
+import {
+  analyzeRetrievalQuery,
+  buildFocusedQueries,
+} from "../../../src/retrieval/queryAnalysis";
 
 export const runtime = "nodejs";
 
@@ -1155,16 +1159,7 @@ function hasStructuredAffinitySupport(
 }
 
 function likelyExactSubject(question: string): string | null {
-  const ignoredSubjects =
-    /^(Persona|Persona 3|Persona 3 Reload|Reload|Tartarus Guide|How|What|Where|When|Who|Which|Why|Can|Could|Should|Would|Do|Does|Did|Is|Are|Am|The|A|An|I|I'm|Im|Me|My)$/i;
-  const phrases =
-    question
-      .match(/[A-Z][a-z0-9']+(?:\s+[A-Z][a-z0-9']+)*/g)
-      ?.map((phrase) => phrase.trim())
-      .filter((phrase) => !ignoredSubjects.test(phrase)) ?? [];
-
-  const multiword = phrases.find((phrase) => phrase.split(/\s+/).length > 1);
-  return multiword ?? phrases[0] ?? null;
+  return analyzeRetrievalQuery(question).primarySubject ?? null;
 }
 
 function factMatchesQuestionSubject(question: string, entityName: string): boolean {
@@ -2421,7 +2416,6 @@ function deterministicControllerDecision(
   playerProfile: PlayerProfile | undefined,
 ): ControllerDecision | null {
   const profile = mergeProfile(playerProfile, analysis.profileUpdates);
-  const subject = likelyExactSubject(question);
   const base = {
     intent: analysis.intent,
     answer: null,
@@ -2449,11 +2443,7 @@ function deterministicControllerDecision(
   }
 
   if (analysis.intent === "Story Guidance" && /\bfinal boss\b/i.test(question)) {
-    const queries = [
-      "Nyx Avatar final boss January 31 Tartarus",
-      "Nyx Boss Guide Final Boss",
-      "Nyx Avatar Boss Guide weakness recommended level phases",
-    ];
+    const queries = buildFocusedQueries(question);
     return {
       ...base,
       action: "search_both",
@@ -2464,12 +2454,13 @@ function deterministicControllerDecision(
   }
 
   if (exactWeaknessQuestion(question, analysis.intent)) {
-    const query = `${subject ?? question} weakness resistance affinity`;
+    const queries = buildFocusedQueries(question);
+    const query = queries[0];
     return {
       ...base,
       action: "search_structured_facts",
       retrievalQuery: query,
-      retrievalQueries: [query],
+      retrievalQueries: queries,
       followUpQuestions: [],
     };
   }
@@ -2486,23 +2477,25 @@ function deterministicControllerDecision(
   }
 
   if (analysis.intent === "Quest Help" && !analysis.followUpQuestions.length) {
-    const query = `${subject ?? question} Elizabeth request deadline reward location`;
+    const queries = buildFocusedQueries(question);
+    const query = queries[0];
     return {
       ...base,
       action: "search_both",
       retrievalQuery: query,
-      retrievalQueries: [query],
+      retrievalQueries: queries,
       followUpQuestions: [],
     };
   }
 
   if (analysis.intent === "Boss Help" && !analysis.followUpQuestions.length) {
-    const query = `${subject ?? question} mechanics strategy recommended party`;
+    const queries = buildFocusedQueries(question);
+    const query = queries[0];
     return {
       ...base,
       action: "search_both",
       retrievalQuery: query,
-      retrievalQueries: [query],
+      retrievalQueries: queries,
       followUpQuestions: [],
     };
   }
@@ -2685,26 +2678,24 @@ function deterministicControllerDecision(
         ]
       : [],
   };
-  const query = compactText(
-    [
-      question,
-      profile.currentDate ? `date ${profile.currentDate}` : undefined,
-      profile.currentMonth ? `month ${profile.currentMonth}` : undefined,
-      profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
-      profile.activeParty?.length ? `party ${profile.activeParty.join(" ")}` : undefined,
-      profile.tartarusBlock ? `block ${profile.tartarusBlock}` : undefined,
-      profile.tartarusFloor ? `floor ${profile.tartarusFloor}` : undefined,
-      profile.ownedPersonas?.length ? `personas ${profile.ownedPersonas.join(" ")}` : undefined,
-    ]
-      .filter(Boolean)
-      .join(" "),
-    240,
-  );
+  const profileHints = [
+    profile.currentDate ? `date ${profile.currentDate}` : undefined,
+    profile.currentMonth ? `month ${profile.currentMonth}` : undefined,
+    profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
+    profile.activeParty?.length ? `party ${profile.activeParty.join(" ")}` : undefined,
+    profile.tartarusBlock ? `block ${profile.tartarusBlock}` : undefined,
+    profile.tartarusFloor ? `floor ${profile.tartarusFloor}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  const focusedQueries = buildFocusedQueries(question, profileHints);
+  const query = focusedQueries[0] ?? compactText(question, 240);
   return {
     ...base,
     action,
     retrievalQuery: query,
-    retrievalQueries: uniqueStrings([...(intentQueries[analysis.intent] ?? []), query]).slice(0, 4),
+    retrievalQueries: uniqueStrings([
+      ...(intentQueries[analysis.intent] ?? []),
+      ...focusedQueries,
+    ]).slice(0, 4),
     followUpQuestions: analysis.followUpQuestions,
   };
 }
