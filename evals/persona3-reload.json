@@ -1115,6 +1115,68 @@
     "maxAnswerCharacters": 1800
   },
   {
+    "id": "social-aeon-rank-10-persona",
+    "category": "social-links",
+    "origin": "user_transcript",
+    "question": "what persona do i get with the aeon arcana",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Metatron", "Charred Screw", "Rank 10", "Aigis"],
+    "mustNotInclude": [
+      "can't safely confirm every named detail",
+      "exact enemy, boss, Social Link",
+      "give me the exact persona name"
+    ],
+    "requiredDomains": ["game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "social-aeon-rank-10-followup",
+    "category": "social-links",
+    "origin": "user_transcript",
+    "question": "what persona do i get with the aeon arcana",
+    "history": [
+      {
+        "role": "user",
+        "content": "does aigis have a social link?"
+      },
+      {
+        "role": "assistant",
+        "content": "Yes. Aigis has the Aeon Social Link, which becomes available in January."
+      }
+    ],
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Metatron", "Charred Screw", "Aigis"],
+    "mustNotInclude": [
+      "can't safely confirm every named detail",
+      "give me the exact persona name"
+    ],
+    "requiredDomains": ["game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "social-lovers-rank-10-persona",
+    "category": "social-links",
+    "origin": "curated",
+    "question": "What Persona does maxing the Lovers Social Link unlock?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Cybele", "Yukari's Strap", "Yukari"],
+    "mustNotInclude": ["Metatron", "can't confirm"],
+    "requiredDomains": ["game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 700
+  },
+  {
     "id": "latency-exact-weakness-shape",
     "category": "latency",
     "origin": "curated",

@@ -23,6 +23,62 @@ export const socialLinkArcana = {
   Aigis: "Aeon",
 } as const;
 
+export const socialLinkUltimatePersonas = {
+  Fool: { persona: "Susano-o", item: null },
+  Magician: { persona: "Futsunushi", item: "Handmade Choker" },
+  Priestess: { persona: "Scathach", item: "Headphones" },
+  Empress: { persona: "Alilat", item: "Motorcycle Key" },
+  Emperor: { persona: "Odin", item: "Cheap Light" },
+  Hierophant: { persona: "Kohryu", item: "Persimmon Fruit" },
+  Lovers: { persona: "Cybele", item: "Yukari's Strap" },
+  Chariot: { persona: "Thor", item: "Sports Tape" },
+  Justice: { persona: "Melchizedek", item: "Manga" },
+  Hermit: { persona: "Arahabaki", item: "Screenshot Data" },
+  Fortune: { persona: "Lakshmi", item: "Award Letter" },
+  Strength: { persona: "Atavaka", item: "Kids' Letter" },
+  "Hanged Man": { persona: "Attis", item: "Bead Ring" },
+  Death: { persona: "Thanatos", item: null },
+  Temperance: { persona: "Yurlungur", item: "Money Pouch" },
+  Devil: { persona: "Beelzebub", item: "Thank-you Letter" },
+  Tower: { persona: "Chi You", item: "Reserve Tag" },
+  Star: { persona: "Helel", item: "Car Key" },
+  Moon: { persona: "Sandalphon", item: "Gourmet License" },
+  Sun: { persona: "Asura", item: "Worn Notebook" },
+  Judgement: { persona: "Messiah", item: null },
+  Aeon: { persona: "Metatron", item: "Charred Screw" },
+} as const;
+
+export type SocialLinkUltimatePersona = {
+  arcana: keyof typeof socialLinkUltimatePersonas;
+  persona: string;
+  item: string | null;
+};
+
+export function ultimatePersonaUnlockForQuestion(
+  question: string,
+): SocialLinkUltimatePersona | null {
+  const asksWhichPersona =
+    /\b(?:what|which)\b.{0,80}\bpersona\b/i.test(question) ||
+    /\bpersona\b.{0,80}\b(?:get|receive|unlock|reward)\b/i.test(question);
+  const asksRankReward =
+    /\b(unlock|reward|rank\s*10|max|maxed|maxing|ultimate)\b/i.test(question);
+  if (!asksWhichPersona && !asksRankReward) {
+    return null;
+  }
+
+  const normalized = question.toLowerCase();
+  const matchedArcana = (
+    Object.keys(socialLinkUltimatePersonas) as Array<keyof typeof socialLinkUltimatePersonas>
+  ).find((arcana) => normalized.includes(arcana.toLowerCase()));
+  const arcana = matchedArcana ?? (/\baigis\b/i.test(question) ? "Aeon" : null);
+  if (!arcana) return null;
+
+  return {
+    arcana,
+    ...socialLinkUltimatePersonas[arcana],
+  };
+}
+
 export function socialLinkEntityAliasesForQuestion(question: string): string[] {
   if (!/\b(social links?|s-?links?|arcana|rank|hang out|relationship)\b/i.test(question)) {
     return [];
@@ -71,6 +127,7 @@ export function relationshipFactsForPrompt(): string {
     "- Priestess is Fuuka Yamagishi, not Yukari.",
     "- Emperor is Hidetoshi Odagiri, not Akihiko.",
     "- Lovers is Yukari Takeba; Empress is Mitsuru Kirijo; Aeon is Aigis.",
+    "- Maxing Aigis's Aeon Social Link unlocks Metatron for fusion through the Charred Screw.",
     "- Social Links grant matching-Arcana fusion EXP and their rank-10 Persona unlock. Do not claim that they unlock party-member combat perks.",
   ].join("\n");
 }

@@ -4,6 +4,7 @@ import {
   canonicalRelationshipAnswer,
   relationshipContradictions,
   socialLinkEntityAliasesForQuestion,
+  ultimatePersonaUnlockForQuestion,
 } from "./relationships";
 
 test("corrects party-member Social Link requests deterministically", () => {
@@ -26,6 +27,20 @@ test("maps Social Link Arcana questions to their character entity", () => {
     socialLinkEntityAliasesForQuestion("When can I start the Emperor Social Link?"),
     ["Hidetoshi Odagiri", "Emperor"],
   );
+});
+
+test("maps rank-10 Arcana rewards to the verified ultimate Persona", () => {
+  assert.deepEqual(ultimatePersonaUnlockForQuestion("what persona do i get with the aeon arcana"), {
+    arcana: "Aeon",
+    persona: "Metatron",
+    item: "Charred Screw",
+  });
+  assert.deepEqual(ultimatePersonaUnlockForQuestion("What Persona does maxing Lovers unlock?"), {
+    arcana: "Lovers",
+    persona: "Cybele",
+    item: "Yukari's Strap",
+  });
+  assert.equal(ultimatePersonaUnlockForQuestion("Is a Strength Persona good for this boss?"), null);
 });
 
 test("gives a cautious early Social Link priority rule without inventing party links", () => {

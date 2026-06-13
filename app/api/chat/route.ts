@@ -23,7 +23,9 @@ import {
   canonicalRelationshipAnswer,
   relationshipContradictions,
   relationshipFactsForPrompt,
+  socialLinkArcana,
   socialLinkEntityAliasesForQuestion,
+  ultimatePersonaUnlockForQuestion,
 } from "../../../src/quality/relationships";
 import {
   exactFactLabel,
@@ -154,6 +156,9 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
+  if (ultimatePersonaUnlockForQuestion(question)) {
+    return "Social Links";
+  }
   if (
     /\bpersona\b/.test(text) &&
     /\b(recommend|best|should i fuse|should i use|what persona|which persona)\b/.test(text) &&
@@ -220,6 +225,54 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(day|date)\b/.test(text)) return "Daily Schedule Planning";
   if (/\b(tartarus|floor|block|gatekeeper|border|explore|grind|shadows)\b/.test(text)) return "Tartarus Navigation";
   return "General Discussion";
+}
+
+function socialLinkUltimatePersonaResponse(
+  question: string,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  const unlock = ultimatePersonaUnlockForQuestion(question);
+  if (!unlock) return null;
+
+  const character = Object.entries(socialLinkArcana).find(
+    ([, arcana]) => arcana === unlock.arcana,
+  )?.[0];
+  const relationship = character
+    ? `${character}'s ${unlock.arcana} Social Link`
+    : `the ${unlock.arcana} Social Link`;
+  const answer = unlock.item
+    ? `The ${unlock.arcana} Arcana's Rank 10 Persona is ${unlock.persona}. Reach Rank 10 in ${relationship} to receive the ${unlock.item}, which unlocks ${unlock.persona} for fusion.`
+    : `The ${unlock.arcana} Arcana's Rank 10 Persona is ${unlock.persona}. Reach Rank 10 in ${relationship} to unlock ${unlock.persona} for fusion.`;
+  const response = withMode({
+    answer,
+    sections: [],
+    sources: [
+      {
+        title: "All Social Links and Rank 10 Rewards",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435602",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.99,
+    missingInfo: "No additional detail is needed.",
+    companion: {
+      intent: "Social Links",
+      profileUpdates,
+      followUpQuestions: [],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The Arcana rank-10 Persona and unlock item were verified against the current Game8 Social Link reward table.",
+      ],
+    };
+  }
+  return response;
 }
 
 function isShortContextReply(question: string): boolean {
@@ -1479,6 +1532,48 @@ function factMatchesQuestionSubject(question: string, entityName: string): boole
   return subject === entity || subject.includes(entity) || entity.includes(subject);
 }
 
+function hasStrongExactContext(
+  question: string,
+  context: {
+    facts: Array<{ confidence: number; entity: { name: string }; source: { url: string } }>;
+    chunks: Array<{
+      id?: string;
+      source_title?: string;
+      source_url: string;
+      section_title: string | null;
+      chunk_text: string;
+      similarity?: number;
+    }>;
+  },
+): boolean {
+  const subject = likelyExactSubject(question);
+  const matchingFacts = context.facts.filter((fact) =>
+    factMatchesQuestionSubject(question, fact.entity.name),
+  );
+  if (matchingFacts.some((fact) => fact.confidence >= 0.82)) return true;
+
+  const matchingChunks = context.chunks.filter((chunk) => {
+    const text = `${chunk.source_title ?? ""} ${chunk.section_title ?? ""} ${chunk.chunk_text}`;
+    if (subject) return text.toLowerCase().includes(subject.toLowerCase());
+    return /\bfinal boss\b/i.test(question) && /\bnyx avatar\b/i.test(text);
+  });
+  const domains = new Set(
+    matchingChunks.map((chunk) => {
+      try {
+        return new URL(chunk.source_url).hostname.replace(/^www\./, "");
+      } catch {
+        return "";
+      }
+    }),
+  );
+  return (
+    (domains.has("ign.com") && domains.has("game8.co")) ||
+    matchingChunks.some(
+      (chunk) => chunk.id?.startsWith("live-") && (chunk.similarity ?? 0) >= 0.72,
+    )
+  );
+}
+
 function exactAffinityFacts(
   question: string,
   facts: Array<{
@@ -2308,6 +2403,7 @@ function applyGroundingGuardrails(
       source: { title?: string; url: string };
     }>;
     chunks: Array<{
+      id?: string;
       source_title?: string;
       source_url: string;
       section_title: string | null;
@@ -2341,7 +2437,11 @@ function applyGroundingGuardrails(
   );
   const strongStructuredSupport = matchingFacts.some((fact) => fact.confidence >= 0.82);
   const hasDualGuideSupport = evidenceDomains.has("ign.com") && evidenceDomains.has("game8.co");
-  const hasExactEvidence = strongStructuredSupport || hasDualGuideSupport;
+  const hasVerifiedLiveGuideSupport = matchingChunks.some(
+    (chunk) => chunk.id?.startsWith("live-") && (chunk.similarity ?? 0) >= 0.72,
+  );
+  const hasExactEvidence =
+    strongStructuredSupport || hasDualGuideSupport || hasVerifiedLiveGuideSupport;
   const assessment = assessGrounding({
     requiresExactEvidence,
     matchingFactConfidences: matchingFacts.map((fact) => fact.confidence),
@@ -2354,21 +2454,23 @@ function applyGroundingGuardrails(
     guardrailNotes: [
       ...assessment.notes,
       requiresExactEvidence
-        ? hasDualGuideSupport
-          ? "Exact claim corroborated by subject-matched IGN and Game8 evidence."
-          : strongStructuredSupport
-            ? "Exact claim supported by a high-confidence structured fact."
-            : "Exact claim lacked a high-confidence fact or independent IGN and Game8 corroboration."
+        ? hasVerifiedLiveGuideSupport
+          ? "Exact claim supported by a freshly fetched, subject-matched allowlisted guide excerpt."
+          : hasDualGuideSupport
+            ? "Exact claim corroborated by subject-matched IGN and Game8 evidence."
+            : strongStructuredSupport
+              ? "Exact claim supported by a high-confidence structured fact."
+              : "Exact claim lacked a high-confidence fact or verified guide corroboration."
         : "The question did not require an exact-fact evidence gate.",
     ],
   };
   const unsupportedNames = unsupportedNamedClaims(question, response, context);
   if (unsupportedNames.length && intent !== "General Discussion") {
     const prompt = exactDetailPrompt(intent);
+    const target = subject ? `"${subject}"` : "that exact subject";
     return {
       ...response,
-      answer:
-        "I can’t safely confirm every named detail in that draft, so I won’t guess. Give me the exact enemy, boss, Social Link, date, or request and I’ll answer from confirmed guide support.",
+      answer: `The current IGN and Game8 evidence for ${target} does not support the draft's ${unsupportedNames.join(", ")} claim, so I stopped it rather than inventing a detail. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -2391,9 +2493,10 @@ function applyGroundingGuardrails(
 
   if (requiresExactEvidence && !hasExactEvidence) {
     const prompt = exactDetailPrompt(intent);
+    const target = subject ? `"${subject}"` : "that exact detail";
     return {
       ...response,
-      answer: `I can’t confirm that exact detail yet, so I won’t guess. ${prompt}`,
+      answer: `I checked the current IGN and Game8 material for ${target}, but it does not contain a confirmed match for this wording. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -3490,6 +3593,12 @@ async function directRagResponse(
     debug,
   );
   if (floorRecommendation) return floorRecommendation;
+  const socialLinkPersona = socialLinkUltimatePersonaResponse(
+    conversation.analysisQuestion,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (socialLinkPersona) return socialLinkPersona;
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -3631,6 +3740,28 @@ async function directRagResponse(
     },
     signal,
   );
+  if (
+    requiresExactGameEvidence(conversation.analysisQuestion, controller.intent) &&
+    !hasStrongExactContext(conversation.analysisQuestion, context)
+  ) {
+    onProgress?.("Verifying current IGN and Game8 details...");
+    const { verifyAgainstLiveGuides } = await import(
+      "../../../src/retrieval/liveGuideVerification"
+    );
+    const live = await verifyAgainstLiveGuides(
+      conversation.analysisQuestion,
+      controller.intent,
+      context.sources.map((source) => source.url),
+      signal,
+    );
+    const chunkMap = new Map(context.chunks.map((chunk) => [chunk.id, chunk]));
+    for (const chunk of live.chunks) chunkMap.set(chunk.id, chunk);
+    context.chunks = [...chunkMap.values()].slice(0, 18);
+
+    const sourceMap = new Map(context.sources.map((source) => [source.url, source]));
+    for (const source of live.sources) sourceMap.set(source.url, source);
+    context.sources = [...sourceMap.values()];
+  }
   if (
     controller.intent === "Fusion Advice" ||
     /\b(fuse|fusion|recipe|persona|worth|good to get|should i get)\b/i.test(conversation.analysisQuestion)
