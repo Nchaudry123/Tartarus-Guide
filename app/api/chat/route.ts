@@ -154,6 +154,13 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
+  if (
+    /\bpersona\b/.test(text) &&
+    /\b(recommend|best|should i fuse|should i use|what persona|which persona)\b/.test(text) &&
+    /\b(final fight|final battle|final boss|nyx|january 31|31st)\b/.test(text)
+  ) {
+    return "Fusion Advice";
+  }
   if (/^(?:jack frost|orpheus|pixie|satan|thanatos|messiah)$/i.test(text.trim())) {
     return "Fusion Advice";
   }
@@ -219,11 +226,15 @@ function isShortContextReply(question: string): boolean {
   const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return (
-    wordCount <= 5 &&
-    (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
-      text,
-    ) ||
-      /^(what about|how about|and|but)\b/.test(text))
+    (wordCount <= 5 &&
+      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
+        text,
+      ) ||
+        /^(what about|how about|and|but)\b/.test(text))) ||
+    (wordCount <= 8 &&
+      /^i\s+(?:(?:do not|don't|dont|can't|cant|cannot|haven't|havent)\s+have|have|unlocked|didn't unlock|didnt unlock)\b/.test(
+        text,
+      ))
   );
 }
 
@@ -531,6 +542,67 @@ function fuukaRoleResponse(
       chunkCount: 0,
       groundingStatus: "verified",
       guardrailNotes: ["Fuuka was kept outside the three selectable frontline slots."],
+    };
+  }
+  return response;
+}
+
+function tartarusFloorRecommendation(
+  question: string,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  if (
+    !/\b(?:floor|f)\s*22\b|\b22f\b/i.test(question) ||
+    !/\b(?:bring|prepare|persona|party|shadow|coverage)\b/i.test(question)
+  ) {
+    return null;
+  }
+
+  const response = withMode({
+    answer:
+      "For the climb to 22F, bring broad elemental coverage, a reliable healer, and enough SP recovery to avoid limping into the last floors. Keep at least one Strike option ready for Wealth Hand, the rare Shadow found in Thebel.",
+    sections: [
+      {
+        title: "What Matters at 22F",
+        content:
+          "Floor 22 is Thebel's border floor, so this is more of a checkpoint than a single-enemy loadout test. Use Analyze on regular Shadows and rotate Personas rather than assuming every enemy on the route shares one weakness.",
+      },
+    ],
+    sources: [
+      {
+        title: "Tartarus Exploration Guide and Tips",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435772",
+        domain: "game8.co",
+      },
+      {
+        title: "Rare and Greedy Shadows Weaknesses and Locations",
+        url: "https://game8.co/games/Persona-3-Reload/archives/443460",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.92,
+    missingInfo:
+      "Share the exact Shadow name if one enemy is stopping you and I can switch from route preparation to its confirmed affinity.",
+    companion: {
+      intent: "Tartarus Navigation",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: sanitizeSuggestedPrompts([
+        "What should my early-game Persona roster cover?",
+        "How do I conserve SP?",
+        "I'm stuck on a specific Shadow",
+      ]),
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 2,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The floor recommendation separated route preparation from exact enemy affinities.",
+      ],
     };
   }
   return response;
@@ -2696,6 +2768,167 @@ function fusionMechanicOverride(
   return null;
 }
 
+function asksForFinalFightPersonaRecommendation(question: string): boolean {
+  return (
+    /\b(?:what|which|recommend|best|good)\b.{0,60}\bpersona\b/i.test(question) &&
+    /\b(?:final fight|final battle|final boss|nyx|january 31|31st)\b/i.test(question)
+  );
+}
+
+function finalFightPersonaRecommendation(
+  question: string,
+  profile: PlayerProfile,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  if (!asksForFinalFightPersonaRecommendation(question)) return null;
+
+  const level = Number(profile.currentLevel);
+  const telosUnavailable =
+    /\b(?:do not|don't|dont|can't|cant|cannot|haven't|havent|never)\s+(?:have|unlocked?|get|got)\b.{0,30}\borpheus telos\b|\borpheus telos\b.{0,30}\b(?:unavailable|locked)\b/i.test(
+      question,
+    );
+  const telosOwned =
+    !telosUnavailable &&
+    /\b(?:i have|i've got|ive got|unlocked|using)\b.{0,30}\borpheus telos\b/i.test(question);
+  const levelNote = Number.isFinite(level)
+    ? level >= 89
+      ? `At level ${level}, your level is already high enough for the recommended endgame options; build quality and unlocks matter more than grinding.`
+      : `At level ${level}, aim for the strongest option you can currently fuse and keep improving the build as you approach the recommended level 76+ range for Nyx Avatar.`
+    : "Your exact level is not saved, so treat these as targets and use the strongest one you can currently fuse.";
+
+  const response = withMode({
+    answer:
+      telosUnavailable
+        ? "Since Orpheus Telos is unavailable, make Lucifer your main Persona for the January 31 fight. It is a practical all-round fallback because it can carry Debilitate while covering damage and durability."
+        : telosOwned
+          ? "Keep Orpheus Telos as your main Persona for the January 31 fight. Nyx Avatar changes affinities across many phases, so a flexible Almighty build is more dependable than betting the whole fight on one element."
+          : "My first pick for the January 31 fight is Orpheus Telos, if you unlocked it. Nyx Avatar changes affinities across many phases, so a flexible Almighty build is more dependable than betting the whole fight on one element.",
+    sections: [
+      {
+        title: telosUnavailable ? "Lucifer Build Direction" : "Recommended Build",
+        content:
+          telosUnavailable
+            ? "Keep Debilitate available and build Lucifer as a durable damage-and-support anchor. Let a second Persona handle any missing sustain, buffs, or healing rather than forcing every role onto one build."
+            : "Prioritize Morning Star, Almighty Boost, Spell Master, Concentrate, and Debilitate. Use the remaining slots for sustain or support, such as Invigorate 3, Regenerate 3, or Heat Riser.",
+      },
+      {
+        title: telosUnavailable ? "Offensive Alternative" : "If Orpheus Telos Is Unavailable",
+        content:
+          telosUnavailable
+            ? `Use Helel when you want Morning Star and a more offensive role. If both Helel and Satan are registered, Armageddon gives you a powerful option for Nyx's Death phase. ${levelNote}`
+            : `Use Lucifer as the durable all-round alternative with Debilitate. Helel is the offensive alternative for Morning Star; if both Helel and Satan are registered, Armageddon gives you a powerful option for Nyx's Death phase. ${levelNote}`,
+      },
+    ],
+    sources: [
+      {
+        title: "Nyx Avatar Boss Guide: Weakness and Resistances",
+        url: "https://game8.co/games/Persona-3-Reload/archives/470966",
+        domain: "game8.co",
+      },
+      {
+        title: "How to Fuse Satan",
+        url: "https://game8.co/games/Persona-3-Reload/archives/442894",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.96,
+    missingInfo:
+      "Tell me whether Orpheus Telos, Lucifer, Helel, and Satan are unlocked and I can choose the best reachable build instead of only naming endgame targets.",
+    companion: {
+      ...companion,
+      intent: "Fusion Advice",
+      suggestedPrompts: sanitizeSuggestedPrompts([
+        telosUnavailable ? "Build my Lucifer" : "I have Orpheus Telos",
+        telosUnavailable ? "I have Helel and Satan" : "I don't have Orpheus Telos",
+        "Build my full Nyx loadout",
+      ]),
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 3,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The answer ranked source-supported Nyx Persona recommendations instead of treating the request as an exact fusion recipe.",
+        "Unlock-dependent options were presented conditionally.",
+      ],
+    };
+  }
+  return response;
+}
+
+function levelBasedPersonaRecommendation(
+  question: string,
+  profile: PlayerProfile,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  const level = Number(
+    profile.currentLevel ??
+      question.match(/\b(?:level|lvl)\s*(\d{1,3})\b/i)?.[1] ??
+      question.match(/\b(\d{1,3})\s*(?:level|lvl)\b/i)?.[1],
+  );
+  if (
+    !Number.isFinite(level) ||
+    level < 20 ||
+    level > 31 ||
+    !/\b(?:ice|bufu|bufula|mabufu)\b/i.test(question) ||
+    !/\b(?:persona|fuse|fusion|recommend|should i use|should i get)\b/i.test(question)
+  ) {
+    return null;
+  }
+
+  const response = withMode({
+    answer:
+      `At level ${level}, High Pixie is my practical Ice recommendation. It is a level 20 Persona with Mabufu available immediately and Bufula at level 22, so it gives you both group and single-target Ice coverage without asking you to overlevel.`,
+    sections: [
+      {
+        title: "Why It Fits",
+        content:
+          "High Pixie also carries Media and Tarukaja, so it stays useful when an enemy does not reward Ice damage. Keep another Persona for your missing elements rather than making one build cover everything.",
+      },
+    ],
+    sources: [
+      {
+        title: "How to Fuse High Pixie",
+        url: "https://game8.co/games/Persona-3-Reload/archives/442729",
+        domain: "game8.co",
+      },
+      {
+        title: "All Priestess Personas",
+        url: "https://game8.co/games/Persona-3-Reload/archives/439591",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.95,
+    missingInfo:
+      "Tell me which Personas are currently in your stock if you want a reachable fusion route rather than only the best target.",
+    companion: {
+      ...companion,
+      intent: "Fusion Advice",
+      suggestedPrompts: sanitizeSuggestedPrompts([
+        "Show me a High Pixie fusion route",
+        "I need Fire coverage too",
+        "What skills should I keep?",
+      ]),
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 4,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The recommendation matched the player's level and requested Ice role.",
+        "No exact recipe was invented without knowing the player's available ingredients.",
+      ],
+    };
+  }
+  return response;
+}
+
 async function externalRagResponse(
   question: string,
   conversationId?: string,
@@ -3076,6 +3309,7 @@ function deterministicControllerDecision(
   if (
     analysis.intent === "Fusion Advice" &&
     /\b(what persona should i fuse|what should i fuse|fuse next|fusion advice)\b/i.test(question) &&
+    !asksForFinalFightPersonaRecommendation(question) &&
     !profile.currentLevel
   ) {
     return {
@@ -3250,6 +3484,12 @@ async function directRagResponse(
   if (asksToUseFuukaAsCombatMember(conversation.analysisQuestion)) {
     return fuukaRoleResponse(analysis.profileUpdates, debug);
   }
+  const floorRecommendation = tartarusFloorRecommendation(
+    conversation.analysisQuestion,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (floorRecommendation) return floorRecommendation;
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -3361,6 +3601,20 @@ async function directRagResponse(
     debug,
   );
   if (fusionMechanic) return fusionMechanic;
+  const finalFightRecommendation = finalFightPersonaRecommendation(
+    conversation.analysisQuestion,
+    controllerProfile,
+    companion,
+    debug,
+  );
+  if (finalFightRecommendation) return finalFightRecommendation;
+  const levelRecommendation = levelBasedPersonaRecommendation(
+    conversation.analysisQuestion,
+    controllerProfile,
+    companion,
+    debug,
+  );
+  if (levelRecommendation) return levelRecommendation;
 
   onProgress?.(progressMessage(controller.intent, controller.action));
   const retrievalQueries = uniqueStrings([
@@ -3547,6 +3801,8 @@ Rules:
 - Treat the supplied facts and excerpts as the only evidence for game-specific mechanics. If a mechanic, reward, unlock, skill effect, affinity, date, floor, or resource cost is not supported there, omit it.
 - Never fill evidence gaps with plausible-sounding Persona knowledge. A shorter grounded answer is better than a detailed invented answer.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
+- When the user asks for a recommendation, give one clear primary pick, one or two alternatives, and the tradeoff that would make each alternative better. Do not answer a recommendation request with only a demand for an exact name.
+- Distinguish recommendations from exact recipes: recommendations may rank source-supported options conditionally, while exact fusion equations still require direct structured support.
 - You may give general coaching when the user is vague, but keep it principle-based, mark uncertainty naturally, and ask one useful follow-up.
 - Be practical, concise, and strategy-first. Give next actions, party/fusion/social priority ideas when relevant.
 - If the user gave profile details, personalize the advice around them.

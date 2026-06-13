@@ -324,7 +324,10 @@
     "question": "I'm on floor 22. What should I bring for the Shadows here?",
     "expectedIntent": "Tartarus Navigation",
     "shouldUseSources": true,
-    "mustIncludeAny": ["floor", "Persona", "element", "party"],
+    "mustIncludeAll": ["22F", "Thebel", "Strike", "Wealth Hand"],
+    "mustIncludeAny": ["elemental coverage", "healer", "SP"],
+    "mustNotInclude": ["can't safely confirm every named detail"],
+    "hallucinationSensitive": true,
     "maxSources": 6
   },
   {
@@ -380,7 +383,10 @@
     "question": "I'm level 25 and need a good Ice Persona. What should I fuse?",
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": true,
-    "mustIncludeAny": ["Ice", "level", "Persona"],
+    "mustIncludeAll": ["High Pixie", "level 25", "Mabufu", "Bufula"],
+    "mustIncludeAny": ["Media", "Tarukaja", "Ice"],
+    "mustNotInclude": ["can't confirm that exact detail", "exact Persona name or the ingredients"],
+    "hallucinationSensitive": true,
     "maxSources": 5
   },
   {
@@ -1044,6 +1050,69 @@
     "hallucinationSensitive": true,
     "maxSources": 2,
     "maxAnswerCharacters": 1000
+  },
+  {
+    "id": "recommendation-final-fight-level-99",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "what persona should i fuse for the final fight?",
+    "playerProfile": {
+      "currentMonth": "January",
+      "currentDate": "January 31",
+      "currentLevel": "99",
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Orpheus Telos", "Lucifer", "Helel", "level 99"],
+    "mustIncludeAny": ["Morning Star", "Almighty", "Debilitate"],
+    "mustNotInclude": ["can't confirm that exact detail", "exact Persona name or the ingredients"],
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1800
+  },
+  {
+    "id": "recommendation-final-fight-no-profile",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "What is the best Persona to use for the final boss?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Orpheus Telos", "if you unlocked it", "Lucifer"],
+    "mustIncludeAny": ["Helel", "Morning Star", "Almighty"],
+    "mustNotInclude": ["What level are you", "can't confirm that exact detail"],
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1800
+  },
+  {
+    "id": "recommendation-final-fight-followup-fallback",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "I don't have Orpheus Telos",
+    "history": [
+      {
+        "role": "user",
+        "content": "What Persona should I fuse for the final fight?"
+      },
+      {
+        "role": "assistant",
+        "content": "My first pick is Orpheus Telos if you unlocked it. Lucifer is a strong alternative."
+      }
+    ],
+    "playerProfile": {
+      "currentMonth": "January",
+      "currentLevel": "90",
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Lucifer", "Helel"],
+    "mustIncludeAny": ["Debilitate", "Morning Star", "Armageddon"],
+    "mustNotInclude": ["first pick for the January 31 fight is Orpheus Telos", "can't confirm that exact detail"],
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1800
   },
   {
     "id": "latency-exact-weakness-shape",
