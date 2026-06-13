@@ -9,8 +9,6 @@ const clearChat = document.getElementById("clearChat");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
-const spoilerSlider = document.getElementById("spoilerSlider");
-const spoilerSliderLabel = document.getElementById("spoilerSliderLabel");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
 const sendButton = form?.querySelector('button[type="submit"]');
@@ -172,7 +170,6 @@ function savePlayerProfile() {
   window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
   window.sessionStorage.removeItem("tartarusPlayerProfile");
   renderMemorySummary();
-  syncSpoilerSlider();
 }
 
 function rememberTurn(role, content) {
@@ -365,22 +362,6 @@ function renderMemorySummary() {
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
 }
 
-const spoilerModes = [
-  { value: "strict", label: "Spoiler-safe", hint: "No story spoilers" },
-  { value: "progress-aware", label: "Progress-aware", hint: "Use my current date/month" },
-  { value: "open", label: "Spoilers open", hint: "Full spoilers allowed" },
-];
-
-function syncSpoilerSlider() {
-  if (!spoilerSlider || !spoilerSliderLabel) return;
-  const index = spoilerModes.findIndex((mode) => mode.value === (playerProfile.spoilerPreference || "strict"));
-  const safeIndex = index >= 0 ? index : 0;
-  const mode = spoilerModes[safeIndex];
-  spoilerSlider.value = String(safeIndex);
-  spoilerSliderLabel.textContent = mode.label;
-  spoilerSliderLabel.title = mode.hint;
-}
-
 function populateMemoryForm() {
   const memoryForm = document.getElementById("memoryForm");
   if (!memoryForm) return;
@@ -417,7 +398,6 @@ function closeMemoryDialog() {
 }
 
 renderMemorySummary();
-syncSpoilerSlider();
 renderRecentAnswers();
 
 function escapeHtml(value) {
@@ -1142,16 +1122,6 @@ recentList?.addEventListener("click", (event) => {
   if (openButton) {
     void openSavedAnswer(openButton.dataset.openRecent);
   }
-});
-
-spoilerSlider?.addEventListener("input", () => {
-  const mode = spoilerModes[Number(spoilerSlider.value)] || spoilerModes[0];
-  playerProfile = cleanProfile({
-    ...playerProfile,
-    spoilerPreference: mode.value,
-  });
-  savePlayerProfile();
-  showInputHint(`${mode.label}: ${mode.hint}`);
 });
 
 clearChat?.addEventListener("click", () => {

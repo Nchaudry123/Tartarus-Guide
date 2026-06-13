@@ -44,7 +44,11 @@ async function main(): Promise<void> {
   }
   const sources = noDiscover
     ? curatedSources
-        .filter((source) => !gapTargets || gapTargets.categories.includes(source.category))
+        .filter(
+          (source) =>
+            (!categories?.length || categories.includes(source.category)) &&
+            (!gapTargets || gapTargets.categories.includes(source.category)),
+        )
         .slice(0, maxPages)
     : await discoverSources(curatedSources, {
         maxPages,

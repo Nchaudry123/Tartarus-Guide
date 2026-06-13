@@ -15,6 +15,14 @@ type GroundingInput = {
 export function requiresExactGameEvidence(question: string, intent: string): boolean {
   if (intent === "Enemy Weakness") return true;
   if (
+    intent === "Story Guidance" &&
+    /\b(final boss|ending|true ending|bad ending|who dies|death|killer|traitor|identity|what happens at the end)\b/i.test(
+      question,
+    )
+  ) {
+    return true;
+  }
+  if (
     intent === "Social Links" &&
     /\b(who|which|whose|arcana|social link|s-?link|start|unlock|available|availability|schedule|rank|date)\b/i.test(
       question,

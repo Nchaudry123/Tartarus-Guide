@@ -1799,68 +1799,6 @@ footer span {
 .memory-dialog button:hover {
   background: #124473;
 }
-.spoiler-panel {
-  display: grid;
-  gap: .65rem;
-  margin-top: .85rem;
-  padding: .85rem .9rem .95rem;
-  border: 1px solid rgba(85, 247, 255, .28);
-  background: rgba(5, 18, 58, .7);
-}
-.spoiler-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: .75rem;
-}
-.spoiler-panel p {
-  margin: 0;
-  color: var(--cyan);
-  font-family: Impact, "Arial Black", sans-serif;
-  font-size: .72rem;
-  font-style: italic;
-  letter-spacing: .15em;
-  text-transform: uppercase;
-}
-.spoiler-panel strong {
-  color: var(--ice);
-  font-size: .72rem;
-  font-weight: 950;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-.spoiler-slider-wrap {
-  display: block;
-  min-width: 0;
-}
-.spoiler-slider-wrap input {
-  width: 100%;
-  accent-color: var(--cyan);
-  cursor: pointer;
-}
-.spoiler-slider-wrap input::-webkit-slider-runnable-track {
-  height: .42rem;
-  border: 1px solid rgba(85,247,255,.4);
-  background: linear-gradient(90deg, var(--cyan), var(--blue), var(--pink));
-}
-.spoiler-slider-wrap input::-webkit-slider-thumb {
-  margin-top: -.46rem;
-  width: 1.25rem;
-  height: 1.25rem;
-  border: 2px solid var(--ice);
-  background: var(--navy);
-  box-shadow: 0 0 0 3px rgba(85,247,255,.24);
-}
-.spoiler-scale {
-  display: flex;
-  justify-content: space-between;
-  gap: .4rem;
-  color: rgba(223,252,255,.62);
-  font-size: .62rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
 .memory-dialog {
   width: min(50rem, calc(100vw - 2rem));
   max-height: min(46rem, calc(100dvh - 2rem));

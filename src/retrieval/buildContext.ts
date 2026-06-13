@@ -100,7 +100,7 @@ export async function buildPlannedContext(
   signal?: AbortSignal,
 ): Promise<RetrievalContext> {
   signal?.throwIfAborted();
-  const queries = [...new Set(plan.queries.map((query) => query.trim()).filter(Boolean))].slice(0, 2);
+  const queries = [...new Set(plan.queries.map((query) => query.trim()).filter(Boolean))].slice(0, 4);
   if (!queries.length) throw new Error("Retrieval plan requires at least one query.");
 
   const includeFacts = plan.includeFacts ?? true;
