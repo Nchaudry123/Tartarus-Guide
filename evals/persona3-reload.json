@@ -710,6 +710,25 @@
     "maxAnswerCharacters": 900
   },
   {
+    "id": "team-endgame-fuuka-navigator",
+    "category": "team",
+    "origin": "user_transcript",
+    "question": "what would my endgame roster look like",
+    "playerProfile": {
+      "currentMonth": "January",
+      "activeParty": ["Fuuka", "Yukari", "Aigis"],
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Fuuka", "navigator", "three", "Aigis"],
+    "mustNotInclude": ["either Fuuka", "Fuuka or Aigis", "replace Fuuka", "swap out Fuuka"],
+    "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1400
+  },
+  {
     "id": "real-user-vague-problem",
     "category": "conversation",
     "origin": "user_transcript",

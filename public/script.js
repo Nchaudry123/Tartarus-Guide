@@ -84,7 +84,11 @@ function loadPlayerProfile() {
       window.localStorage.getItem(playerProfileKey) ||
       window.sessionStorage.getItem("tartarusPlayerProfile") ||
       "{}";
-    return JSON.parse(saved);
+    const profile = JSON.parse(saved);
+    return cleanProfile({
+      ...profile,
+      activeParty: cleanCombatParty(profile.activeParty),
+    });
   } catch {
     return {};
   }
@@ -311,7 +315,11 @@ function mergeProfileUpdates(updates) {
   playerProfile = cleanProfile({
     ...playerProfile,
     ...updates,
-    activeParty: Array.isArray(updates.activeParty) && updates.activeParty.length ? [...new Set(updates.activeParty)] : playerProfile.activeParty,
+    activeParty: cleanCombatParty(
+      Array.isArray(updates.activeParty) && updates.activeParty.length
+        ? updates.activeParty
+        : playerProfile.activeParty,
+    ),
     currentSocialLinks:
       Array.isArray(updates.currentSocialLinks) && updates.currentSocialLinks.length
         ? [...new Set(updates.currentSocialLinks)]
@@ -323,6 +331,19 @@ function mergeProfileUpdates(updates) {
     socialStats: Object.keys(mergedSocialStats).length ? mergedSocialStats : undefined,
   });
   savePlayerProfile();
+}
+
+function cleanCombatParty(members) {
+  const allowed = new Map(
+    ["Yukari", "Junpei", "Akihiko", "Mitsuru", "Aigis", "Koromaru", "Ken", "Shinjiro"]
+      .map((name) => [name.toLowerCase(), name]),
+  );
+  const cleaned = [...new Set(
+    (Array.isArray(members) ? members : [])
+      .map((name) => allowed.get(String(name).trim().toLowerCase()))
+      .filter(Boolean),
+  )].slice(0, 3);
+  return cleaned.length ? cleaned : undefined;
 }
 
 function cleanProfile(profile) {
@@ -1163,11 +1184,12 @@ document.addEventListener("submit", (event) => {
     tartarusBlock: data.get("tartarusBlock"),
     tartarusFloor: data.get("tartarusFloor"),
     spoilerPreference: data.get("spoilerPreference"),
-    activeParty: String(data.get("activeParty") || "")
-      .split(",")
-      .map((name) => name.trim())
-      .filter(Boolean)
-      .slice(0, 8),
+    activeParty: cleanCombatParty(
+      String(data.get("activeParty") || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
     ownedPersonas: String(data.get("ownedPersonas") || "")
       .split(",")
       .map((name) => name.trim())
