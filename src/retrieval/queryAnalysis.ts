@@ -70,7 +70,7 @@ function cleanSubject(value: string): string | undefined {
     .trim();
   if (
     cleaned.length < 3 ||
-    /^(?:final|final boss|this|that|it|something|anything|who|what|where|when|why|how)$/.test(cleaned)
+    /^(?:final|final boss|this|that|it|i m|im|my|me|something|anything|who|what|where|when|why|how)$/.test(cleaned)
   ) {
     return undefined;
   }
