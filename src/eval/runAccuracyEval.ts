@@ -14,6 +14,7 @@ type EvalCase = {
   shouldUseSources?: boolean;
   shouldClarify?: boolean;
   requiredDomains?: string[];
+  requiredAllDomains?: string[];
   mustIncludeAny?: string[];
   mustIncludeAll?: string[];
   mustNotInclude?: string[];
@@ -61,6 +62,7 @@ const hallucinationCheckNames = new Set([
   "confidence reflects missing evidence",
   "grounding status",
   "structured fact support",
+  "all trusted source domains",
   "exact answer uses evidence",
   "exact answer confidence is evidence-aware",
 ]);
@@ -181,6 +183,17 @@ function evaluate(test: EvalCase, response: ChatResponse, responseTimeMs?: numbe
       "trusted source domain",
       response.sources.some((source) => test.requiredDomains?.includes(source.domain)),
       response.sources.map((source) => source.domain).join(", "),
+    );
+  }
+  if (test.requiredAllDomains?.length) {
+    const responseDomains = new Set(
+      response.sources.map((source) => source.domain.replace(/^www\./, "")),
+    );
+    const missing = test.requiredAllDomains.filter((domain) => !responseDomains.has(domain));
+    add(
+      "all trusted source domains",
+      missing.length === 0,
+      missing.length ? `missing: ${missing.join(", ")}` : [...responseDomains].join(", "),
     );
   }
   if (test.forbidUnsupportedExactness && !response.sources.length) {

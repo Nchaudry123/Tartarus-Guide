@@ -91,6 +91,7 @@ function detectCategory(query: string): RetrievalQueryAnalysis["category"] {
   if (/\b(weak|resist|null|drain|repel|affinit)/i.test(query)) return "enemy";
   if (/\b(social link|s-link|rank|romance)\b/i.test(query)) return "social_link";
   if (/\b(fuse|fusion|persona|compendium|inherit|arcana|recipe)\b/i.test(query)) return "fusion";
+  if (/\b(story|ending|plot|final boss|spoiler)\b/i.test(query)) return "story";
   if (
     /\b(boss|full moon|gatekeeper|priestess|emperor|empress|hanged man|how (?:do|can) i beat|strategy for|fight against|prepare for)\b/i.test(
       query,
@@ -109,7 +110,6 @@ function detectCategory(query: string): RetrievalQueryAnalysis["category"] {
   if (/\b(tartarus|floor|block|border|missing person|rescue)\b/i.test(query)) return "tartarus";
   if (/\b(request|elizabeth|quest|reward)\b/i.test(query)) return "request";
   if (/\b(achievement|trophy|platinum|100%)\b/i.test(query)) return "achievement";
-  if (/\b(story|ending|plot|final boss|spoiler)\b/i.test(query)) return "story";
   return "general";
 }
 

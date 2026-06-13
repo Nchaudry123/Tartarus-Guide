@@ -170,7 +170,59 @@
     "category": "story",
     "question": "Spoilers are fine. Explain the ending and final boss.",
     "expectedIntent": "Story Guidance",
-    "shouldUseSources": true
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Nyx Avatar"],
+    "mustNotInclude": ["last Full Moon Operation", "occurs in November", "main shadow"],
+    "requiredAllDomains": ["ign.com", "game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true
+  },
+  {
+    "id": "story-final-boss-correct",
+    "category": "story",
+    "origin": "user_transcript",
+    "question": "who is the final boss? full spoilers are fine",
+    "playerProfile": {
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Story Guidance",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Nyx Avatar"],
+    "mustNotInclude": ["last Full Moon Operation", "occurs in November", "ultimate shadow", "main shadow"],
+    "requiredAllDomains": ["ign.com", "game8.co"],
+    "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "conversation-correction-keeps-topic",
+    "category": "story",
+    "origin": "user_transcript",
+    "question": "this is wrong",
+    "history": [
+      {
+        "role": "user",
+        "content": "who is the final boss? full spoilers are fine"
+      },
+      {
+        "role": "assistant",
+        "content": "The final boss is the ultimate shadow faced during the last Full Moon Operation in November."
+      }
+    ],
+    "playerProfile": {
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Story Guidance",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Nyx Avatar"],
+    "mustNotInclude": ["Could you clarify", "what you're referring to", "last Full Moon Operation", "November"],
+    "requiredAllDomains": ["ign.com", "game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 1200
   },
   {
     "id": "context-followup",

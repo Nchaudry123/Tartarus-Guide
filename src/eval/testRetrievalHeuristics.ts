@@ -46,6 +46,9 @@ const gatekeeper = analyzeRetrievalQuery("How do I beat Bloody Maria and what pa
 assert.equal(gatekeeper.category, "boss");
 assert(gatekeeper.entityCandidates.includes("bloody maria"));
 
+const finalBoss = analyzeRetrievalQuery("Who is the final boss? Full spoilers are fine.");
+assert.equal(finalBoss.category, "story");
+
 assert(isRetrievalBoilerplate("Advertisement. Find in guide. Top guide sections."));
 assert(!isRetrievalBoilerplate("The Priestess uses Ice attacks and has no exploitable weakness."));
 
