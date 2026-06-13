@@ -36,6 +36,10 @@ import {
   analyzeRetrievalQuery,
   buildFocusedQueries,
 } from "../../../src/retrieval/queryAnalysis";
+import {
+  formatProgressContext,
+  getProgressSnapshot,
+} from "../../../src/quality/progressTimeline";
 
 export const runtime = "nodejs";
 
@@ -145,7 +149,7 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
   if (
-    /\b(story|spoiler|plot|ending|final boss|character dies|what happens|point of no return|lockout|locked out)\b/.test(
+    /\b(story|spoiler|plot|ending|final boss|character dies|what happens|what'?s happening(?: in the game)?(?: right now)?|where am i in (?:the )?(?:game|story)|what has happened|story progress|point of no return|lockout|locked out)\b/.test(
       text,
     )
   ) {
@@ -366,6 +370,98 @@ function sillyQuestionResponse(question: string, profileUpdates: PlayerProfile =
       ]),
     },
   }, "rag");
+}
+
+function asksForProgressSummary(question: string): boolean {
+  return /\b(what'?s happening(?: in the game)?(?: right now)?|where am i in (?:the )?(?:game|story)|what has happened(?: so far)?|catch me up|story progress|recap(?: the story)?(?: so far)?)\b/i.test(
+    question,
+  );
+}
+
+function progressSummaryResponse(
+  profile: PlayerProfile,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  const snapshot = getProgressSnapshot(profile);
+  if (!snapshot) {
+    return withMode({
+      answer:
+        "Set your current in-game month in Player Memory and I’ll place you in the story without jumping ahead.",
+      sections: [],
+      sources: [],
+      confidence: 0.95,
+      missingInfo: "Your current in-game month is needed.",
+      companion: {
+        intent: "Story Guidance",
+        profileUpdates,
+        followUpQuestions: ["What in-game month are you currently in?"],
+        suggestedPrompts: ["I'm in July", "I'm in January"],
+      },
+    }, "rag");
+  }
+
+  const response = withMode({
+    answer:
+      `You’re in ${snapshot.month}. ${snapshot.currentSituation}`,
+    sections: [
+      {
+        title: "What Led Here",
+        content:
+          snapshot.completedMilestones.join(" ") ||
+          "This is the opening chapter, so no earlier monthly story milestone is assumed.",
+      },
+      {
+        title: `What ${snapshot.month} Means`,
+        content: snapshot.currentFocus,
+      },
+      ...(snapshot.staleProfileNote
+        ? [{
+            title: "Memory Correction",
+            content: snapshot.staleProfileNote,
+          }]
+        : []),
+    ],
+    sources: [
+      {
+        title: "Persona 3 Reload Calendar Walkthrough",
+        url: "https://www.ign.com/wikis/persona-3-reload/Calendar_Walkthrough",
+        domain: "ign.com",
+      },
+      {
+        title: "Walkthrough and 100% Completion Guide",
+        url: "https://game8.co/games/Persona-3-Reload/archives/439345",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.97,
+    missingInfo:
+      profile.currentDate
+        ? "The supplied date was used to include only milestones already reached this month."
+        : "Add the exact in-game date if you want the recap narrowed to events already completed within this month.",
+    companion: {
+      intent: "Story Guidance",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: [
+        `What should I prioritize in ${snapshot.month}?`,
+        "What should I finish before the next story event?",
+      ],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: snapshot.completedMilestones.length,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The response used the canonical month timeline.",
+        "Prior months were treated as completed; undated current-month events were not assumed.",
+        ...(snapshot.staleProfileNote ? ["An obsolete recent-boss note was downgraded to historical context."] : []),
+      ],
+    };
+  }
+  return response;
 }
 
 function hasGuideIntent(question: string): boolean {
@@ -607,6 +703,7 @@ Rules:
 
   const userPrompt = `User message: ${question}
 Known player profile: ${JSON.stringify(profile)}
+${formatProgressContext(profile)}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 
@@ -2725,6 +2822,13 @@ async function directRagResponse(
   if (isCasualMessage(question) && !conversation.previousTopic) {
     return casualChatResponse(question, playerProfile, normalizedHistory);
   }
+  if (asksForProgressSummary(conversation.analysisQuestion)) {
+    return progressSummaryResponse(
+      analysis.profile,
+      analysis.profileUpdates,
+      debug,
+    );
+  }
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -3037,6 +3141,7 @@ Short follow-up reply: ${
 
 Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
+${formatProgressContext(profileForPrompt)}
 Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
