@@ -522,6 +522,27 @@
     "maxSources": 6
   },
   {
+    "id": "memory-january-story-awareness",
+    "category": "memory",
+    "origin": "user_transcript",
+    "question": "whats happening in the game right now",
+    "playerProfile": {
+      "currentMonth": "January",
+      "activeParty": ["Yukari"],
+      "recentBoss": "Priestess",
+      "spoilerPreference": "open"
+    },
+    "expectedIntent": "Story Guidance",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["January", "Hanged Man", "December 31", "Nyx"],
+    "mustNotInclude": ["early game", "recently defeated the Priestess", "likely progressing"],
+    "requiredAllDomains": ["ign.com", "game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1800
+  },
+  {
     "id": "real-user-hi",
     "category": "conversation",
     "origin": "user_transcript",
