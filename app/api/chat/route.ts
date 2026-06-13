@@ -40,6 +40,12 @@ import {
   formatProgressContext,
   getProgressSnapshot,
 } from "../../../src/quality/progressTimeline";
+import {
+  combatPartyMembers,
+  normalizeCombatParty,
+  partyRoleContradictions,
+  partyRoleFactsForPrompt,
+} from "../../../src/quality/partyRoles";
 
 export const runtime = "nodejs";
 
@@ -93,7 +99,7 @@ type ControllerDecision = {
   spoilerCaution: boolean;
 };
 
-const partyMembers = ["Yukari", "Junpei", "Akihiko", "Mitsuru", "Aigis", "Koromaru", "Ken", "Shinjiro", "Fuuka"];
+const partyMembers = [...combatPartyMembers];
 const responseCache = new TtlCache<ChatResponse>(128, 10 * 60_000);
 
 function responseCacheKey(body: Partial<ChatRequest>): string | null {
@@ -464,6 +470,74 @@ function progressSummaryResponse(
   return response;
 }
 
+function asksForRosterAdvice(question: string): boolean {
+  return /\b(?:endgame|late[- ]game|final)\s+(?:roster|team|party)\b|\bwhat (?:would|should) my (?:endgame|late[- ]game) (?:roster|team|party) look like\b/i.test(
+    question,
+  );
+}
+
+function rosterAdviceResponse(
+  profile: PlayerProfile,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse {
+  const knownFrontline = normalizeCombatParty(profile.activeParty) ?? [];
+  const knownLine =
+    knownFrontline.length
+      ? `Your currently saved frontline members are ${knownFrontline.join(", ")}.`
+      : "You have not saved a frontline trio yet.";
+  const response = withMode({
+    answer:
+      "Fuuka is always your navigator after she joins; she is not one of the three swappable combat slots. Your battle roster is the protagonist plus three frontline members, with Fuuka supporting that team separately.",
+    sections: [
+      {
+        title: "Build the Frontline",
+        content:
+          `${knownLine} Choose the three combatants by role: reliable healing, damage and elemental coverage, plus buffs, debuffs, or durability for the fight. Aigis competes for one of those frontline slots; she never replaces Fuuka.`,
+      },
+      {
+        title: "Endgame Rule",
+        content:
+          "Keep Fuuka assumed in every endgame setup. When comparing teams, compare only Yukari, Junpei, Akihiko, Mitsuru, Aigis, Koromaru, Ken, and any other currently available frontline fighter.",
+      },
+    ],
+    sources: [
+      {
+        title: "Fuuka Yamagishi Profile, Characteristics and Skills",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435580",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.98,
+    missingInfo:
+      "Share your preferred style or intended boss if you want a specific frontline trio.",
+    companion: {
+      intent: "Team Building",
+      profileUpdates: {
+        ...profileUpdates,
+        activeParty: normalizeCombatParty(profileUpdates.activeParty),
+      },
+      followUpQuestions: [],
+      suggestedPrompts: [
+        "I want a physical frontline",
+        "I want strong magic coverage",
+        "I want the safest Nyx team",
+      ],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "Fuuka was treated as the permanent navigator, outside the three frontline combat slots.",
+      ],
+    };
+  }
+  return response;
+}
+
 function hasGuideIntent(question: string): boolean {
   return detectIntent(question) !== "General Discussion";
 }
@@ -487,7 +561,8 @@ function extractProfileUpdates(question: string): PlayerProfile {
   if (difficultyMatch) updates.difficulty = titleCase(difficultyMatch[1]);
 
   const activeParty = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
-  if (activeParty.length) updates.activeParty = activeParty;
+  const combatParty = normalizeCombatParty(activeParty);
+  if (combatParty?.length) updates.activeParty = combatParty;
 
   const playstyleMatch = question.match(/\b(physical|magic|balanced|defensive|aggressive|safe|grind|speedrun)\b/i);
   if (playstyleMatch) updates.playstyle = playstyleMatch[1].toLowerCase();
@@ -528,7 +603,9 @@ function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): 
   return {
     ...(base ?? {}),
     ...updates,
-    activeParty: updates.activeParty?.length ? uniqueStrings(updates.activeParty) : base?.activeParty,
+    activeParty: normalizeCombatParty(
+      updates.activeParty?.length ? uniqueStrings(updates.activeParty) : base?.activeParty,
+    ),
     currentSocialLinks: updates.currentSocialLinks?.length ? uniqueStrings(updates.currentSocialLinks) : base?.currentSocialLinks,
     ownedPersonas: updates.ownedPersonas?.length
       ? uniqueStrings([...(base?.ownedPersonas ?? []), ...updates.ownedPersonas]).slice(0, 24)
@@ -2829,6 +2906,13 @@ async function directRagResponse(
       debug,
     );
   }
+  if (asksForRosterAdvice(conversation.analysisQuestion)) {
+    return rosterAdviceResponse(
+      analysis.profile,
+      analysis.profileUpdates,
+      debug,
+    );
+  }
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -3121,7 +3205,9 @@ Rules:
 - Prefer one natural answer plus no more than two short sections. Omit sections when a direct answer is enough.
 - If the user's question is broad or uncertain, ask the single best follow-up instead of dumping caveats.
 
-${relationshipFactsForPrompt()}`;
+${relationshipFactsForPrompt()}
+
+${partyRoleFactsForPrompt()}`;
 
   const profileForPrompt = controllerProfile;
   const historyForPrompt = normalizedHistory
@@ -3242,6 +3328,34 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           missingInfo: "Tell me the exact character and current in-game date.",
           companion: responseCompanion,
         };
+      }
+    }
+    const partyErrors = partyRoleContradictions(normalized);
+    if (partyErrors.length) {
+      const correctionPrompt = `${userPrompt}
+
+Your previous draft contradicted canonical Persona 3 Reload party roles:
+${partyErrors.map((error) => `- ${error}`).join("\n")}
+
+Regenerate the JSON answer. Fuuka is the permanent navigator after joining and never occupies or competes for one of the three frontline combat slots. Compare only selectable combat members for frontline roster choices.`;
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: correctionPrompt },
+        ],
+        { jsonObject: true },
+      );
+      normalized = normalizeRagResponse(
+        extractJson(correctedRaw),
+        responseSources,
+        responseCompanion,
+      );
+      if (partyRoleContradictions(normalized).length) {
+        normalized = rosterAdviceResponse(
+          controllerProfile,
+          controller.profileUpdates,
+          false,
+        );
       }
     }
     const response = withMode(
