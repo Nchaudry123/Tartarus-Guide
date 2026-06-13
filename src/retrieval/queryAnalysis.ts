@@ -43,6 +43,7 @@ export type RetrievalQueryAnalysis = {
   expandedTerms: string[];
   phrases: string[];
   entityCandidates: string[];
+  primarySubject?: string;
   category:
     | "enemy"
     | "boss"
@@ -58,6 +59,53 @@ export type RetrievalQueryAnalysis = {
   month?: string;
   date?: string;
 };
+
+function cleanSubject(value: string): string | undefined {
+  const cleaned = normalizeName(value)
+    .replace(
+      /\b(?:persona 3 reload|p3r|boss|enemy|shadow|social link|s link|request|guide|strategy|weakness|weak|resistance|affinity|fight|battle)$/g,
+      "",
+    )
+    .replace(/\b(?:the|a|an)\s+/g, "")
+    .trim();
+  if (
+    cleaned.length < 3 ||
+    /^(?:final|final boss|this|that|it|something|anything|who|what|where|when|why|how)$/.test(cleaned)
+  ) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function extractPrimarySubject(
+  query: string,
+  phrases: string[],
+  date?: string,
+): string | undefined {
+  if (date && /\b(?:classroom|school question|quiz|exam)\b/i.test(query)) {
+    return normalizeName(`${date} Classroom Question`);
+  }
+  if (/\bfinal boss\b/i.test(query)) return undefined;
+
+  const patterns = [
+    /\bwhat (?:is|are)\s+(?:the\s+)?(.+?)(?=\s+(?:weak|resist|null|drain|repel|located|location)\b|[?.!,]|$)/i,
+    /\bhow (?:do|can|should) i (?:beat|fight|handle|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
+    /\b(?:strategy for|fight against|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
+    /\b(?:how (?:do|can) i fuse|should i fuse|get|use)\s+(.+?)(?=\s+(?:with|using|at|on|and|worth|good)\b|[?.!,]|$)/i,
+    /\b(?:is|would)\s+(.+?)\s+(?:be\s+)?(?:worth|good|viable|useful)\b/i,
+    /\bwhen can i (?:start|unlock|meet)\s+(?:the\s+)?(.+?)(?=\s+(?:social link|s-?link)\b|[?.!,]|$)/i,
+    /\b((?:elizabeth\s+)?request\s*#?\s*\d{1,3})\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = query.match(pattern);
+    const subject = cleanSubject(match?.[1] ?? "");
+    if (subject) return subject;
+  }
+
+  return phrases
+    .map(cleanSubject)
+    .find((phrase): phrase is string => Boolean(phrase));
+}
 
 const termExpansions: Record<string, string[]> = {
   elec: ["electric"],
@@ -177,18 +225,100 @@ export function analyzeRetrievalQuery(query: string): RetrievalQueryAnalysis {
     ...datedCandidates,
     ...entityCandidates,
   ])];
+  const primarySubject = extractPrimarySubject(query, phrases, date);
 
   return {
     normalized,
     terms,
     expandedTerms,
     phrases,
-    entityCandidates: prioritizedEntityCandidates,
+    entityCandidates: [...new Set([primarySubject, ...prioritizedEntityCandidates].filter(Boolean))] as string[],
+    primarySubject,
     category: detectCategory(query),
     floor: floorMatch ? Number(floorMatch[1]) : undefined,
     month: monthMatch?.[1].toLowerCase(),
     date,
   };
+}
+
+export function buildFocusedQueries(
+  question: string,
+  profileHints: string[] = [],
+): string[] {
+  const analysis = analyzeRetrievalQuery(question);
+  const subject = analysis.primarySubject;
+  const qualifiers = [
+    analysis.date,
+    analysis.floor ? `floor ${analysis.floor}` : undefined,
+    ...profileHints,
+  ].filter((value): value is string => Boolean(value));
+  const focus = subject ?? question;
+  let queries: string[];
+
+  switch (analysis.category) {
+    case "enemy":
+      queries = [
+        `${focus} weakness resistance affinity ${qualifiers.join(" ")}`,
+        `${focus} location floor block`,
+      ];
+      break;
+    case "boss":
+      queries = [
+        `${focus} boss mechanics weakness resistance`,
+        `${focus} boss adds status effects phases attacks`,
+        `${focus} recommended level party strategy`,
+      ];
+      break;
+    case "fusion":
+      queries = [
+        `${focus} fusion recipe prerequisite unlock`,
+        `${focus} level skills inheritance build`,
+      ];
+      break;
+    case "social_link":
+      queries = [
+        `${focus} Social Link start unlock schedule`,
+        `${focus} Social Link answers rank requirements`,
+      ];
+      break;
+    case "schedule":
+      queries = [
+        `${focus} classroom answer calendar schedule ${qualifiers.join(" ")}`,
+      ];
+      break;
+    case "request":
+      queries = [
+        `${focus} Elizabeth request objective deadline reward`,
+        `${focus} Elizabeth request item location prerequisite`,
+      ];
+      break;
+    case "tartarus":
+      queries = [
+        `${focus} Tartarus floor block route ${qualifiers.join(" ")}`,
+        `${focus} Tartarus enemies gatekeeper access`,
+      ];
+      break;
+    case "story":
+      queries = /\bfinal boss\b/i.test(question)
+        ? [
+            "Nyx Avatar final boss January 31 Tartarus",
+            "Nyx final boss phases recommended level strategy",
+          ]
+        : [`${focus} Persona 3 Reload story ending ${qualifiers.join(" ")}`];
+      break;
+    case "achievement":
+      queries = [
+        `${focus} achievement trophy requirements missable`,
+        `${focus} platinum checklist`,
+      ];
+      break;
+    default:
+      queries = [question];
+  }
+
+  return [...new Set(queries.map((query) => query.replace(/\s+/g, " ").trim()))]
+    .filter(Boolean)
+    .slice(0, 4);
 }
 
 export function lexicalCoverage(text: string, analysis: RetrievalQueryAnalysis): number {
@@ -253,6 +383,7 @@ export function matchesPrimarySubject(
   analysis: RetrievalQueryAnalysis,
 ): boolean {
   const subject =
+    analysis.primarySubject ??
     analysis.phrases.find((candidate) => candidate.includes(" ") && candidate.length >= 6) ??
     analysis.entityCandidates.find(
       (candidate) => candidate.includes(" ") && candidate.length >= 6,

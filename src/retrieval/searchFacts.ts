@@ -85,7 +85,11 @@ export async function searchFacts(
 ): Promise<FactMatch[]> {
   signal?.throwIfAborted();
   const analysis = analyzeRetrievalQuery(query);
-  const likelyTerms = [...new Set([...analysis.entityCandidates, ...likelyEntityTerms(query)])].slice(0, 10);
+  const likelyTerms = [...new Set([
+    analysis.primarySubject,
+    ...analysis.entityCandidates,
+    ...likelyEntityTerms(query),
+  ].filter(Boolean))].slice(0, 10) as string[];
   const factTypes = detectFactTypes(query);
   const normalizedQuery = normalizeName(query);
   const entityTypes = entityTypesForCategory(analysis.category);
