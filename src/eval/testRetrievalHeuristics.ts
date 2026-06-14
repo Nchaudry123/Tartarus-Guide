@@ -65,6 +65,12 @@ assert(buildFocusedQueries("how do i beat priestess?").some((query) => query.inc
 const numberedRequest = analyzeRetrievalQuery("what do i need for request 15?");
 assert.equal(numberedRequest.primarySubject, "request 15");
 
+const completionReward = analyzeRetrievalQuery(
+  "do i get anything for maxxing out every social link?",
+);
+assert.equal(completionReward.category, "social_link");
+assert.equal(completionReward.primarySubject, undefined);
+
 assert(isRetrievalBoilerplate("Advertisement. Find in guide. Top guide sections."));
 assert(!isRetrievalBoilerplate("The Priestess uses Ice attacks and has no exploitable weakness."));
 

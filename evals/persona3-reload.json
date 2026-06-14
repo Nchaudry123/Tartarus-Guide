@@ -1177,6 +1177,61 @@
     "maxAnswerCharacters": 700
   },
   {
+    "id": "social-all-links-completion-reward",
+    "category": "social-links",
+    "origin": "user_transcript",
+    "question": "what persona do i get for getting every social link maxxed out",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Orpheus Telos", "Colorless Mask", "all 22 Social Links"],
+    "mustNotInclude": [
+      "no single best Social Link order",
+      "current date and Social Stats",
+      "does not contain a confirmed match"
+    ],
+    "requiredDomains": ["game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "social-all-links-completion-reward-paraphrase",
+    "category": "social-links",
+    "origin": "user_transcript",
+    "question": "do i get anything for maxing out every social link?",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Orpheus Telos", "Colorless Mask"],
+    "mustNotInclude": [
+      "Tell me the Social Link name",
+      "specific priority order",
+      "does not contain a confirmed match"
+    ],
+    "requiredDomains": ["game8.co"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "dynamic-skill-effect-victory-cry",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "What does Victory Cry do?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["HP", "SP", "restore"],
+    "mustNotInclude": [
+      "Are you stuck on a boss",
+      "Tell me the exact Persona name"
+    ],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 700
+  },
+  {
     "id": "latency-exact-weakness-shape",
     "category": "latency",
     "origin": "curated",

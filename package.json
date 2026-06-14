@@ -22,13 +22,13 @@
     "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --exact-fail-under=0.85 --hallucination-fail-under=0.95 --delay-ms=250",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
-    "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/relationships.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts",
+    "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/relationships.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts src/retrieval/liveGuideVerification.test.ts",
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
-    "test:security": "tsx --test src/security/chatSecurity.test.ts",
+    "test:security": "tsx --test src/security/chatSecurity.test.ts src/security/rateLimit.test.ts",
     "test:cache": "tsx --test src/cache/ttlCache.test.ts",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
-    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && ALLOW_CHAT_DEBUG=true CHAT_RATE_LIMIT_PER_MINUTE=500 CHAT_RATE_LIMIT_PER_DAY=1000 npm run eval:gate && next build"
+    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && ALLOW_CHAT_DEBUG=true DISABLE_CHAT_RATE_LIMIT=true npm run eval:gate && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

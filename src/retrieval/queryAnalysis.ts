@@ -91,7 +91,7 @@ function extractPrimarySubject(
     /\bwhat (?:is|are)\s+(?:the\s+)?(.+?)(?=\s+(?:weak|resist|null|drain|repel|located|location)\b|[?.!,]|$)/i,
     /\bhow (?:do|can|should) i (?:beat|fight|handle|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
     /\b(?:strategy for|fight against|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
-    /\b(?:how (?:do|can) i fuse|should i fuse|get|use)\s+(.+?)(?=\s+(?:with|using|at|on|and|worth|good)\b|[?.!,]|$)/i,
+    /\b(?:how (?:do|can) i fuse|should i (?:fuse|get|use))\s+(.+?)(?=\s+(?:with|using|at|on|and|worth|good)\b|[?.!,]|$)/i,
     /\b(?:is|would)\s+(.+?)\s+(?:be\s+)?(?:worth|good|viable|useful)\b/i,
     /\bwhen can i (?:start|unlock|meet)\s+(?:the\s+)?(.+?)(?=\s+(?:social link|s-?link)\b|[?.!,]|$)/i,
     /\b((?:elizabeth\s+)?request\s*#?\s*\d{1,3})\b/i,
