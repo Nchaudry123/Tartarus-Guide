@@ -28,6 +28,14 @@ import {
   ultimatePersonaUnlockForQuestion,
 } from "../../../src/quality/relationships";
 import {
+  asksForAllSocialLinkStarts,
+  SOCIAL_LINK_START_SOURCE,
+  socialLinkStartContradictions,
+  socialLinkStartFactsForPrompt,
+  socialLinkStartForQuestion,
+  socialLinkStarts,
+} from "../../../src/quality/socialLinkStarts";
+import {
   exactFactLabel,
   exactFactMatches,
   requestedExactFactTypes,
@@ -275,6 +283,58 @@ function socialLinkUltimatePersonaResponse(
       groundingStatus: "verified",
       guardrailNotes: [
         "The Arcana rank-10 Persona and unlock item were verified against the current Game8 Social Link reward table.",
+      ],
+    };
+  }
+  return response;
+}
+
+function socialLinkStartResponse(
+  question: string,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  const asksForAll = asksForAllSocialLinkStarts(question);
+  const link = socialLinkStartForQuestion(question);
+  if (!asksForAll && !link) return null;
+
+  const response = withMode({
+    answer: asksForAll
+      ? "Persona 3 Reload has 22 Arcana Social Links: 19 are started and managed by the player, while Fool, Death, and Judgement advance automatically through the story."
+      : link!.earliestStart === "No fixed date"
+        ? `${link!.character}'s ${link!.arcana} Social Link has no fixed calendar start date. ${link!.requirement} Once unlocked, find them at ${link!.location} on ${link!.availability.toLowerCase()}.`
+        : `${link!.character}'s ${link!.arcana} Social Link can first start on ${link!.earliestStart}. ${link!.requirement} ${link!.automatic ? link!.availability : `Find them at ${link!.location} on ${link!.availability.toLowerCase()}.`}`,
+    sections: [],
+    tables: asksForAll
+      ? [
+          {
+            title: "All Social Link Starts",
+            columns: ["Arcana", "Who", "Earliest start", "Requirement"],
+            rows: socialLinkStarts.map((record) => [
+              record.arcana,
+              record.character,
+              record.earliestStart,
+              record.requirement,
+            ]),
+          },
+        ]
+      : [],
+    sources: [SOCIAL_LINK_START_SOURCE],
+    confidence: 0.99,
+    missingInfo: "No additional detail is needed.",
+    companion: {
+      intent: "Social Links",
+      profileUpdates,
+      followUpQuestions: [],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: asksForAll ? socialLinkStarts.length : 1,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "Social Link identity, earliest start, and prerequisites came from the canonical start directory.",
       ],
     };
   }
@@ -3758,6 +3818,12 @@ async function directRagResponse(
     debug,
   );
   if (socialLinkPersona) return socialLinkPersona;
+  const socialLinkStart = socialLinkStartResponse(
+    conversation.analysisQuestion,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (socialLinkStart) return socialLinkStart;
   const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
   if (canonicalRelationship) {
     const needsPlayerProgress =
@@ -4126,6 +4192,8 @@ Rules:
 
 ${relationshipFactsForPrompt()}
 
+${socialLinkStartFactsForPrompt()}
+
 ${partyRoleFactsForPrompt()}`;
 
   const profileForPrompt = controllerProfile;
@@ -4215,7 +4283,10 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
-    const relationshipErrors = relationshipContradictions(normalized);
+    const relationshipErrors = [
+      ...relationshipContradictions(normalized),
+      ...socialLinkStartContradictions(normalized),
+    ];
     if (relationshipErrors.length) {
       const correctionPrompt = `${userPrompt}
 
@@ -4235,18 +4306,30 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
         responseSources,
         responseCompanion,
       );
-      if (relationshipContradictions(normalized).length) {
-        normalized = {
-          answer:
-            canonicalRelationshipAnswer(conversation.analysisQuestion) ??
-            "I can help with Social Links, but I need the exact character name and your current in-game date before giving a schedule or Arcana.",
-          sections: [],
-          tables: [],
-          sources: [],
-          confidence: 0.72,
-          missingInfo: "Tell me the exact character and current in-game date.",
-          companion: responseCompanion,
-        };
+      if (
+        relationshipContradictions(normalized).length ||
+        socialLinkStartContradictions(normalized).length
+      ) {
+        const verifiedStart = socialLinkStartResponse(
+          conversation.analysisQuestion,
+          controller.profileUpdates,
+          debug,
+        );
+        if (verifiedStart) {
+          normalized = verifiedStart;
+        } else {
+          normalized = {
+            answer:
+              canonicalRelationshipAnswer(conversation.analysisQuestion) ??
+              "I can help with Social Links, but I need the exact character name and your current in-game date before giving a schedule or Arcana.",
+            sections: [],
+            tables: [],
+            sources: [],
+            confidence: 0.72,
+            missingInfo: "Tell me the exact character and current in-game date.",
+            companion: responseCompanion,
+          };
+        }
       }
     }
     const partyErrors = partyRoleContradictions(normalized);
