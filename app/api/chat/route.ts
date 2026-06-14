@@ -20,11 +20,14 @@ import {
 } from "../../../src/quality/grounding";
 import { evaluateSpoilerPolicy } from "../../../src/quality/spoilers";
 import {
+  allSocialLinkUltimatePersonasRequested,
   canonicalRelationshipAnswer,
   relationshipContradictions,
   relationshipFactsForPrompt,
   socialLinkArcana,
   socialLinkEntityAliasesForQuestion,
+  socialLinkUltimatePersonaRecords,
+  ultimatePersonaFollowUpRecords,
   ultimatePersonaUnlockForQuestion,
 } from "../../../src/quality/relationships";
 import {
@@ -66,6 +69,19 @@ const mockSources = [
     domain: "ign.com",
   },
 ];
+
+const fusionToolSource = {
+  title: "Persona 3 Reload Fusion Calculator",
+  url: "https://aqiu384.github.io/megaten-fusion-tool/p3r/personas",
+  domain: "aqiu384.github.io",
+} as const;
+
+function isFusionToolUrl(url: string): boolean {
+  return (
+    url.includes("aqiu384.github.io/megaten-fusion-tool") ||
+    url.includes("github.com/aqiu384/megaten-fusion-tool")
+  );
+}
 
 type CompanionIntent =
   | "Enemy Weakness"
@@ -261,13 +277,7 @@ function socialLinkUltimatePersonaResponse(
   const response = withMode({
     answer,
     sections: [],
-    sources: [
-      {
-        title: "All Social Links and Rank 10 Rewards",
-        url: "https://game8.co/games/Persona-3-Reload/archives/435602",
-        domain: "game8.co",
-      },
-    ],
+    sources: [fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -282,7 +292,92 @@ function socialLinkUltimatePersonaResponse(
       chunkCount: 0,
       groundingStatus: "verified",
       guardrailNotes: [
-        "The Arcana rank-10 Persona and unlock item were verified against the current Game8 Social Link reward table.",
+        "The Arcana rank-10 Persona was verified against the Persona 3 Reload Megaten Fusion Tool dataset; the Social Link item came from the canonical relationship table.",
+      ],
+    };
+  }
+  return response;
+}
+
+function allSocialLinkUltimatePersonasResponse(
+  question: string,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  if (!allSocialLinkUltimatePersonasRequested(question)) return null;
+  const records = socialLinkUltimatePersonaRecords();
+  const response = withMode({
+    answer:
+      "Each of Persona 3 Reload's 22 Arcana Social Links has a Rank-10 Persona unlock. The three automatic links are included, and maxing all 22 separately unlocks Orpheus Telos through the Colorless Mask.",
+    sections: [],
+    tables: [
+      {
+        title: "Rank-10 Persona Unlocks",
+        columns: ["Arcana", "Social Link", "Persona", "Unlock item"],
+        rows: records.map((record) => [
+          record.arcana,
+          record.character,
+          record.persona,
+          record.item ?? "Story unlock",
+        ]),
+      },
+    ],
+    sources: [fusionToolSource],
+    confidence: 0.99,
+    missingInfo: "No additional detail is needed.",
+    companion: {
+      intent: "Social Links",
+      profileUpdates,
+      followUpQuestions: [],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: records.length,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "All Rank-10 Persona identities were checked against the Persona 3 Reload Megaten Fusion Tool dataset.",
+      ],
+    };
+  }
+  return response;
+}
+
+function ultimatePersonaFollowUpResponse(
+  question: string,
+  previousTopic: string | undefined,
+  previousAssistant: string | undefined,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  const records = ultimatePersonaFollowUpRecords(question, previousTopic, previousAssistant);
+  if (!records.length) return null;
+  const details = records.map(
+    (record) =>
+      `${record.character}'s ${record.arcana} Rank-10 Persona is ${record.persona}${
+        record.item ? `, unlocked through the ${record.item}` : ""
+      }`,
+  );
+  const response = withMode({
+    answer: `${details.join("; ")}.`,
+    sections: [],
+    sources: [fusionToolSource],
+    confidence: 0.99,
+    missingInfo: "No additional detail is needed.",
+    companion: {
+      intent: "Social Links",
+      profileUpdates,
+      followUpQuestions: [],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: records.length,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The referential follow-up was resolved against the prior topic and canonical Rank-10 Persona records.",
       ],
     };
   }
@@ -346,7 +441,7 @@ function isShortContextReply(question: string): boolean {
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return (
     (wordCount <= 5 &&
-      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
+      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|what is it|what are they|which one|who is it|tell me about it|how do i fuse it|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
         text,
       ) ||
         /^(what about|how about|and|but)\b/.test(text))) ||
@@ -1845,7 +1940,9 @@ function structuredFusionResponse(
   queries: string[],
 ): ChatResponse | null {
   const normalizedQuestion = question.toLowerCase();
-  const recipeFacts = facts.filter((fact) => fact.fact_type === "fusion_recipe");
+  const recipeFacts = facts.filter(
+    (fact) => fact.fact_type === "fusion_recipe" && isFusionToolUrl(fact.source.url),
+  );
   if (!recipeFacts.length) return null;
 
   const asksForResult =
@@ -1957,6 +2054,118 @@ function structuredFusionResponse(
       retrievalQueries: queries,
       factCount: selected.length,
       chunkCount: 0,
+    };
+  }
+  return response;
+}
+
+function structuredPersonaProfileResponse(
+  question: string,
+  facts: Array<{
+    fact_type: string;
+    value: string;
+    confidence: number;
+    entity: { name: string; type?: string };
+    source: { title: string; url: string; domain: string };
+  }>,
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+  queries: string[],
+): ChatResponse | null {
+  if (!/\b(?:persona|arcana|level|stats?|skills?|affinit|weak|resist|inherit|heart item|unlock)\b/i.test(question)) {
+    return null;
+  }
+
+  const matches = facts.filter(
+    (fact) =>
+      fact.entity.type === "persona" &&
+      isFusionToolUrl(fact.source.url) &&
+      factMatchesQuestionSubject(question, fact.entity.name),
+  );
+  if (!matches.length) return null;
+
+  const persona = matches[0].entity.name;
+  const values = (type: string) =>
+    uniqueStrings(
+      matches
+        .filter((fact) => fact.fact_type === type)
+        .map((fact) => fact.value.trim())
+        .filter(Boolean),
+    );
+  const tips = values("tip");
+  const labeledTip = (label: string) =>
+    tips.find((tip) => tip.toLowerCase().startsWith(`${label.toLowerCase()}:`))
+      ?.slice(label.length + 1)
+      .trim();
+  const arcana = values("arcana")[0] ?? labeledTip("Arcana");
+  const baseLevel = values("base_level")[0] ?? labeledTip("Base level");
+  const initialSkills = labeledTip("Initial skills");
+  const learnedSkills = labeledTip("Learned skills");
+  const stats = labeledTip("Base stats");
+  const inheritance = labeledTip("Inheritance");
+  const unlock = values("unlock_condition")[0];
+  const heartItem = values("item_effect").find((value) => /heart item/i.test(value));
+  const affinities = [
+    ...values("weakness").map((value) => `Weak to ${value}`),
+    ...values("resistance").map((value) => `Resists ${value}`),
+    ...values("nullifies").map((value) => `Nullifies ${value}`),
+    ...values("repels").map((value) => `Repels ${value}`),
+    ...values("drains").map((value) => `Drains ${value}`),
+  ];
+
+  const identity = [
+    baseLevel ? `a base-level ${baseLevel}` : "a",
+    arcana ? `${arcana} Persona` : "Persona",
+  ].join(" ");
+  const sections: NonNullable<ChatResponse["sections"]> = [];
+  if (initialSkills || learnedSkills) {
+    sections.push({
+      title: "Skills",
+      content: [
+        initialSkills ? `Starts with ${initialSkills}.` : "",
+        learnedSkills ? `Learns ${learnedSkills}.` : "",
+      ].filter(Boolean).join(" "),
+    });
+  }
+  if (affinities.length) {
+    sections.push({ title: "Affinities", content: `${affinities.join("; ")}.` });
+  }
+  if (stats || inheritance) {
+    sections.push({
+      title: "Fusion Profile",
+      content: [
+        stats ? `${stats}.` : "",
+        inheritance ? `Inheritance: ${inheritance}.` : "",
+      ].filter(Boolean).join(" "),
+    });
+  }
+  if (unlock || heartItem) {
+    sections.push({
+      title: "Unlocks and Items",
+      content: [
+        unlock ? `Unlock condition: ${unlock}.` : "",
+        heartItem ? `Heart item: ${heartItem}.` : "",
+      ].filter(Boolean).join(" "),
+    });
+  }
+
+  const response = withMode({
+    answer: `${persona} is ${identity}.`,
+    sections: sections.slice(0, 4),
+    sources: [fusionToolSource],
+    confidence: Math.max(...matches.map((fact) => fact.confidence)),
+    missingInfo: "No additional detail is needed.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: queries,
+      factCount: matches.length,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "Persona identity and profile details came from the Persona 3 Reload Megaten Fusion Tool dataset.",
+      ],
     };
   }
   return response;
@@ -2464,12 +2673,21 @@ function relevantResponseSources(
     }
   }
 
-  const exactMatches = context.sources.filter((source) => relevantUrls.has(source.url));
+  const sourcePriority = (source: ChatResponse["sources"][number]) =>
+    intent === "Fusion Advice" && isFusionToolUrl(source.url) ? 0 : 1;
+  const exactMatches = context.sources
+    .filter((source) => relevantUrls.has(source.url))
+    .sort((a, b) => sourcePriority(a) - sourcePriority(b));
   if (exactMatches.length) return exactMatches.slice(0, 4);
 
   if (intent === "Fusion Advice") {
     const fusionFactUrls = new Set(context.facts.map((fact) => fact.source.url));
-    const fusionSources = context.sources.filter((source) => fusionFactUrls.has(source.url));
+    const fusionSources = context.sources
+      .filter((source) => fusionFactUrls.has(source.url))
+      .sort(
+        (a, b) =>
+          Number(!isFusionToolUrl(a.url)) - Number(!isFusionToolUrl(b.url)),
+      );
     if (fusionSources.length) return fusionSources.slice(0, 3);
   }
 
@@ -2689,7 +2907,9 @@ function applyGroundingGuardrails(
     const target = subject ? `"${subject}"` : "that exact subject";
     return {
       ...response,
-      answer: `The current IGN and Game8 evidence for ${target} does not support the draft's ${unsupportedNames.join(", ")} claim, so I stopped it rather than inventing a detail. ${prompt}`,
+      answer: `The current ${
+        intent === "Fusion Advice" ? "Megaten Fusion Tool data" : "IGN and Game8 evidence"
+      } for ${target} does not support the draft's ${unsupportedNames.join(", ")} claim, so I stopped it rather than inventing a detail. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -2715,7 +2935,9 @@ function applyGroundingGuardrails(
     const target = subject ? `"${subject}"` : "that exact detail";
     return {
       ...response,
-      answer: `I checked the current IGN and Game8 material for ${target}, but it does not contain a confirmed match for this wording. ${prompt}`,
+      answer: `I checked the current ${
+        intent === "Fusion Advice" ? "Megaten Fusion Tool data" : "IGN and Game8 material"
+      } for ${target}, but it does not contain a confirmed match for this wording. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -3818,6 +4040,20 @@ async function directRagResponse(
     debug,
   );
   if (socialLinkPersona) return socialLinkPersona;
+  const allSocialLinkPersonas = allSocialLinkUltimatePersonasResponse(
+    conversation.analysisQuestion,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (allSocialLinkPersonas) return allSocialLinkPersonas;
+  const personaFollowUp = ultimatePersonaFollowUpResponse(
+    question,
+    conversation.previousTopic,
+    conversation.previousAssistant,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (personaFollowUp) return personaFollowUp;
   const socialLinkStart = socialLinkStartResponse(
     conversation.analysisQuestion,
     analysis.profileUpdates,
@@ -4017,6 +4253,14 @@ async function directRagResponse(
       context.queries,
     );
     if (fusionResponse) return fusionResponse;
+    const personaProfile = structuredPersonaProfileResponse(
+      conversation.analysisQuestion,
+      context.facts,
+      companion,
+      debug,
+      context.queries,
+    );
+    if (personaProfile) return personaProfile;
   }
   if (exactWeaknessQuestion(conversation.analysisQuestion, controller.intent)) {
     const exactResponse = structuredAffinityResponse(
@@ -4172,6 +4416,8 @@ Rules:
 - Never apologize for missing guide context in the answer. If exact source support is thin, answer with a useful next step and put the missing detail in missingInfo.
 - Never use "Unknown", "N/A", or a vague one-word answer. If the exact answer is not supported, say what detail you need or what the player should check next.
 - Use structured facts and guide chunks for exact weaknesses, dates, floors, fusions, rewards, and boss mechanics.
+- For every Persona or fusion claim, treat the supplied Persona 3 Reload Megaten Fusion Tool facts as authoritative. Prefer them over prose guides for Persona identity, Arcana, base level, stats, skills, affinities, inheritance, heart items, unlock conditions, and fusion recipes.
+- Never answer a Persona or fusion question from model memory when matching Megaten Fusion Tool facts are absent.
 - Treat the supplied facts and excerpts as the only evidence for game-specific mechanics. If a mechanic, reward, unlock, skill effect, affinity, date, floor, or resource cost is not supported there, omit it.
 - Never fill evidence gaps with plausible-sounding Persona knowledge. A shorter grounded answer is better than a detailed invented answer.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
