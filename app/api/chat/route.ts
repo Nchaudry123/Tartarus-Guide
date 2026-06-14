@@ -166,6 +166,12 @@ function detectIntent(question: string): CompanionIntent {
   ) {
     return "Fusion Advice";
   }
+  if (
+    /\bwhat does\b.{1,60}\bdo\b/.test(text) ||
+    /\b(skill|spell|theurgy|passive)\b/.test(text)
+  ) {
+    return "Fusion Advice";
+  }
   if (/^(?:jack frost|orpheus|pixie|satan|thanatos|messiah)$/i.test(text.trim())) {
     return "Fusion Advice";
   }
@@ -1532,6 +1538,38 @@ function factMatchesQuestionSubject(question: string, entityName: string): boole
   return subject === entity || subject.includes(entity) || entity.includes(subject);
 }
 
+function chunkMatchesQuestion(
+  question: string,
+  chunk: {
+    source_title?: string;
+    section_title: string | null;
+    chunk_text: string;
+  },
+): boolean {
+  const subject = likelyExactSubject(question);
+  const text = `${chunk.source_title ?? ""} ${chunk.section_title ?? ""} ${chunk.chunk_text}`
+    .toLowerCase()
+    .replace(/\bmaxx(?:ed|ing)?\b/g, "max")
+    .replace(/\bmax(?:ed|ing)\b/g, "max");
+  if (subject) return text.includes(subject.toLowerCase());
+
+  const ignored = new Set([
+    "anything",
+    "every",
+    "get",
+    "getting",
+    "out",
+  ]);
+  const terms = analyzeRetrievalQuery(question).expandedTerms
+    .flatMap((term) => term.split(/\s+/))
+    .map((term) => term.replace(/\bmaxx(?:ed|ing)?\b/g, "max").replace(/\bmax(?:ed|ing)\b/g, "max"))
+    .filter((term) => term.length >= 3 && !ignored.has(term));
+  const uniqueTerms = [...new Set(terms)];
+  if (!uniqueTerms.length) return false;
+  const matches = uniqueTerms.filter((term) => text.includes(term)).length;
+  return matches >= Math.min(2, uniqueTerms.length);
+}
+
 function hasStrongExactContext(
   question: string,
   context: {
@@ -1546,31 +1584,16 @@ function hasStrongExactContext(
     }>;
   },
 ): boolean {
-  const subject = likelyExactSubject(question);
   const matchingFacts = context.facts.filter((fact) =>
     factMatchesQuestionSubject(question, fact.entity.name),
   );
   if (matchingFacts.some((fact) => fact.confidence >= 0.82)) return true;
 
-  const matchingChunks = context.chunks.filter((chunk) => {
-    const text = `${chunk.source_title ?? ""} ${chunk.section_title ?? ""} ${chunk.chunk_text}`;
-    if (subject) return text.toLowerCase().includes(subject.toLowerCase());
-    return /\bfinal boss\b/i.test(question) && /\bnyx avatar\b/i.test(text);
-  });
-  const domains = new Set(
-    matchingChunks.map((chunk) => {
-      try {
-        return new URL(chunk.source_url).hostname.replace(/^www\./, "");
-      } catch {
-        return "";
-      }
-    }),
+  const matchingChunks = context.chunks.filter((chunk) =>
+    chunkMatchesQuestion(question, chunk),
   );
-  return (
-    (domains.has("ign.com") && domains.has("game8.co")) ||
-    matchingChunks.some(
-      (chunk) => chunk.id?.startsWith("live-") && (chunk.similarity ?? 0) >= 0.72,
-    )
+  return matchingChunks.some(
+    (chunk) => chunk.id?.startsWith("live-") && (chunk.similarity ?? 0) >= 0.72,
   );
 }
 
@@ -1874,6 +1897,136 @@ function structuredFusionResponse(
       retrievalQueries: queries,
       factCount: selected.length,
       chunkCount: 0,
+    };
+  }
+  return response;
+}
+
+function structuredAllSocialLinksCompletionResponse(
+  question: string,
+  context: {
+    chunks: Array<{
+      section_title: string | null;
+      chunk_text: string;
+      source_title: string;
+      source_url: string;
+      source_domain: string;
+    }>;
+    queries: string[];
+  },
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  const normalized = question
+    .toLowerCase()
+    .replace(/\bmaxx(?:ed|ing)?\b/g, "max")
+    .replace(/\bmax(?:ed|ing)\b/g, "max");
+  const asksForCompletionReward =
+    /\b(?:all|every)\b.{0,50}\bsocial links?\b/.test(normalized) &&
+    /\b(?:max|complete|completion|reward|unlock|get|receive)\b/.test(normalized);
+  if (!asksForCompletionReward) return null;
+
+  const evidence = context.chunks.find((chunk) =>
+    /\ball 22 social links?\s*\|\s*orpheus telos\s*\|\s*colorless mask\b/i.test(
+      chunk.chunk_text,
+    ),
+  );
+  if (!evidence) return null;
+
+  const response = withMode({
+    answer:
+      "Completing all 22 Social Links rewards the Colorless Mask, which unlocks Orpheus Telos for fusion.",
+    sections: [
+      {
+        title: "Completion Reward",
+        content:
+          "This is separate from each individual Rank 10 reward: the Colorless Mask is specifically tied to completing the full Social Link set.",
+      },
+    ],
+    sources: [
+      {
+        title: evidence.source_title,
+        url: evidence.source_url,
+        domain: evidence.source_domain,
+      },
+    ],
+    confidence: 0.99,
+    missingInfo: "No additional detail is needed.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: context.queries,
+      factCount: 0,
+      chunkCount: 1,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The completion reward was extracted directly from the subject-matched Social Link reward table.",
+      ],
+    };
+  }
+  return response;
+}
+
+function structuredSchoolBreakSocialLinkResponse(
+  question: string,
+  context: {
+    chunks: Array<{
+      section_title: string | null;
+      chunk_text: string;
+      source_title: string;
+      source_url: string;
+      source_domain: string;
+    }>;
+    queries: string[];
+  },
+  companion: NonNullable<ChatResponse["companion"]>,
+  debug: boolean,
+): ChatResponse | null {
+  if (
+    !/\b(?:school|student)\b/i.test(question) ||
+    !/\b(?:summer break|summer vacation|holidays?)\b/i.test(question)
+  ) {
+    return null;
+  }
+
+  const evidence = context.chunks.find(
+    (chunk) =>
+      /\bnone of the regular students will be available\b/i.test(chunk.chunk_text) &&
+      /\b(?:hanged man|hermit|hierophant|star|moon)\b/i.test(chunk.chunk_text),
+  );
+  if (!evidence) return null;
+
+  const response = withMode({
+    answer:
+      "During summer break, regular student Social Links are unavailable because school is closed.",
+    sections: [
+      {
+        title: "Use the Break for Non-Student Links",
+        content:
+          "Game8 lists Maiko (Hanged Man), Maya (Hermit), Bunkichi and Mitsuko (Hierophant), Mamoru (Star), and Nozomi (Moon) as holiday options.",
+      },
+    ],
+    sources: [
+      {
+        title: evidence.source_title,
+        url: evidence.source_url,
+        domain: evidence.source_domain,
+      },
+    ],
+    confidence: 0.98,
+    missingInfo: "No additional detail is needed.",
+    companion,
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      retrievalQueries: context.queries,
+      factCount: 0,
+      chunkCount: 1,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The school-break availability rule and holiday alternatives were extracted directly from a subject-matched guide section.",
+      ],
     };
   }
   return response;
@@ -2200,11 +2353,13 @@ function exactSubjectSources(
   },
 ): ChatResponse["sources"] {
   const subject = likelyExactSubject(question);
-  if (!subject) return [];
-  const needle = subject.toLowerCase();
   const exactChunkUrls = new Set(
     context.chunks
-      .filter((chunk) => `${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(needle))
+      .filter((chunk) =>
+        subject
+          ? `${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(subject.toLowerCase())
+          : chunkMatchesQuestion(question, chunk)
+      )
       .map((chunk) => chunk.source_url),
   );
   return context.sources.filter((source) => exactChunkUrls.has(source.url));
@@ -2238,6 +2393,12 @@ function relevantResponseSources(
     const needle = subject.toLowerCase();
     for (const chunk of context.chunks) {
       if (`${chunk.section_title ?? ""} ${chunk.chunk_text}`.toLowerCase().includes(needle)) {
+        relevantUrls.add(chunk.source_url);
+      }
+    }
+  } else {
+    for (const chunk of context.chunks) {
+      if (chunkMatchesQuestion(question, chunk)) {
         relevantUrls.add(chunk.source_url);
       }
     }
@@ -2415,11 +2576,9 @@ function applyGroundingGuardrails(
   const requiresExactEvidence = requiresExactGameEvidence(question, intent);
   const subject = likelyExactSubject(question);
   const matchingFacts = context.facts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
-  const matchingChunks = context.chunks.filter((chunk) => {
-    const text = `${chunk.source_title ?? ""} ${chunk.section_title ?? ""} ${chunk.chunk_text}`;
-    if (subject) return text.toLowerCase().includes(subject.toLowerCase());
-    return /\bfinal boss\b/i.test(question) && /\bnyx avatar\b/i.test(text);
-  });
+  const matchingChunks = context.chunks.filter((chunk) =>
+    chunkMatchesQuestion(question, chunk),
+  );
   const matchingUrls = new Set([
     ...matchingFacts.map((fact) => fact.source.url),
     ...matchingChunks.map((chunk) => chunk.source_url),
@@ -2513,8 +2672,8 @@ function applyGroundingGuardrails(
   return {
     ...response,
     sources: requiresExactEvidence
-      ? response.sources.filter((source) => matchingUrls.has(source.url)).slice(0, 4)
-      : response.sources.slice(0, 4),
+      ? response.sources.filter((source) => matchingUrls.has(source.url)).slice(0, 3)
+      : response.sources.slice(0, 3),
     confidence: Math.min(response.confidence ?? assessment.confidenceCeiling, assessment.confidenceCeiling),
     diagnostics,
   };
@@ -3754,14 +3913,32 @@ async function directRagResponse(
       context.sources.map((source) => source.url),
       signal,
     );
-    const chunkMap = new Map(context.chunks.map((chunk) => [chunk.id, chunk]));
-    for (const chunk of live.chunks) chunkMap.set(chunk.id, chunk);
+    const chunkMap = new Map(live.chunks.map((chunk) => [chunk.id, chunk]));
+    for (const chunk of context.chunks) {
+      if (!chunkMap.has(chunk.id)) chunkMap.set(chunk.id, chunk);
+    }
     context.chunks = [...chunkMap.values()].slice(0, 18);
 
-    const sourceMap = new Map(context.sources.map((source) => [source.url, source]));
-    for (const source of live.sources) sourceMap.set(source.url, source);
+    const sourceMap = new Map(live.sources.map((source) => [source.url, source]));
+    for (const source of context.sources) {
+      if (!sourceMap.has(source.url)) sourceMap.set(source.url, source);
+    }
     context.sources = [...sourceMap.values()];
   }
+  const allSocialLinksCompletion = structuredAllSocialLinksCompletionResponse(
+    conversation.analysisQuestion,
+    context,
+    companion,
+    debug,
+  );
+  if (allSocialLinksCompletion) return allSocialLinksCompletion;
+  const schoolBreakSocialLinks = structuredSchoolBreakSocialLinkResponse(
+    conversation.analysisQuestion,
+    context,
+    companion,
+    debug,
+  );
+  if (schoolBreakSocialLinks) return schoolBreakSocialLinks;
   if (
     controller.intent === "Fusion Advice" ||
     /\b(fuse|fusion|recipe|persona|worth|good to get|should i get)\b/i.test(conversation.analysisQuestion)

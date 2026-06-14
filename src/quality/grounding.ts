@@ -32,8 +32,13 @@ export function requiresExactGameEvidence(question: string, intent: string): boo
   }
 
   const exactMechanic =
-    /\b(weak(?:ness| to)?|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate)\b/i;
-  return exactMechanic.test(question);
+    /\b(weak(?:ness| to)?|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate|weapon|armor|equipment|accessor(?:y|ies)|item effect|base stat|stat cap|location|obtain|acquire)\b/i;
+  const acquisitionQuestion =
+    /\b(?:where|how)\b.{0,30}\b(?:get|find|buy|obtain|acquire|unlock)\b/i.test(question);
+  const namedSkillQuestion =
+    /\bwhat does\b.{1,60}\bdo\b/i.test(question) ||
+    /\b(?:what does|how does)\b.{1,60}\b(?:skill|spell|theurgy|passive)\b/i.test(question);
+  return exactMechanic.test(question) || acquisitionQuestion || namedSkillQuestion;
 }
 
 export function assessGrounding(input: GroundingInput): GroundingAssessment {

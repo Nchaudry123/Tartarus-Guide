@@ -57,6 +57,13 @@ async function checkWindow(
 }
 
 export async function checkChatRateLimit(clientFingerprint: string): Promise<RateLimitResult> {
+  if (
+    process.env.DISABLE_CHAT_RATE_LIMIT === "true" &&
+    process.env.ALLOW_CHAT_DEBUG === "true"
+  ) {
+    return { allowed: true, remaining: Number.MAX_SAFE_INTEGER, retryAfter: 0 };
+  }
+
   const minuteLimit = positiveInteger(process.env.CHAT_RATE_LIMIT_PER_MINUTE, 20);
   const dailyLimit = positiveInteger(process.env.CHAT_RATE_LIMIT_PER_DAY, 250);
 

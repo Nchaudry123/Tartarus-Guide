@@ -17,6 +17,14 @@ assert.equal(
   requiresExactGameEvidence("Does Junpei have a Social Link?", "Social Links"),
   true,
 );
+assert.equal(
+  requiresExactGameEvidence("Where do I get Mitsuru's best weapon?", "Team Building"),
+  true,
+);
+assert.equal(
+  requiresExactGameEvidence("What does Victory Cry do?", "General Discussion"),
+  true,
+);
 
 assert.deepEqual(
   assessGrounding({

@@ -149,8 +149,8 @@ export function canonicalRelationshipAnswer(question: string): string | null {
   }
 
   if (
-    /\b(?:which|what|best|recommend|prioriti[sz]e|focus)\b/i.test(question) &&
-    /\b(?:early|first|start|priorit|focus|social links?)\b/i.test(question)
+    /\b(?:best|recommend|prioriti[sz]e|priority|focus|order)\b/i.test(question) &&
+    /\b(?:early|first|start|priorit|focus|order|social links?)\b/i.test(question)
   ) {
     return [
       "There is no single best Social Link order without knowing your current date and Social Stats.",
