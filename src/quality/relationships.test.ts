@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  allSocialLinkUltimatePersonasRequested,
   canonicalRelationshipAnswer,
   relationshipContradictions,
   socialLinkEntityAliasesForQuestion,
+  socialLinkUltimatePersonaRecords,
+  ultimatePersonaFollowUpRecords,
   ultimatePersonaUnlockForQuestion,
 } from "./relationships";
 
@@ -41,6 +44,42 @@ test("maps rank-10 Arcana rewards to the verified ultimate Persona", () => {
     item: "Yukari's Strap",
   });
   assert.equal(ultimatePersonaUnlockForQuestion("Is a Strength Persona good for this boss?"), null);
+});
+
+test("stores all rank-10 Persona unlocks and recognizes a full-list request", () => {
+  assert.equal(socialLinkUltimatePersonaRecords().length, 22);
+  assert.equal(
+    allSocialLinkUltimatePersonasRequested(
+      "List every Social Link and the Persona each one unlocks at Rank 10",
+    ),
+    true,
+  );
+  assert.equal(
+    allSocialLinkUltimatePersonasRequested(
+      "What Persona do I get for maxing every Social Link?",
+    ),
+    false,
+  );
+});
+
+test("resolves referential Persona follow-ups from the previous topic", () => {
+  const records = ultimatePersonaFollowUpRecords(
+    "what is it?",
+    "What Persona does Mitsuru's Social Link unlock?",
+    "Maxing Empress unlocks Alilat.",
+  );
+  assert.equal(records.length, 1);
+  assert.equal(records[0].persona, "Alilat");
+
+  const examples = ultimatePersonaFollowUpRecords(
+    "what are they?",
+    "What happens when I max a Social Link?",
+    "Mitsuru's Empress link unlocks Alilat, while Yukari's Lovers link unlocks Cybele.",
+  );
+  assert.deepEqual(
+    examples.map((record) => record.persona),
+    ["Alilat", "Cybele"],
+  );
 });
 
 test("gives a cautious early Social Link priority rule without inventing party links", () => {

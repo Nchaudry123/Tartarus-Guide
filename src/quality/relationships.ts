@@ -54,9 +54,33 @@ export type SocialLinkUltimatePersona = {
   item: string | null;
 };
 
+export function allSocialLinkUltimatePersonasRequested(question: string): boolean {
+  return (
+    /\b(?:all|every|each|list|complete|full)\b/i.test(question) &&
+    /\b(?:social links?|s-?links?|arcana|rank\s*10)\b/i.test(question) &&
+    (/\bpersonas\b/i.test(question) ||
+      /\b(?:each|every)\s+(?:one|arcana)\b/i.test(question) ||
+      /\b(?:list|table|show)\b.{0,60}\bpersona\b/i.test(question) ||
+      /\brank\s*10\b.{0,60}\bpersona\b/i.test(question))
+  );
+}
+
+export function socialLinkUltimatePersonaRecords(): Array<
+  SocialLinkUltimatePersona & { character: string }
+> {
+  return Object.entries(socialLinkUltimatePersonas).map(([arcana, unlock]) => ({
+    arcana: arcana as SocialLinkUltimatePersona["arcana"],
+    character:
+      Object.entries(socialLinkArcana).find(([, linkedArcana]) => linkedArcana === arcana)?.[0] ??
+      arcana,
+    ...unlock,
+  }));
+}
+
 export function ultimatePersonaUnlockForQuestion(
   question: string,
 ): SocialLinkUltimatePersona | null {
+  if (allSocialLinkUltimatePersonasRequested(question)) return null;
   const asksWhichPersona =
     /\b(?:what|which)\b.{0,80}\bpersona\b/i.test(question) ||
     /\bpersona\b.{0,80}\b(?:get|receive|unlock|reward)\b/i.test(question);
@@ -77,6 +101,36 @@ export function ultimatePersonaUnlockForQuestion(
     arcana,
     ...socialLinkUltimatePersonas[arcana],
   };
+}
+
+export function ultimatePersonaFollowUpRecords(
+  question: string,
+  previousTopic?: string,
+  previousAssistant?: string,
+): Array<SocialLinkUltimatePersona & { character: string }> {
+  if (
+    !/^(?:what|which|who)\s+(?:is|are)\s+(?:it|they|that|those|the persona)|^tell me about (?:it|that|them)|^how do i fuse (?:it|that|them)/i.test(
+      question.trim().replace(/[?.!]+$/g, ""),
+    )
+  ) {
+    return [];
+  }
+
+  const records = socialLinkUltimatePersonaRecords();
+  const topic = previousTopic ?? "";
+  const assistant = previousAssistant ?? "";
+  const topicMatches = records.filter((record) =>
+    [record.character, record.arcana, record.persona].some((value) =>
+      new RegExp(`\\b${value.replace(/\s+/g, "\\s+")}\\b`, "i").test(topic),
+    ),
+  );
+  if (topicMatches.length) return topicMatches;
+
+  return records.filter((record) =>
+    [record.character, record.arcana, record.persona].some((value) =>
+      new RegExp(`\\b${value.replace(/\s+/g, "\\s+")}\\b`, "i").test(assistant),
+    ),
+  );
 }
 
 export function socialLinkEntityAliasesForQuestion(question: string): string[] {

@@ -3,7 +3,7 @@ import { normalizeName, supabase } from "../db/client";
 import type { EntityType, FactType, SourceInput, TextChunk } from "../types/schema";
 import { embedAndInsertChunks, upsertSource } from "./embedChunks";
 
-const DEFAULT_REVISION = "568aaf748aa3d83e47c0ff770c82f74d85273a8b";
+const DEFAULT_REVISION = "13939cf97a3b236d3ae044e12ac532d1f6e58ddc";
 const DATASET_PAGE = "https://aqiu384.github.io/megaten-fusion-tool/p3r/personas";
 const RAW_ROOT = "https://raw.githubusercontent.com/aqiu384/megaten-fusion-tool";
 const DATA_PATH = "src/app/p3r/data";
@@ -390,6 +390,7 @@ async function replaceFacts(
   facts: PendingFact[],
   sourceId: string,
   entityMap: Map<string, EntityRow>,
+  supportsExtendedFactTypes: boolean,
 ): Promise<number> {
   const { error: deleteError } = await supabase.from("facts").delete().eq("source_id", sourceId);
   if (deleteError) throw deleteError;
@@ -398,11 +399,21 @@ async function replaceFacts(
     const key = `${fact.entityType}\u0000${normalizeName(fact.entityName)}`;
     const entity = entityMap.get(key);
     if (!entity) throw new Error(`Missing entity after upsert: ${fact.entityType} ${fact.entityName}`);
+    const compatibilityValue =
+      !supportsExtendedFactTypes && fact.factType === "arcana"
+        ? `Arcana: ${fact.value}`
+        : !supportsExtendedFactTypes && fact.factType === "base_level"
+          ? `Base level: ${fact.value}`
+          : fact.value;
     return {
       entity_id: entity.id,
       source_id: sourceId,
-      fact_type: fact.factType,
-      value: fact.value,
+      fact_type:
+        !supportsExtendedFactTypes &&
+        (fact.factType === "arcana" || fact.factType === "base_level")
+          ? "tip"
+          : fact.factType,
+      value: compatibilityValue,
       confidence: fact.confidence,
       notes: fact.notes,
     };
@@ -417,6 +428,39 @@ async function replaceFacts(
     }
   }
   return rows.length;
+}
+
+async function databaseSupportsExtendedFactTypes(
+  sourceId: string,
+  entityMap: Map<string, EntityRow>,
+): Promise<boolean> {
+  const entity = [...entityMap.values()].find((row) => row.type === "persona");
+  if (!entity) throw new Error("Cannot test the facts schema without a Persona entity.");
+
+  const probeValue = `schema-probe-${Date.now()}`;
+  const { data, error } = await supabase
+    .from("facts")
+    .insert({
+      entity_id: entity.id,
+      source_id: sourceId,
+      fact_type: "base_level",
+      value: probeValue,
+      confidence: 1,
+      notes: "Temporary fusion importer schema probe.",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23514" && error.message.includes("facts_type_check")) {
+      return false;
+    }
+    throw error;
+  }
+
+  const { error: deleteError } = await supabase.from("facts").delete().eq("id", data.id);
+  if (deleteError) throw deleteError;
+  return true;
 }
 
 function summaryChunks(
@@ -479,7 +523,21 @@ async function main() {
 
   const source = await upsertSource(sourceInput, sourceInput.title);
   const entityMap = await upsertEntities(facts);
-  const inserted = await replaceFacts(facts, source.id, entityMap);
+  const supportsExtendedFactTypes = await databaseSupportsExtendedFactTypes(
+    source.id,
+    entityMap,
+  );
+  if (!supportsExtendedFactTypes) {
+    console.warn(
+      "The database has the legacy facts_type_check constraint. Arcana and base-level facts will be stored as labeled tips until migration 004 is applied.",
+    );
+  }
+  const inserted = await replaceFacts(
+    facts,
+    source.id,
+    entityMap,
+    supportsExtendedFactTypes,
+  );
 
   if (options.embedSummaries) {
     const chunks = summaryChunks(personas, specialRecipes);

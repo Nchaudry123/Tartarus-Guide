@@ -1357,5 +1357,72 @@
     "hallucinationSensitive": true,
     "maxSources": 2,
     "maxAnswerCharacters": 900
+  },
+  {
+    "id": "social-rank-10-persona-followup",
+    "category": "social-links",
+    "origin": "user_transcript",
+    "question": "what is it",
+    "history": [
+      {
+        "role": "user",
+        "content": "What Persona does Mitsuru's Social Link unlock?"
+      },
+      {
+        "role": "assistant",
+        "content": "Mitsuru's Empress Social Link unlocks Alilat at Rank 10."
+      }
+    ],
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Mitsuru Kirijo", "Empress", "Alilat"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 500
+  },
+  {
+    "id": "social-all-rank-10-personas",
+    "category": "social-links",
+    "origin": "curated",
+    "question": "List every Social Link and the Persona each one unlocks at Rank 10",
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["22 Arcana Social Links", "Alilat", "Cybele", "Metatron", "Messiah"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "fusion-tool-alilat-details",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "What Arcana and base level is Alilat, and what skills does it learn?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Empress", "84"],
+    "mustIncludeAny": ["Diamond Dust", "Inferno", "Repel Fire"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 900
+  },
+  {
+    "id": "fusion-tool-special-recipe",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "How do I fuse Thanatos?",
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Thanatos"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 900
   }
 ]
