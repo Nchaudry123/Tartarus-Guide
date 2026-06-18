@@ -25,6 +25,23 @@ export type BossPrepCard = {
   plan?: string;
 };
 
+export type FusionIngredient = {
+  name: string;
+  owned: boolean;
+};
+
+export type FusionRecipeCard = {
+  ingredients: FusionIngredient[];
+  special: boolean;
+  ready: boolean;
+};
+
+export type FusionWorkshop = {
+  target: string;
+  dlcMode: "none" | "all";
+  recipes: FusionRecipeCard[];
+};
+
 export type ChatRequest = {
   question: string;
   conversationId?: string;
@@ -62,6 +79,7 @@ export type ChatResponse = {
   sections?: ChatSection[];
   tables?: ChatTable[];
   bossPrep?: BossPrepCard;
+  fusionWorkshop?: FusionWorkshop;
   sources: ChatSource[];
   confidence?: number;
   missingInfo?: string;

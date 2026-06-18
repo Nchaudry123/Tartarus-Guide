@@ -2135,6 +2135,23 @@ function structuredFusionResponse(
   const response = withMode({
     answer,
     sections: [],
+    fusionWorkshop: {
+      target,
+      dlcMode,
+      recipes: selected.map((fact) => {
+        const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim());
+        return {
+          ingredients: ingredients.map((name) => ({
+            name,
+            owned: owned.has(name.toLowerCase()),
+          })),
+          special: Boolean(fact.notes?.includes("Special fusion recipe")),
+          ready:
+            ingredients.length > 0 &&
+            ingredients.every((name) => owned.has(name.toLowerCase())),
+        };
+      }),
+    },
     sources: [...sourceMap.values()],
     confidence: Math.max(...selected.map((fact) => fact.confidence)),
     missingInfo: "Fusion results use base Persona levels; your compendium and current levels can affect convenience.",

@@ -210,6 +210,7 @@ function normalizeResponseForSave(response) {
     sections: response.sections || [],
     table: response.table || null,
     bossPrep: response.bossPrep || null,
+    fusionWorkshop: response.fusionWorkshop || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode || "rag",
     companion: response.companion
@@ -486,6 +487,61 @@ function renderBossPrepCard(card) {
   `;
 }
 
+function renderFusionWorkshop(workshop) {
+  if (!workshop?.target || !Array.isArray(workshop.recipes) || !workshop.recipes.length) {
+    return "";
+  }
+  const modeLabel = workshop.dlcMode === "all" ? "Persona DLC enabled" : "Base game";
+  const recipes = workshop.recipes
+    .slice(0, 2)
+    .map((recipe, index) => {
+      const ingredients = (recipe.ingredients || [])
+        .map(
+          (ingredient) => `
+            <li class="${ingredient.owned ? "is-owned" : "is-missing"}">
+              <span class="fusion-owned-mark" aria-hidden="true">${ingredient.owned ? "✓" : "!"}</span>
+              <div>
+                <strong>${escapeHtml(ingredient.name)}</strong>
+                <small>${ingredient.owned ? "In Player Memory" : "Missing ingredient"}</small>
+              </div>
+              ${
+                ingredient.owned
+                  ? ""
+                  : `<button type="button" data-prompt="How do I fuse ${escapeHtml(ingredient.name)}?">Build this first</button>`
+              }
+            </li>
+          `,
+        )
+        .join("");
+      const pair = (recipe.ingredients || []).map((ingredient) => ingredient.name).join(" and ");
+      return `
+        <article class="fusion-recipe-card ${recipe.ready ? "is-ready" : ""}">
+          <header>
+            <span>Route ${index + 1}</span>
+            <strong>${recipe.ready ? "Ready to fuse" : recipe.special ? "Special fusion" : "Recipe"}</strong>
+          </header>
+          <ul>${ingredients}</ul>
+          <button class="fusion-route-action" type="button" data-prompt="I have ${escapeHtml(pair)}">
+            ${recipe.ready ? "Use this route" : "I have this pair"}
+          </button>
+        </article>
+      `;
+    })
+    .join("");
+  return `
+    <aside class="fusion-workshop" aria-label="${escapeHtml(workshop.target)} fusion workshop">
+      <div class="fusion-workshop-head">
+        <div>
+          <span>Fusion Workshop</span>
+          <h3>${escapeHtml(workshop.target)}</h3>
+        </div>
+        <small>${escapeHtml(modeLabel)}</small>
+      </div>
+      <div class="fusion-recipe-grid">${recipes}</div>
+    </aside>
+  `;
+}
+
 function motionEnabled() {
   return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -653,6 +709,7 @@ function rememberExactAnswer(question, response) {
     answer: response.answer,
     sections: response.sections || [],
     table: response.table || null,
+    fusionWorkshop: response.fusionWorkshop || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode,
     companion: response.companion
@@ -759,6 +816,7 @@ async function addAssistantMessage(response, options = {}) {
         .join("")}</tbody></table></div>`
     : "";
   const bossPrep = renderBossPrepCard(response.bossPrep);
+  const fusionWorkshop = renderFusionWorkshop(response.fusionWorkshop);
   const sourceLinks = (response.sources || [])
     .map(
       (item) =>
@@ -790,6 +848,7 @@ async function addAssistantMessage(response, options = {}) {
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
         ${bossPrep}
+        ${fusionWorkshop}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -855,6 +914,7 @@ function normalizeApiResponse(data) {
     sections: (data.sections || []).map((section) => [section.title, section.content]),
     table: data.tables?.[0]?.rows,
     bossPrep: data.bossPrep || null,
+    fusionWorkshop: data.fusionWorkshop || null,
     missing: data.missingInfo || "No missing information reported.",
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,

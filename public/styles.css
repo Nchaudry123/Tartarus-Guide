@@ -699,6 +699,146 @@ textarea:focus-visible {
   font-weight: 820;
   line-height: 1.35;
 }
+.fusion-workshop {
+  margin-top: 1rem;
+  border: 1px solid rgba(85,247,255,.5);
+  background:
+    linear-gradient(145deg, rgba(7,92,255,.16), transparent 52%),
+    rgba(2,7,32,.64);
+  box-shadow: inset 4px 0 0 var(--cyan), 0 14px 38px rgba(0,0,0,.2);
+}
+.fusion-workshop-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  border-bottom: 1px solid rgba(85,247,255,.24);
+}
+.fusion-workshop-head span,
+.fusion-recipe-card header span {
+  color: var(--cyan);
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: .7rem;
+  font-style: italic;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.fusion-workshop-head h3 {
+  margin: .12rem 0 0;
+  color: var(--ice);
+  font-size: 1.2rem;
+  font-weight: 950;
+}
+.fusion-workshop-head small {
+  color: rgba(239,250,255,.72);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.fusion-recipe-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+  padding: .85rem;
+}
+.fusion-recipe-card {
+  min-width: 0;
+  border: 1px solid rgba(85,247,255,.28);
+  background: rgba(5,17,67,.78);
+}
+.fusion-recipe-card.is-ready {
+  border-color: rgba(85,247,255,.8);
+  box-shadow: 0 0 20px rgba(85,247,255,.12);
+}
+.fusion-recipe-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: .75rem;
+  padding: .65rem .72rem;
+  border-bottom: 1px solid rgba(85,247,255,.18);
+}
+.fusion-recipe-card header strong {
+  color: var(--ice);
+  font-size: .78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+.fusion-recipe-card ul {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: rgba(85,247,255,.12);
+}
+.fusion-recipe-card li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .55rem;
+  min-width: 0;
+  padding: .7rem;
+  background: rgba(2,7,32,.78);
+}
+.fusion-owned-mark {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: #ffbe4f;
+  font-size: .74rem;
+  font-weight: 950;
+}
+.fusion-recipe-card li.is-owned .fusion-owned-mark {
+  color: var(--cyan);
+}
+.fusion-recipe-card li div {
+  min-width: 0;
+}
+.fusion-recipe-card li strong,
+.fusion-recipe-card li small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.fusion-recipe-card li strong {
+  color: var(--ice);
+  font-size: .9rem;
+}
+.fusion-recipe-card li small {
+  margin-top: .08rem;
+  color: rgba(239,250,255,.58);
+  font-size: .68rem;
+  font-weight: 800;
+}
+.fusion-recipe-card li button,
+.fusion-route-action {
+  border: 1px solid rgba(85,247,255,.55);
+  color: var(--ice);
+  background: rgba(22,103,255,.24);
+  font: inherit;
+  font-size: .68rem;
+  font-weight: 950;
+  cursor: pointer;
+}
+.fusion-recipe-card li button {
+  padding: .45rem .52rem;
+}
+.fusion-route-action {
+  width: calc(100% - 1.4rem);
+  margin: .7rem;
+  padding: .58rem .65rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.fusion-recipe-card li button:hover,
+.fusion-route-action:hover {
+  color: var(--navy);
+  background: var(--cyan);
+}
 .section-grid section {
   min-width: 0;
   padding: 0;
@@ -1346,6 +1486,21 @@ footer span {
   }
   .boss-prep-head strong {
     text-align: left;
+  }
+  .fusion-workshop-head {
+    align-items: start;
+    flex-direction: column;
+    gap: .25rem;
+  }
+  .fusion-recipe-grid {
+    grid-template-columns: 1fr;
+  }
+  .fusion-recipe-card li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .fusion-recipe-card li button {
+    grid-column: 2;
+    justify-self: start;
   }
   footer {
     grid-template-columns: 1fr;
