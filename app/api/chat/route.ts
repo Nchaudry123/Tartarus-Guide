@@ -238,7 +238,7 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(how (?:do|can) i beat|strategy for|fight against|prepare for)\b/.test(text)) return "Boss Help";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
   if (
-    /\b(fusion|fuse|persona|skill inherit|inheritance|recipe|special fusion|compendium)\b/.test(text) ||
+    /\b(fusions?|fuse|persona|skill inherit|inheritance|recipes?|special fusion|compendium)\b/.test(text) ||
     /\b(worth (?:getting|fusing|using)|good to (?:get|fuse|use)|should i (?:get|fuse|use)|is .{1,40} (?:good|worth it|viable)|best (?:magic|physical|support|healing) option)\b/.test(text)
   ) {
     return "Fusion Advice";
@@ -436,12 +436,57 @@ function socialLinkStartResponse(
   return response;
 }
 
+function asksForFusionRoute(question: string): boolean {
+  return (
+    /\b(?:how (?:do|can) i fuse|fusion recipes?|possible fusions?|ways? to fuse|make|create)\b/i.test(
+      question,
+    ) ||
+    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(
+      question,
+    )
+  );
+}
+
+function fusionDlcClarificationResponse(
+  question: string,
+  profile: PlayerProfile,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  if (!asksForFusionRoute(question) || profile.dlcOwnership) return null;
+  const response = withMode({
+    answer:
+      "Before I calculate the recipes: do you have the Persona DLC enabled? DLC Personas change the fusion chart, so the same ingredients can produce a different result.",
+    sections: [],
+    sources: [fusionToolSource],
+    confidence: 0.99,
+    missingInfo: "Set Persona DLC to none or all.",
+    companion: {
+      intent: "Fusion Advice",
+      profileUpdates,
+      followUpQuestions: ["Do you use all Persona DLC, or are you playing with no Persona DLC?"],
+      suggestedPrompts: ["No Persona DLC", "I have all Persona DLC"],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 0,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The guide requested DLC configuration before selecting a fusion-chart result.",
+      ],
+    };
+  }
+  return response;
+}
+
 function isShortContextReply(question: string): boolean {
   const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
   const wordCount = text.split(/\s+/).filter(Boolean).length;
   return (
     (wordCount <= 5 &&
-      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|what is it|what are they|which one|who is it|tell me about it|how do i fuse it|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
+      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|no persona dlc|base game only|i have all persona dlc|all persona dlc|what is it|what are they|which one|who is it|tell me about it|how do i fuse it|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
         text,
       ) ||
         /^(what about|how about|and|but)\b/.test(text))) ||
@@ -930,6 +975,21 @@ function extractProfileUpdates(question: string): PlayerProfile {
 
   const ownedPersonasMatch = question.match(/\b(?:i have|my personas are|owned personas?|personas?:)\s+([a-z0-9,' /+-]{3,140})/i);
   if (ownedPersonasMatch) updates.ownedPersonas = splitProfileList(ownedPersonasMatch[1], 12).map(titleCase);
+  if (
+    /\b(?:no|without|dont have|don't have|do not have)\s+(?:the\s+)?(?:persona\s+)?dlc\b/i.test(
+      question,
+    ) ||
+    /\bbase game only\b/i.test(question)
+  ) {
+    updates.dlcOwnership = "none";
+  } else if (
+    /\b(?:have|own|using|with)\s+(?:all\s+)?(?:the\s+)?(?:persona\s+)?dlc\b/i.test(
+      question,
+    ) ||
+    /\ball persona dlc\b/i.test(question)
+  ) {
+    updates.dlcOwnership = "all";
+  }
 
   const socialStats: NonNullable<PlayerProfile["socialStats"]> = {};
   for (const stat of ["academics", "charm", "courage"] as const) {
@@ -956,6 +1016,7 @@ function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): 
     ownedPersonas: updates.ownedPersonas?.length
       ? uniqueStrings([...(base?.ownedPersonas ?? []), ...updates.ownedPersonas]).slice(0, 24)
       : base?.ownedPersonas,
+    dlcOwnership: updates.dlcOwnership ?? base?.dlcOwnership,
     socialStats: Object.keys(socialStats).length ? socialStats : undefined,
   };
 }
@@ -1050,6 +1111,9 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     mergedProfile.tartarusBlock ? `Tartarus block: ${mergedProfile.tartarusBlock}` : undefined,
     mergedProfile.tartarusFloor ? `Tartarus floor: ${mergedProfile.tartarusFloor}` : undefined,
     mergedProfile.ownedPersonas?.length ? `owned Personas: ${mergedProfile.ownedPersonas.join(", ")}` : undefined,
+    mergedProfile.dlcOwnership
+      ? `Persona DLC: ${mergedProfile.dlcOwnership === "all" ? "all enabled" : "none"}`
+      : undefined,
     mergedProfile.socialStats
       ? `social stats: ${Object.entries(mergedProfile.socialStats)
           .map(([key, value]) => `${key} ${value}`)
@@ -1442,6 +1506,7 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   const activeParty = asStringArray(raw.activeParty, 8);
   const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
   const ownedPersonas = asStringArray(raw.ownedPersonas, 24);
+  const dlcOwnership = asString(raw.dlcOwnership);
   const rawSocialStats = raw.socialStats && typeof raw.socialStats === "object" ? (raw.socialStats as Record<string, unknown>) : {};
   const socialStats: NonNullable<PlayerProfile["socialStats"]> = {};
   for (const stat of ["academics", "charm", "courage"] as const) {
@@ -1465,6 +1530,9 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   if (activeParty.length) updates.activeParty = activeParty;
   if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
   if (ownedPersonas.length) updates.ownedPersonas = ownedPersonas;
+  if (dlcOwnership === "none" || dlcOwnership === "all") {
+    updates.dlcOwnership = dlcOwnership;
+  }
   if (Object.keys(socialStats).length) updates.socialStats = socialStats;
 
   return updates;
@@ -1938,11 +2006,16 @@ function structuredFusionResponse(
   companion: NonNullable<ChatResponse["companion"]>,
   debug: boolean,
   queries: string[],
+  profile: PlayerProfile,
 ): ChatResponse | null {
   const normalizedQuestion = question.toLowerCase();
-  const recipeFacts = facts.filter(
-    (fact) => fact.fact_type === "fusion_recipe" && isFusionToolUrl(fact.source.url),
-  );
+  const dlcMode = profile.dlcOwnership;
+  if (!dlcMode) return null;
+  const recipeFacts = facts.filter((fact) => {
+    if (fact.fact_type !== "fusion_recipe" || !isFusionToolUrl(fact.source.url)) return false;
+    const mode = fact.notes?.match(/\bDLC mode:\s*(none|all|any)\b/i)?.[1]?.toLowerCase();
+    return !mode || mode === "any" || mode === dlcMode;
+  });
   if (!recipeFacts.length) return null;
 
   const asksForResult =
@@ -2013,20 +2086,34 @@ function structuredFusionResponse(
     }
   }
 
-  const subject = likelyExactSubject(question);
-  if (!subject || !/\b(fuse|fusion|recipe|make)\b/i.test(question)) return null;
-  const targetRecipes = recipeFacts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
+  const subject =
+    likelyExactSubject(question) ??
+    recipeFacts
+      .map((fact) => fact.entity.name)
+      .sort((a, b) => b.length - a.length)
+      .find((name) => normalizedQuestion.includes(name.toLowerCase())) ??
+    null;
+  if (!subject || !/\b(fuse|fusions?|recipes?|make)\b/i.test(question)) return null;
+  const targetRecipes = recipeFacts.filter(
+    (fact) => fact.entity.name.toLowerCase() === subject.toLowerCase(),
+  );
   if (!targetRecipes.length) return null;
 
+  const owned = new Set((profile.ownedPersonas ?? []).map((name) => name.toLowerCase()));
+  const ingredientOwnership = (fact: (typeof targetRecipes)[number]) =>
+    fact.value
+      .split(/\s*\+\s*/)
+      .filter((ingredient) => owned.has(ingredient.trim().toLowerCase())).length;
   const selected = targetRecipes
     .sort(
       (a, b) =>
+        ingredientOwnership(b) - ingredientOwnership(a) ||
         Number(Boolean(b.notes?.includes("Special fusion recipe"))) -
           Number(Boolean(a.notes?.includes("Special fusion recipe"))) ||
         b.confidence - a.confidence ||
         a.value.localeCompare(b.value),
     )
-    .slice(0, 4);
+    .slice(0, 2);
   const target = selected[0].entity.name;
   const sourceMap = new Map<string, ChatResponse["sources"][number]>();
   for (const fact of selected) {
@@ -2036,19 +2123,27 @@ function structuredFusionResponse(
       domain: fact.source.domain,
     });
   }
+  const completeRecipe = selected.find((fact) => {
+    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim().toLowerCase());
+    return ingredients.length > 0 && ingredients.every((name) => owned.has(name));
+  });
+  const answer = completeRecipe
+    ? `You already own the ingredients for ${target}: fuse ${completeRecipe.value}.`
+    : selected.length > 1
+      ? `For your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart, two routes to ${target} are ${selected[0].value} or ${selected[1].value}. Do you have either pair?`
+      : `${target} uses ${selected[0].value} on your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart. Do you have those ingredients?`;
   const response = withMode({
-    answer: selected[0].notes?.includes("Special fusion recipe")
-      ? `${target} uses the fixed special recipe ${selected[0].value}.`
-      : `You can fuse ${target} with ${selected[0].value}.`,
-    sections:
-      selected.length > 1
-        ? [{ title: "Other Recipes", content: selected.slice(1).map((fact) => fact.value).join("\n") }]
-        : [],
+    answer,
+    sections: [],
     sources: [...sourceMap.values()],
     confidence: Math.max(...selected.map((fact) => fact.confidence)),
     missingInfo: "Fusion results use base Persona levels; your compendium and current levels can affect convenience.",
     companion,
   }, "rag");
+  response.companion = {
+    ...response.companion,
+    suggestedPrompts: selected.map((fact) => `I have ${fact.value.replace(" + ", " and ")}`),
+  };
   if (debug) {
     response.diagnostics = {
       retrievalQueries: queries,
@@ -3539,6 +3634,7 @@ Return only JSON:
     "tartarusFloor": "string",
     "currentSocialLinks": ["string"],
     "ownedPersonas": ["string"],
+    "dlcOwnership": "none | all",
     "socialStats": {
       "academics": "string",
       "charm": "string",
@@ -3563,7 +3659,7 @@ Routing rules:
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
 - Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
 - retrievalQuery should be a compact search query with useful player details, not the entire chat transcript.
-- Extract durable profile details when the user volunteers them: date, month, level, difficulty, party, owned Personas, Tartarus block/floor, Social Link focus, social stats, current boss/enemy, current goal, and spoiler preference.
+- Extract durable profile details when the user volunteers them: date, month, level, difficulty, party, owned Personas, Persona DLC ownership (none or all), Tartarus block/floor, Social Link focus, social stats, current boss/enemy, current goal, and spoiler preference.
 - retrievalQueries should decompose the need into focused searches. Put the exact named entity first, then mechanics, location/date, or strategy searches only when useful.
 - Do not search for generic words alone. Preserve exact enemy, boss, Persona, Social Link, request, floor, item, and date names from the user.
 - For exact affinities, include one query with the exact entity plus "weakness resistance affinity".
@@ -3820,6 +3916,7 @@ function deterministicControllerDecision(
       profile.difficulty,
       profile.playstyle,
       profile.ownedPersonas?.length ? `owned personas ${profile.ownedPersonas.join(" ")}` : undefined,
+      profile.dlcOwnership ? `Persona DLC ${profile.dlcOwnership}` : undefined,
     ]
       .filter(Boolean)
       .join(" ");
@@ -4006,6 +4103,13 @@ async function directRagResponse(
     return sillyQuestionResponse(question, extractProfileUpdates(question));
   }
   const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
+  const fusionDlcClarification = fusionDlcClarificationResponse(
+    conversation.analysisQuestion,
+    analysis.profile,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (fusionDlcClarification) return fusionDlcClarification;
   const clarificationRecovery = rejectedClarificationResponse(question, conversation, analysis);
   if (clarificationRecovery) return clarificationRecovery;
   if (isCasualMessage(question) && !conversation.previousTopic) {
@@ -4251,6 +4355,7 @@ async function directRagResponse(
       companion,
       debug,
       context.queries,
+      controllerProfile,
     );
     if (fusionResponse) return fusionResponse;
     const personaProfile = structuredPersonaProfileResponse(

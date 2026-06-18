@@ -23,6 +23,7 @@ const PlayerProfileSchema = z
     tartarusFloor: shortText.optional(),
     currentSocialLinks: z.array(shortText).max(24).optional(),
     ownedPersonas: z.array(shortText).max(24).optional(),
+    dlcOwnership: z.enum(["none", "all"]).optional(),
     socialStats: SocialStatsSchema.optional(),
     playstyle: shortText.optional(),
     currentGoal: z.string().trim().max(500).optional(),

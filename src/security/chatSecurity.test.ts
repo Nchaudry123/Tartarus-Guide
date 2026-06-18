@@ -46,6 +46,7 @@ test("chat requests accept a bounded conversation payload", () => {
       tartarusBlock: "Arqa",
       tartarusFloor: "47F",
       ownedPersonas: ["Jack Frost", "Oberon"],
+      dlcOwnership: "none",
       socialStats: {
         academics: "3",
         charm: "2",
