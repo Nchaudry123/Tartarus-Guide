@@ -96,6 +96,11 @@
     "question": "How can I fuse Jack Frost?",
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": true,
+    "mustIncludeAll": ["Persona DLC", "different result"],
+    "mustIncludeAny": ["all Persona DLC", "no Persona DLC"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
     "forbidUnsupportedExactness": true
   },
   {
@@ -1030,6 +1035,9 @@
     "category": "fusion",
     "origin": "curated",
     "question": "Does Orpheus plus Pixie fuse into Satan?",
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": false,
     "mustIncludeAny": ["could not verify", "will not replace"],
@@ -1416,6 +1424,9 @@
     "category": "fusion",
     "origin": "curated",
     "question": "How do I fuse Thanatos?",
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
     "expectedIntent": "Fusion Advice",
     "shouldUseSources": true,
     "mustIncludeAll": ["Thanatos"],
@@ -1424,5 +1435,91 @@
     "hallucinationSensitive": true,
     "maxSources": 1,
     "maxAnswerCharacters": 900
+  },
+  {
+    "id": "fusion-tool-two-base-recipes",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "Show me possible fusions for Alilat",
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["base-game", "two routes", "Do you have either pair"],
+    "mustNotInclude": ["check the fusion chart", "consult for the precise combination"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "fusion-tool-two-dlc-recipes",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "Show me possible fusions for Alilat",
+    "playerProfile": {
+      "dlcOwnership": "all"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["DLC-enabled", "two routes", "Do you have either pair"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "fusion-tool-owned-pair-followup",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "I have Ananta and Asura",
+    "history": [
+      {
+        "role": "user",
+        "content": "Show me possible fusions for Alilat"
+      },
+      {
+        "role": "assistant",
+        "content": "Two routes are Ananta + Asura or Asura + Futsunushi. Do you have either pair?"
+      }
+    ],
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["already own", "Ananta + Asura", "Alilat"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 600
+  },
+  {
+    "id": "fusion-tool-dlc-answer-resumes-route",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "No Persona DLC",
+    "history": [
+      {
+        "role": "user",
+        "content": "How can I fuse Jack Frost?"
+      },
+      {
+        "role": "assistant",
+        "content": "Do you use all Persona DLC, or are you playing with no Persona DLC?"
+      }
+    ],
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["base-game", "Jack Frost", "Do you have either pair"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
   }
 ]

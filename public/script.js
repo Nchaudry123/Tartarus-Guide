@@ -378,6 +378,11 @@ function renderMemorySummary() {
         ? "Progress-aware"
         : "Spoiler-safe",
     playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
+    playerProfile.dlcOwnership === "all"
+      ? "Persona DLC on"
+      : playerProfile.dlcOwnership === "none"
+        ? "No Persona DLC"
+        : "",
     playerProfile.currentGoal ? `Goal: ${playerProfile.currentGoal}` : "",
   ].filter(Boolean);
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
@@ -397,6 +402,7 @@ function populateMemoryForm() {
   fields.spoilerPreference.value = playerProfile.spoilerPreference || "strict";
   fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
   fields.ownedPersonas.value = playerProfile.ownedPersonas?.join(", ") || "";
+  fields.dlcOwnership.value = playerProfile.dlcOwnership || "";
   fields.academics.value = playerProfile.socialStats?.academics || "";
   fields.charm.value = playerProfile.socialStats?.charm || "";
   fields.courage.value = playerProfile.socialStats?.courage || "";
@@ -1195,6 +1201,7 @@ document.addEventListener("submit", (event) => {
       .map((name) => name.trim())
       .filter(Boolean)
       .slice(0, 24),
+    dlcOwnership: data.get("dlcOwnership"),
     socialStats: {
       academics: data.get("academics"),
       charm: data.get("charm"),

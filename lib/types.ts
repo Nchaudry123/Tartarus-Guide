@@ -46,6 +46,7 @@ export type PlayerProfile = {
   tartarusFloor?: string;
   currentSocialLinks?: string[];
   ownedPersonas?: string[];
+  dlcOwnership?: "none" | "all";
   socialStats?: {
     academics?: string;
     charm?: string;

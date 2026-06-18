@@ -209,18 +209,22 @@ function buildFacts(
 ): PendingFact[] {
   const facts: PendingFact[] = [];
   const specialNames = new Set(Object.keys(specialRecipes));
-  const resultNamesByRace = new Map<string, string[]>();
-
-  for (const [name, persona] of Object.entries(personas)) {
-    if (!specialNames.has(name)) {
+  const dlcGroup = unlockGroups.find((group) => group.category === "Downloadable Content");
+  const dlcNames = new Set(Object.keys(dlcGroup?.conditions ?? {}));
+  const buildResultNamesByRace = (availableNames: string[]) => {
+    const resultNamesByRace = new Map<string, string[]>();
+    for (const name of availableNames) {
+      const persona = personas[name];
+      if (!persona || specialNames.has(name)) continue;
       const names = resultNamesByRace.get(persona.race) ?? [];
       names.push(name);
       resultNamesByRace.set(persona.race, names);
     }
-  }
-  for (const names of resultNamesByRace.values()) {
-    names.sort((a, b) => personas[a].lvl - personas[b].lvl || a.localeCompare(b));
-  }
+    for (const names of resultNamesByRace.values()) {
+      names.sort((a, b) => personas[a].lvl - personas[b].lvl || a.localeCompare(b));
+    }
+    return resultNamesByRace;
+  };
 
   const datasetNote = `Structured data from the Persona 3 Reload fusion calculator, revision ${revision}.`;
   for (const [name, persona] of Object.entries(personas)) {
@@ -308,37 +312,76 @@ function buildFacts(
 
   const specialPairResults = new Map<string, string>();
   for (const [result, ingredients] of Object.entries(specialRecipes)) {
+    const usesDlc = dlcNames.has(result) || ingredients.some((name) => dlcNames.has(name));
     addFact(
       facts,
       result,
       "persona",
       "fusion_recipe",
       ingredients.join(" + "),
-      `Special fusion recipe. ${datasetNote}`,
+      `Special fusion recipe. DLC mode: ${usesDlc ? "all" : "any"}. ${datasetNote}`,
     );
     if (ingredients.length === 2) {
       specialPairResults.set(pairKey(ingredients[0], ingredients[1]), result);
     }
   }
 
-  const names = Object.keys(personas);
-  for (let index1 = 0; index1 < names.length; index1 += 1) {
-    for (let index2 = index1 + 1; index2 < names.length; index2 += 1) {
-      const name1 = names[index1];
-      const name2 = names[index2];
-      if (specialPairResults.has(pairKey(name1, name2))) continue;
-      const result = normalFusionResult(name1, name2, personas, chart, resultNamesByRace);
-      if (result) {
-        addFact(
-          facts,
-          result,
-          "persona",
-          "fusion_recipe",
-          `${name1} + ${name2}`,
-          `Normal fusion recipe computed from the source fusion chart. ${datasetNote}`,
+  const allNames = Object.keys(personas);
+  const baseNames = allNames.filter((name) => !dlcNames.has(name));
+  const configurations = [
+    {
+      mode: "none",
+      names: baseNames,
+      resultNamesByRace: buildResultNamesByRace(baseNames),
+    },
+    {
+      mode: "all",
+      names: allNames,
+      resultNamesByRace: buildResultNamesByRace(allNames),
+    },
+  ] as const;
+  const normalRecipes = new Map<
+    string,
+    { result: string; ingredients: string; modes: Set<string> }
+  >();
+
+  for (const configuration of configurations) {
+    for (let index1 = 0; index1 < configuration.names.length; index1 += 1) {
+      for (let index2 = index1 + 1; index2 < configuration.names.length; index2 += 1) {
+        const name1 = configuration.names[index1];
+        const name2 = configuration.names[index2];
+        if (specialPairResults.has(pairKey(name1, name2))) continue;
+        const result = normalFusionResult(
+          name1,
+          name2,
+          personas,
+          chart,
+          configuration.resultNamesByRace,
         );
+        if (!result) continue;
+        const ingredients = `${name1} + ${name2}`;
+        const key = `${result}\u0000${ingredients}`;
+        const recipe = normalRecipes.get(key) ?? {
+          result,
+          ingredients,
+          modes: new Set<string>(),
+        };
+        recipe.modes.add(configuration.mode);
+        normalRecipes.set(key, recipe);
       }
     }
+  }
+
+  for (const recipe of normalRecipes.values()) {
+    const mode = recipe.modes.size === 2 ? "any" : [...recipe.modes][0];
+    addFact(
+      facts,
+      recipe.result,
+      "persona",
+      "fusion_recipe",
+      recipe.ingredients,
+      `Normal fusion recipe computed from the source fusion chart. DLC mode: ${mode}. ${datasetNote}`,
+    );
   }
 
   const unique = new Map<string, PendingFact>();
