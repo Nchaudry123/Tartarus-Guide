@@ -264,7 +264,10 @@ export function asksForAllSocialLinkStarts(question: string): boolean {
 }
 
 export function socialLinkStartForQuestion(question: string): SocialLinkStart | null {
-  if (!/\b(?:start|unlock|available|availability|begin|earliest|when)\b/i.test(question)) {
+  const explicitSocialLink = /\b(?:social links?|s-?links?|arcana)\b/i.test(question);
+  const asksForStartAction =
+    /\b(?:start|unlock|available|availability|begin|earliest)\b/i.test(question);
+  if (!asksForStartAction && !(explicitSocialLink && /\bwhen\b/i.test(question))) {
     return null;
   }
   if (asksForAllSocialLinkStarts(question)) return null;
@@ -279,7 +282,6 @@ export function socialLinkStartForQuestion(question: string): SocialLinkStart | 
     if (dateMatches.length === 1) return dateMatches[0];
   }
 
-  const explicitSocialLink = /\b(?:social links?|s-?links?|arcana)\b/i.test(question);
   for (const record of socialLinkStarts) {
     const matchedAlias = record.aliases.find((alias) => includesAlias(question, alias));
     if (!matchedAlias) continue;

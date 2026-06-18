@@ -64,3 +64,12 @@ test("detects a wrong date for a single Social Link answer", () => {
     [],
   );
 });
+
+test("does not treat ordinary uses of when as a Social Link start request", () => {
+  assert.equal(
+    socialLinkStartForQuestion(
+      "My Yukari party keeps running out of SP even when I avoid unnecessary fights.",
+    ),
+    null,
+  );
+});
