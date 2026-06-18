@@ -1521,5 +1521,93 @@
     "hallucinationSensitive": true,
     "maxSources": 1,
     "maxAnswerCharacters": 700
+  },
+  {
+    "id": "fusion-tool-natural-dlc-answer-resumes-route",
+    "category": "fusion",
+    "origin": "user_transcript",
+    "question": "I don't have any Persona DLC installed, so please use the base game recipes.",
+    "history": [
+      {
+        "role": "user",
+        "content": "How can I fuse Loki?"
+      },
+      {
+        "role": "assistant",
+        "content": "Before I calculate the recipes: do you have the Persona DLC enabled?"
+      }
+    ],
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["base-game", "Loki", "Do you have either pair"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "conversation-long-answer-keeps-active-task",
+    "category": "conversation",
+    "origin": "curated",
+    "question": "The main problem is that I keep running out of SP halfway through Tartarus, even when I avoid unnecessary fights.",
+    "history": [
+      {
+        "role": "user",
+        "content": "My party feels weak. I use Yukari, Junpei, and Akihiko."
+      },
+      {
+        "role": "assistant",
+        "content": "What feels weakest right now: damage, survivability, or running out of SP?"
+      }
+    ],
+    "playerProfile": {
+      "currentLevel": "24",
+      "activeParty": ["Yukari", "Junpei", "Akihiko"]
+    },
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["SP"],
+    "mustIncludeAny": ["Tartarus", "items", "Persona"],
+    "mustNotInclude": ["Are you stuck on a boss"],
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "fusion-conversation-second-route-reference",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "I have the second pair, let's use that one.",
+    "history": [
+      {
+        "role": "user",
+        "content": "How can I fuse Alilat?"
+      },
+      {
+        "role": "assistant",
+        "content": "Do you use all Persona DLC, or are you playing with no Persona DLC?"
+      },
+      {
+        "role": "user",
+        "content": "No Persona DLC"
+      },
+      {
+        "role": "assistant",
+        "content": "For your base-game fusion chart, two routes to Alilat are Ananta + Asura or Asura + Futsunushi. Do you have either pair?"
+      }
+    ],
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Asura", "Futsunushi", "Alilat"],
+    "mustNotInclude": ["Tell me the exact Persona name", "does not contain a confirmed match"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
   }
 ]

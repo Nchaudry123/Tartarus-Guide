@@ -497,6 +497,50 @@ function isShortContextReply(question: string): boolean {
   );
 }
 
+function assistantInvitesReply(message: string | undefined): boolean {
+  if (!message) return false;
+  return (
+    message.includes("?") ||
+    /\b(?:tell me|share|choose|pick|select|do you have|are you|which one|what is|what are|send me|let me know)\b/i.test(
+      message,
+    )
+  );
+}
+
+function isContextualConversationReply(
+  question: string,
+  previousAssistant: string | undefined,
+): boolean {
+  if (isShortContextReply(question)) return true;
+  const normalized = question.trim();
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const explicitNewQuestion =
+    /^(?:how|what|which|where|when|who|why|can you|could you|would you|should i|is there|are there|does|do)\b/i.test(
+      normalized,
+    ) && /[?]$/.test(normalized);
+  const refersBack =
+    /\b(?:it|that|those|them|this|these|either|neither|both|the first|the second|other options?|different routes?|none of those|same one|previous answer)\b/i.test(
+      normalized,
+    );
+  return (
+    refersBack ||
+    (assistantInvitesReply(previousAssistant) && wordCount <= 40 && !explicitNewQuestion)
+  );
+}
+
+function resolveFusionRouteReference(
+  question: string,
+  previousAssistant: string | undefined,
+): string {
+  const ordinal = question.match(/\b(first|second)\s+(?:pair|route|one)\b/i)?.[1]?.toLowerCase();
+  if (!ordinal || !previousAssistant) return question;
+  const routes = previousAssistant.match(
+    /\btwo routes to\s+.+?\s+are\s+(.+?)\s+or\s+(.+?)\.\s*do you have either pair/i,
+  );
+  const selected = ordinal === "first" ? routes?.[1] : routes?.[2];
+  return selected ? `I have ${selected.replace(/\s*\+\s*/g, " and ")}` : question;
+}
+
 function normalizeConversationHistory(
   question: string,
   history: ChatRequest["history"] = [],
@@ -506,7 +550,7 @@ function normalizeConversationHistory(
       (message): message is NonNullable<ChatRequest["history"]>[number] =>
         Boolean(message?.content?.trim()) && (message.role === "user" || message.role === "assistant"),
     )
-    .slice(-10);
+    .slice(-12);
   const last = normalized.at(-1);
   if (
     last?.role === "user" &&
@@ -526,12 +570,17 @@ function contextualizeQuestion(
   previousAssistant?: string;
   shortReply: boolean;
 } {
-  const shortReply = isShortContextReply(question);
-  if (!shortReply) return { analysisQuestion: question, shortReply: false };
-
   const previousAssistant = [...history]
     .reverse()
     .find((message) => message.role === "assistant")?.content;
+  const shortReply = isContextualConversationReply(question, previousAssistant);
+  if (!shortReply) {
+    return {
+      analysisQuestion: question,
+      previousAssistant,
+      shortReply: false,
+    };
+  }
   const previousTopic = [...history]
     .reverse()
     .find(
@@ -542,13 +591,9 @@ function contextualizeQuestion(
     )?.content;
 
   if (!previousTopic) return { analysisQuestion: question, shortReply: true };
-  const isBareAnswer = /^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|maybe)$/i.test(
-    question.trim().replace(/[.!?]+$/g, ""),
-  );
+  const resolvedReply = resolveFusionRouteReference(question, previousAssistant);
   return {
-    analysisQuestion: isBareAnswer
-      ? previousTopic
-      : `${previousTopic}\nThe user's follow-up message is: ${question}`,
+    analysisQuestion: `${previousTopic}\nThe user's follow-up message is: ${resolvedReply}`,
     previousTopic,
     previousAssistant,
     shortReply: true,
@@ -973,7 +1018,13 @@ function extractProfileUpdates(question: string): PlayerProfile {
     question.match(/\b(\d{1,3})f\b/i);
   if (floorMatch) updates.tartarusFloor = `${floorMatch[1]}F`;
 
-  const ownedPersonasMatch = question.match(/\b(?:i have|my personas are|owned personas?|personas?:)\s+([a-z0-9,' /+-]{3,140})/i);
+  const ownedPersonasMatch = /\b(?:first|second|either|neither|those|this)\s+(?:pair|route)\b/i.test(
+    question,
+  )
+    ? null
+    : question.match(
+        /\b(?:i have|my personas are|owned personas?|personas?:)\s+([a-z0-9,' /+-]{3,140})/i,
+      );
   if (ownedPersonasMatch) updates.ownedPersonas = splitProfileList(ownedPersonasMatch[1], 12).map(titleCase);
   if (
     /\b(?:no|without|dont have|don't have|do not have)\s+(?:the\s+)?(?:persona\s+)?dlc\b/i.test(
@@ -4566,7 +4617,7 @@ ${partyRoleFactsForPrompt()}`;
 
   const profileForPrompt = controllerProfile;
   const historyForPrompt = normalizedHistory
-    .slice(-6)
+    .slice(-10)
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
