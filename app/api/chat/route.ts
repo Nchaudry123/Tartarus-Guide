@@ -67,6 +67,10 @@ import {
   normalizeConversationHistory,
   resolveConversationContext,
 } from "../../../src/quality/conversationContext";
+import {
+  isFusionRecipeRequest,
+  isPersonaKnowledgeRequest,
+} from "../../../src/quality/personaRouting";
 
 export const runtime = "nodejs";
 
@@ -246,8 +250,8 @@ function detectIntent(question: string): CompanionIntent {
   if (/\b(how (?:do|can) i beat|strategy for|fight against|prepare for)\b/.test(text)) return "Boss Help";
   if (/\b(boss|priestess|emperor|empress|hierophant|lovers|chariot|justice|hermit|fortune|strength|hanged|nyx|full moon)\b/.test(text)) return "Boss Help";
   if (
-    /\b(fusions?|fuse|persona|skill inherit|inheritance|recipes?|special fusion|compendium)\b/.test(text) ||
-    /\b(worth (?:getting|fusing|using)|good to (?:get|fuse|use)|should i (?:get|fuse|use)|is .{1,40} (?:good|worth it|viable)|best (?:magic|physical|support|healing) option)\b/.test(text)
+    isPersonaKnowledgeRequest(question) ||
+    /\bbest (?:magic|physical|support|healing) option\b/.test(text)
   ) {
     return "Fusion Advice";
   }
@@ -445,14 +449,7 @@ function socialLinkStartResponse(
 }
 
 function asksForFusionRoute(question: string): boolean {
-  return (
-    /\b(?:how (?:do|can) i fuse|fusion recipes?|possible fusions?|ways? to fuse|make|create)\b/i.test(
-      question,
-    ) ||
-    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(
-      question,
-    )
-  );
+  return isFusionRecipeRequest(question);
 }
 
 function fusionDlcClarificationResponse(
@@ -1054,7 +1051,7 @@ function extractProfileUpdates(question: string): PlayerProfile {
       );
   if (ownedPersonasMatch) updates.ownedPersonas = splitProfileList(ownedPersonasMatch[1], 12).map(titleCase);
   if (
-    /\b(?:no|without|dont have|don't have|do not have)\s+(?:the\s+)?(?:persona\s+)?dlc\b/i.test(
+    /\b(?:no|without|dont have|don't have|do not have)\s+(?:any\s+)?(?:the\s+)?(?:persona\s+)?dlc\b/i.test(
       question,
     ) ||
     /\bbase game only\b/i.test(question)
@@ -4476,7 +4473,7 @@ async function directRagResponse(
   if (schoolBreakSocialLinks) return schoolBreakSocialLinks;
   if (
     controller.intent === "Fusion Advice" ||
-    /\b(fuse|fusion|recipe|persona|worth|good to get|should i get)\b/i.test(conversation.analysisQuestion)
+    isPersonaKnowledgeRequest(conversation.analysisQuestion)
   ) {
     const fusionResponse = structuredFusionResponse(
       conversation.analysisQuestion,
