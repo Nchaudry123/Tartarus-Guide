@@ -57,6 +57,40 @@ test("resolves an ordinal fusion reply inside a longer thread", () => {
   assert.match(context.analysisQuestion, /Alilat/);
 });
 
+test("carries prior options into a referential comparison", () => {
+  const history = [
+    { role: "user" as const, content: "Should Yukari or Ken be my main healer?" },
+    {
+      role: "assistant" as const,
+      content:
+        "Yukari is the more focused healer, while Ken mixes healing with broader utility. Which tradeoff fits your party?",
+    },
+  ];
+  const context = resolveConversationContext(
+    "Which one is better if I want the safer healer?",
+    history,
+  );
+
+  assert.match(context.analysisQuestion, /Yukari/i);
+  assert.match(context.analysisQuestion, /Ken/i);
+  assert.match(context.analysisQuestion, /previous assistant reply being referenced/i);
+  assert.match(context.analysisQuestion, /safer healer/i);
+});
+
+test("carries a disputed claim into the correction request", () => {
+  const history = [
+    { role: "user" as const, content: "Who is the final boss? Full spoilers are fine." },
+    {
+      role: "assistant" as const,
+      content: "The final boss is the last Full Moon Shadow in November.",
+    },
+  ];
+  const context = resolveConversationContext("That answer is wrong.", history);
+
+  assert.match(context.analysisQuestion, /last Full Moon Shadow in November/i);
+  assert.match(context.analysisQuestion, /That answer is wrong/i);
+});
+
 test("treats a detailed answer to the assistant as conversational context", () => {
   assert.equal(
     isContextualConversationReply(
