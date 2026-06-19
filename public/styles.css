@@ -708,12 +708,45 @@ textarea:focus-visible {
   box-shadow: inset 4px 0 0 var(--cyan), 0 14px 38px rgba(0,0,0,.2);
 }
 .daily-dashboard {
+  position: relative;
   margin-top: 1rem;
   border: 1px solid rgba(85,247,255,.5);
   background:
     linear-gradient(145deg, rgba(7,92,255,.18), transparent 48%),
     rgba(2,7,32,.7);
   box-shadow: inset 4px 0 0 var(--cyan), 0 16px 40px rgba(0,0,0,.24);
+  transition: border-color .22s ease, box-shadow .22s ease, opacity .22s ease;
+}
+.is-dashboard-refreshing .daily-dashboard {
+  opacity: .58;
+  pointer-events: none;
+}
+.is-dashboard-refreshing .daily-dashboard::after {
+  content: "Refreshing priorities...";
+  position: absolute;
+  z-index: 2;
+  top: .72rem;
+  right: .85rem;
+  padding: .34rem .52rem;
+  border: 1px solid rgba(85,247,255,.5);
+  background: rgba(2,7,32,.92);
+  color: var(--cyan);
+  font-size: .66rem;
+  font-weight: 950;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  animation: dashboardSyncPulse .8s ease-in-out infinite alternate;
+}
+.is-dashboard-updated .daily-dashboard {
+  border-color: rgba(85,247,255,.9);
+  box-shadow:
+    inset 4px 0 0 var(--cyan),
+    0 0 26px rgba(85,247,255,.2),
+    0 16px 40px rgba(0,0,0,.24);
+}
+@keyframes dashboardSyncPulse {
+  from { opacity: .58; }
+  to { opacity: 1; }
 }
 .daily-dashboard-head {
   display: flex;
