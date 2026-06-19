@@ -42,6 +42,20 @@ export type FusionWorkshop = {
   recipes: FusionRecipeCard[];
 };
 
+export type DailyPlanItem = {
+  priority: "urgent" | "recommended" | "optional";
+  category: "Request" | "Social Link" | "Tartarus" | "Activity";
+  title: string;
+  detail: string;
+  timing?: string;
+};
+
+export type DailyDashboard = {
+  date: string;
+  weekday: string;
+  items: DailyPlanItem[];
+};
+
 export type ChatRequest = {
   question: string;
   conversationId?: string;
@@ -62,6 +76,7 @@ export type PlayerProfile = {
   tartarusBlock?: string;
   tartarusFloor?: string;
   currentSocialLinks?: string[];
+  activeRequests?: string[];
   ownedPersonas?: string[];
   dlcOwnership?: "none" | "all";
   socialStats?: {
@@ -80,6 +95,7 @@ export type ChatResponse = {
   tables?: ChatTable[];
   bossPrep?: BossPrepCard;
   fusionWorkshop?: FusionWorkshop;
+  dailyDashboard?: DailyDashboard;
   sources: ChatSource[];
   confidence?: number;
   missingInfo?: string;
