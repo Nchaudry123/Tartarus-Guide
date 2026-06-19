@@ -37,6 +37,8 @@ let inputHintTimer = null;
 let streamTokenBuffer = "";
 let streamFlushTimer = null;
 let chatScrollTimer = null;
+let dashboardRefreshTimer = null;
+let dashboardRefreshController = null;
 
 let apiAvailable = false;
 let autoStickToBottom = true;
@@ -170,10 +172,11 @@ function saveSavedAnswers() {
   }
 }
 
-function savePlayerProfile() {
+function savePlayerProfile(options = {}) {
   window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
   window.sessionStorage.removeItem("tartarusPlayerProfile");
   renderMemorySummary();
+  if (options.refreshDashboard) scheduleDashboardRefresh();
 }
 
 function rememberTurn(role, content) {
@@ -279,8 +282,9 @@ function buildPackedHistory() {
     .slice(-12);
 }
 
-function mergeProfileUpdates(updates) {
+function mergeProfileUpdates(updates, options = {}) {
   if (!updates || typeof updates !== "object") return;
+  const before = JSON.stringify(playerProfile);
   const mergedSocialStats = cleanProfile({
     ...(playerProfile.socialStats || {}),
     ...(updates.socialStats || {}),
@@ -307,7 +311,10 @@ function mergeProfileUpdates(updates) {
         : playerProfile.ownedPersonas,
     socialStats: Object.keys(mergedSocialStats).length ? mergedSocialStats : undefined,
   });
-  savePlayerProfile();
+  savePlayerProfile({
+    refreshDashboard:
+      options.refreshDashboard && before !== JSON.stringify(playerProfile),
+  });
 }
 
 function cleanCombatParty(members) {
@@ -551,7 +558,7 @@ function renderDailyDashboard(dashboard) {
     )
     .join("");
   return `
-    <aside class="daily-dashboard" aria-label="Game-day plan for ${escapeHtml(dashboard.date)}">
+    <aside class="daily-dashboard" aria-label="Game-day plan for ${escapeHtml(dashboard.date)}" aria-live="polite">
       <div class="daily-dashboard-head">
         <div>
           <span>Game-Day Dashboard</span>
@@ -562,6 +569,117 @@ function renderDailyDashboard(dashboard) {
       <div class="daily-plan-grid">${items}</div>
     </aside>
   `;
+}
+
+function renderResponseExtras(response) {
+  const sections = (response.sections || [])
+    .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
+    .join("");
+  const table = response.table?.length
+    ? `<div class="table-wrap"><table><tbody>${response.table
+        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+        .join("")}</tbody></table></div>`
+    : "";
+  const sourceLinks = (response.sources || [])
+    .map(
+      (item) =>
+        `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.domain)}</span></a>`,
+    )
+    .join("");
+  const sourceFooter = sourceLinks
+    ? `<details class="source-drawer">
+        <summary><span>Sources</span><strong>${(response.sources || []).length}</strong></summary>
+        <footer>${sourceLinks}</footer>
+      </details>`
+    : "";
+  const prompts = (response.companion?.suggestedPrompts || [])
+    .slice(0, 3)
+    .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
+    .join("");
+  return `
+    ${renderBossPrepCard(response.bossPrep)}
+    ${renderFusionWorkshop(response.fusionWorkshop)}
+    ${renderDailyDashboard(response.dailyDashboard)}
+    ${sections ? `<div class="section-grid">${sections}</div>` : ""}
+    ${table}
+    ${sourceFooter}
+    ${prompts ? `<div class="followups">${prompts}</div>` : ""}
+  `;
+}
+
+function latestDashboardMessage() {
+  return [...messages.querySelectorAll(".assistant-message")]
+    .reverse()
+    .find(
+      (message) =>
+        message.dataset.dashboardHost === "true" ||
+        message.querySelector(".daily-dashboard"),
+    );
+}
+
+async function requestDashboardRefresh(signal) {
+  if (!apiAvailable) return null;
+  const response = await fetch(chatApiUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    signal,
+    body: JSON.stringify({
+      question: "What should I do today?",
+      history: buildPackedHistory(),
+      playerProfile,
+      stream: false,
+    }),
+  });
+  if (!response.ok) throw new Error("Dashboard refresh failed.");
+  return normalizeApiResponse(await response.json());
+}
+
+async function refreshVisibleDashboard() {
+  const message = latestDashboardMessage();
+  if (!message) return;
+  if (isSending) {
+    scheduleDashboardRefresh(700);
+    return;
+  }
+
+  dashboardRefreshController?.abort();
+  const controller = new AbortController();
+  dashboardRefreshController = controller;
+  message.classList.add("is-dashboard-refreshing");
+  message.setAttribute("aria-busy", "true");
+
+  try {
+    const response = await requestDashboardRefresh(controller.signal);
+    if (!response || controller.signal.aborted) return;
+    const answer = message.querySelector(".answer");
+    const extra = message.querySelector(".message-extra");
+    if (answer) answer.innerHTML = renderText(response.answer);
+    if (extra) extra.innerHTML = renderResponseExtras(response);
+    message.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "rag")} is-dashboard-updated`;
+    message.removeAttribute("aria-busy");
+    saveAnswerSnapshot({
+      question: "What should I do today?",
+      response,
+    });
+    window.setTimeout(() => message.classList.remove("is-dashboard-updated"), 1100);
+    scrollMessagesToBottom();
+  } catch (error) {
+    if (error?.name !== "AbortError") {
+      showInputHint("Profile saved. Dashboard refresh will retry next change.");
+    }
+  } finally {
+    if (dashboardRefreshController === controller) dashboardRefreshController = null;
+    message.classList.remove("is-dashboard-refreshing");
+    message.removeAttribute("aria-busy");
+  }
+}
+
+function scheduleDashboardRefresh(delay = 180) {
+  window.clearTimeout(dashboardRefreshTimer);
+  dashboardRefreshTimer = window.setTimeout(() => {
+    dashboardRefreshTimer = null;
+    void refreshVisibleDashboard();
+  }, delay);
 }
 
 function motionEnabled() {
@@ -829,55 +947,22 @@ async function addAssistantMessage(response, options = {}) {
   resetStreamBuffer();
   document.getElementById("loading")?.remove();
   setApiStatus(response.retrievalMode || "mock");
-  mergeProfileUpdates(response.companion?.profileUpdates);
-  const sections = (response.sections || [])
-    .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
-    .join("");
-  const table = response.table?.length
-    ? `<div class="table-wrap"><table><tbody>${response.table
-        .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
-        .join("")}</tbody></table></div>`
-    : "";
-  const bossPrep = renderBossPrepCard(response.bossPrep);
-  const fusionWorkshop = renderFusionWorkshop(response.fusionWorkshop);
-  const dailyDashboard = renderDailyDashboard(response.dailyDashboard);
-  const sourceLinks = (response.sources || [])
-    .map(
-      (item) =>
-        `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.domain)}</span></a>`,
-    )
-    .join("");
-  const sourceFooter = sourceLinks
-    ? `<details class="source-drawer">
-        <summary><span>Sources</span><strong>${(response.sources || []).length}</strong></summary>
-        <footer>
-          ${sourceLinks}
-        </footer>
-      </details>`
-    : "";
-  const prompts = (response.companion?.suggestedPrompts || [])
-    .slice(0, 3)
-    .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
-    .join("");
-  const followUps = prompts ? `<div class="followups">${prompts}</div>` : "";
+  mergeProfileUpdates(response.companion?.profileUpdates, {
+    refreshDashboard: !response.dailyDashboard,
+  });
   let node = document.getElementById("streamingAssistant");
   const streamed = Boolean(node);
   if (!node) node = document.createElement("article");
   node.removeAttribute("id");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
+  if (response.dailyDashboard) node.dataset.dashboardHost = "true";
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble">
       <span class="assistant-name">SEES Navigator</span>
       <div class="answer is-typing"></div>
       <div class="message-extra is-pending">
-        ${bossPrep}
-        ${fusionWorkshop}
-        ${dailyDashboard}
-        ${sections ? `<div class="section-grid">${sections}</div>` : ""}
-        ${table}
-        ${sourceFooter}
-        ${followUps}
+        ${renderResponseExtras(response)}
       </div>
     </div>
   `;
@@ -1266,8 +1351,18 @@ document.addEventListener("submit", (event) => {
   if (!memoryForm) return;
   event.preventDefault();
   const data = new FormData(memoryForm);
+  const profileWithoutEditableCollections = { ...playerProfile };
+  for (const key of [
+    "activeParty",
+    "ownedPersonas",
+    "currentSocialLinks",
+    "activeRequests",
+    "socialStats",
+  ]) {
+    delete profileWithoutEditableCollections[key];
+  }
   playerProfile = cleanProfile({
-    ...playerProfile,
+    ...profileWithoutEditableCollections,
     currentMonth: data.get("currentMonth"),
     currentDate: data.get("currentDate"),
     currentLevel: data.get("currentLevel"),
@@ -1305,7 +1400,7 @@ document.addEventListener("submit", (event) => {
     },
     currentGoal: data.get("currentGoal"),
   });
-  savePlayerProfile();
+  savePlayerProfile({ refreshDashboard: true });
   closeMemoryDialog();
 }, true);
 
@@ -1316,6 +1411,15 @@ document.addEventListener("click", (event) => {
   window.sessionStorage.removeItem("tartarusPlayerProfile");
   populateMemoryForm();
   renderMemorySummary();
+  scheduleDashboardRefresh();
 }, true);
+
+window.addEventListener("storage", (event) => {
+  if (event.key !== playerProfileKey) return;
+  playerProfile = loadPlayerProfile();
+  populateMemoryForm();
+  renderMemorySummary();
+  scheduleDashboardRefresh();
+});
 
 checkApiStatus();
