@@ -22,7 +22,7 @@
     "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --exact-fail-under=0.85 --hallucination-fail-under=0.95 --delay-ms=250",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
-    "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/relationships.test.ts src/quality/socialLinkStarts.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts src/quality/dailyPlanner.test.ts src/retrieval/liveGuideVerification.test.ts",
+    "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/conversationContext.test.ts src/quality/relationships.test.ts src/quality/socialLinkStarts.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts src/quality/dailyPlanner.test.ts src/retrieval/liveGuideVerification.test.ts",
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
     "test:security": "tsx --test src/security/chatSecurity.test.ts src/security/rateLimit.test.ts",
     "test:cache": "tsx --test src/cache/ttlCache.test.ts",
