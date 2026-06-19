@@ -59,6 +59,10 @@ import {
   partyRoleContradictions,
   partyRoleFactsForPrompt,
 } from "../../../src/quality/partyRoles";
+import {
+  asksForDailyDashboard,
+  buildDailyDashboard,
+} from "../../../src/quality/dailyPlanner";
 
 export const runtime = "nodejs";
 
@@ -978,6 +982,137 @@ function hasGuideIntent(question: string): boolean {
   return detectIntent(question) !== "General Discussion";
 }
 
+async function dailyDashboardResponse(
+  question: string,
+  profile: PlayerProfile,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+  signal?: AbortSignal,
+): Promise<ChatResponse | null> {
+  if (!asksForDailyDashboard(question)) return null;
+  if (!profile.currentDate || !buildDailyDashboard(profile)) {
+    return withMode({
+      answer:
+        "Set your exact in-game date in Player Memory, such as June 5. I need the day as well as the month to know the weekday, available Social Links, and how close each deadline is.",
+      sections: [],
+      sources: [],
+      confidence: 0.99,
+      missingInfo: "The exact in-game date is required for a daily plan.",
+      companion: {
+        intent: "Daily Schedule Planning",
+        profileUpdates,
+        followUpQuestions: ["What exact in-game date are you on?"],
+        suggestedPrompts: ["I'm on June 5", "Open Player Memory"],
+      },
+    }, "rag");
+  }
+
+  let requestFacts: FactMatch[] = [];
+  let requestSources: ChatResponse["sources"] = [];
+  const activeRequests = profile.activeRequests?.filter(Boolean).slice(0, 4) ?? [];
+  if (activeRequests.length) {
+    try {
+      const { buildPlannedContext } = await import("../../../src/retrieval/buildContext");
+      const contexts = await Promise.all(
+        activeRequests.map(async (request) => {
+          const context = await buildPlannedContext(
+            {
+              queries: [
+                `Persona 3 Reload Elizabeth Request ${request} deadline prerequisite reward`,
+              ],
+              includeFacts: true,
+              includeChunks: false,
+              factLimit: 12,
+            },
+            signal,
+          );
+          const requestOnly = context.facts.filter((fact) => fact.entity.type === "request");
+          const normalizedRequest = request.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const requestNumber = normalizedRequest.match(/\b\d{1,3}\b/)?.[0];
+          const exact = requestOnly.find((fact) => {
+            const names = [fact.entity.name, ...fact.entity.aliases]
+              .join(" ")
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, " ");
+            return requestNumber
+              ? new RegExp(`\\b${requestNumber}\\b`).test(names)
+              : names.includes(normalizedRequest);
+          });
+          const selectedEntity = exact?.entity.id;
+          const facts = requestOnly
+            .filter((fact) => selectedEntity && fact.entity.id === selectedEntity)
+            .map((fact) => ({
+              ...fact,
+              entity: {
+                ...fact.entity,
+                aliases: uniqueStrings([...fact.entity.aliases, request]),
+              },
+            }));
+          return { facts, sources: facts.length ? context.sources : [] };
+        }),
+      );
+      requestFacts = contexts.flatMap((context) => context.facts);
+      requestSources = contexts.flatMap((context) => context.sources);
+    } catch {
+      requestFacts = [];
+      requestSources = [];
+    }
+  }
+
+  const dashboard = buildDailyDashboard(profile, requestFacts);
+  if (!dashboard) return null;
+  const first = dashboard.items[0];
+  const nextPriorities = dashboard.items
+    .slice(1, 4)
+    .map((item) => item.title)
+    .join(", ");
+  const urgentCount = dashboard.items.filter((item) => item.priority === "urgent").length;
+  const sourceMap = new Map<string, ChatResponse["sources"][number]>();
+  if (profile.currentSocialLinks?.length) {
+    sourceMap.set(SOCIAL_LINK_START_SOURCE.url, SOCIAL_LINK_START_SOURCE);
+  }
+  for (const source of requestSources) sourceMap.set(source.url, source);
+  sourceMap.set(mockSources[0].url, mockSources[0]);
+
+  const response = withMode({
+    answer:
+      `${dashboard.weekday}, ${dashboard.date}: ${urgentCount ? `you have ${urgentCount} urgent priorit${urgentCount === 1 ? "y" : "ies"}.` : "nothing tracked is due immediately."} ` +
+      (first
+        ? `Start with ${first.title}. ${first.detail}${nextPriorities ? ` Next up: ${nextPriorities}.` : ""}`
+        : "Use the day for your highest-priority Player Memory goal."),
+    sections: [],
+    dailyDashboard: dashboard,
+    sources: [...sourceMap.values()],
+    confidence: requestFacts.length || !activeRequests.length ? 0.98 : 0.91,
+    missingInfo:
+      activeRequests.length && !requestFacts.length
+        ? "Tracked requests are shown, but their deadlines were not confirmed in the indexed guide."
+        : "Update Player Memory whenever you unlock or complete a Social Link or Elizabeth request.",
+    companion: {
+      intent: "Daily Schedule Planning",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: [
+        "Plan my Tartarus visit",
+        "Which Social Link should I do first?",
+        "Update my active requests",
+      ],
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: requestFacts.length,
+      chunkCount: 0,
+      groundingStatus: activeRequests.length && !requestFacts.length ? "partial" : "verified",
+      guardrailNotes: [
+        "Only Social Links and Elizabeth requests explicitly tracked in Player Memory were ranked.",
+        "Weekday and deadline priority were calculated deterministically from the in-game date.",
+      ],
+    };
+  }
+  return response;
+}
+
 function extractProfileUpdates(question: string): PlayerProfile {
   const updates: PlayerProfile = {};
   const monthMatch = question.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i);
@@ -1049,6 +1184,20 @@ function extractProfileUpdates(question: string): PlayerProfile {
   }
   if (Object.keys(socialStats).length) updates.socialStats = socialStats;
 
+  const socialLinksMatch = question.match(
+    /\b(?:my\s+)?(?:active|current)\s+(?:social links?|s-?links?)\s+(?:are|include|:)\s+([a-z0-9,' &+-]{2,180})/i,
+  );
+  if (socialLinksMatch) {
+    updates.currentSocialLinks = splitProfileList(socialLinksMatch[1], 24).map(titleCase);
+  }
+
+  const activeRequestsMatch = question.match(
+    /\b(?:my\s+)?active\s+(?:elizabeth\s+)?requests?\s+(?:are|include|:)\s+([a-z0-9,' #&+-]{1,180})/i,
+  );
+  if (activeRequestsMatch) {
+    updates.activeRequests = splitProfileList(activeRequestsMatch[1], 30);
+  }
+
   return updates;
 }
 
@@ -1064,6 +1213,9 @@ function mergeProfile(base: PlayerProfile | undefined, updates: PlayerProfile): 
       updates.activeParty?.length ? uniqueStrings(updates.activeParty) : base?.activeParty,
     ),
     currentSocialLinks: updates.currentSocialLinks?.length ? uniqueStrings(updates.currentSocialLinks) : base?.currentSocialLinks,
+    activeRequests: updates.activeRequests?.length
+      ? uniqueStrings(updates.activeRequests)
+      : base?.activeRequests,
     ownedPersonas: updates.ownedPersonas?.length
       ? uniqueStrings([...(base?.ownedPersonas ?? []), ...updates.ownedPersonas]).slice(0, 24)
       : base?.ownedPersonas,
@@ -1161,6 +1313,12 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     mergedProfile.recentEnemy ? `recent enemy: ${mergedProfile.recentEnemy}` : undefined,
     mergedProfile.tartarusBlock ? `Tartarus block: ${mergedProfile.tartarusBlock}` : undefined,
     mergedProfile.tartarusFloor ? `Tartarus floor: ${mergedProfile.tartarusFloor}` : undefined,
+    mergedProfile.currentSocialLinks?.length
+      ? `active Social Links: ${mergedProfile.currentSocialLinks.join(", ")}`
+      : undefined,
+    mergedProfile.activeRequests?.length
+      ? `active Elizabeth requests: ${mergedProfile.activeRequests.join(", ")}`
+      : undefined,
     mergedProfile.ownedPersonas?.length ? `owned Personas: ${mergedProfile.ownedPersonas.join(", ")}` : undefined,
     mergedProfile.dlcOwnership
       ? `Persona DLC: ${mergedProfile.dlcOwnership === "all" ? "all enabled" : "none"}`
@@ -1555,7 +1713,8 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   const currentGoal = asString(raw.currentGoal);
   const spoilerPreference = asString(raw.spoilerPreference);
   const activeParty = asStringArray(raw.activeParty, 8);
-  const currentSocialLinks = asStringArray(raw.currentSocialLinks, 8);
+  const currentSocialLinks = asStringArray(raw.currentSocialLinks, 24);
+  const activeRequests = asStringArray(raw.activeRequests, 30);
   const ownedPersonas = asStringArray(raw.ownedPersonas, 24);
   const dlcOwnership = asString(raw.dlcOwnership);
   const rawSocialStats = raw.socialStats && typeof raw.socialStats === "object" ? (raw.socialStats as Record<string, unknown>) : {};
@@ -1580,6 +1739,7 @@ function normalizeProfileUpdates(value: unknown): PlayerProfile {
   }
   if (activeParty.length) updates.activeParty = activeParty;
   if (currentSocialLinks.length) updates.currentSocialLinks = currentSocialLinks;
+  if (activeRequests.length) updates.activeRequests = activeRequests;
   if (ownedPersonas.length) updates.ownedPersonas = ownedPersonas;
   if (dlcOwnership === "none" || dlcOwnership === "all") {
     updates.dlcOwnership = dlcOwnership;
@@ -3701,6 +3861,7 @@ Return only JSON:
     "tartarusBlock": "string",
     "tartarusFloor": "string",
     "currentSocialLinks": ["string"],
+    "activeRequests": ["string"],
     "ownedPersonas": ["string"],
     "dlcOwnership": "none | all",
     "socialStats": {
@@ -4171,6 +4332,14 @@ async function directRagResponse(
     return sillyQuestionResponse(question, extractProfileUpdates(question));
   }
   const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
+  const dailyDashboard = await dailyDashboardResponse(
+    conversation.analysisQuestion,
+    analysis.profile,
+    analysis.profileUpdates,
+    debug,
+    signal,
+  );
+  if (dailyDashboard) return dailyDashboard;
   const fusionDlcClarification = fusionDlcClarificationResponse(
     conversation.analysisQuestion,
     analysis.profile,

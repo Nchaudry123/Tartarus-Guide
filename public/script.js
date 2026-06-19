@@ -211,6 +211,7 @@ function normalizeResponseForSave(response) {
     table: response.table || null,
     bossPrep: response.bossPrep || null,
     fusionWorkshop: response.fusionWorkshop || null,
+    dailyDashboard: response.dailyDashboard || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode || "rag",
     companion: response.companion
@@ -296,6 +297,10 @@ function mergeProfileUpdates(updates) {
       Array.isArray(updates.currentSocialLinks) && updates.currentSocialLinks.length
         ? [...new Set(updates.currentSocialLinks)]
         : playerProfile.currentSocialLinks,
+    activeRequests:
+      Array.isArray(updates.activeRequests) && updates.activeRequests.length
+        ? [...new Set(updates.activeRequests)]
+        : playerProfile.activeRequests,
     ownedPersonas:
       Array.isArray(updates.ownedPersonas) && updates.ownedPersonas.length
         ? [...new Set([...(playerProfile.ownedPersonas || []), ...updates.ownedPersonas])].slice(0, 24)
@@ -350,6 +355,12 @@ function renderMemorySummary() {
         ? "Progress-aware"
         : "Spoiler-safe",
     playerProfile.activeParty?.length ? playerProfile.activeParty.join(", ") : "",
+    playerProfile.currentSocialLinks?.length
+      ? `${playerProfile.currentSocialLinks.length} active link${playerProfile.currentSocialLinks.length === 1 ? "" : "s"}`
+      : "",
+    playerProfile.activeRequests?.length
+      ? `${playerProfile.activeRequests.length} active request${playerProfile.activeRequests.length === 1 ? "" : "s"}`
+      : "",
     playerProfile.dlcOwnership === "all"
       ? "Persona DLC on"
       : playerProfile.dlcOwnership === "none"
@@ -374,6 +385,8 @@ function populateMemoryForm() {
   fields.spoilerPreference.value = playerProfile.spoilerPreference || "strict";
   fields.activeParty.value = playerProfile.activeParty?.join(", ") || "";
   fields.ownedPersonas.value = playerProfile.ownedPersonas?.join(", ") || "";
+  fields.currentSocialLinks.value = playerProfile.currentSocialLinks?.join(", ") || "";
+  fields.activeRequests.value = playerProfile.activeRequests?.join(", ") || "";
   fields.dlcOwnership.value = playerProfile.dlcOwnership || "";
   fields.academics.value = playerProfile.socialStats?.academics || "";
   fields.charm.value = playerProfile.socialStats?.charm || "";
@@ -509,6 +522,44 @@ function renderFusionWorkshop(workshop) {
         <small>${escapeHtml(modeLabel)}</small>
       </div>
       <div class="fusion-recipe-grid">${recipes}</div>
+    </aside>
+  `;
+}
+
+function renderDailyDashboard(dashboard) {
+  if (!dashboard?.date || !Array.isArray(dashboard.items) || !dashboard.items.length) {
+    return "";
+  }
+  const priorityLabels = {
+    urgent: "Do first",
+    recommended: "Recommended",
+    optional: "If time allows",
+  };
+  const items = dashboard.items
+    .map(
+      (item) => `
+        <article class="daily-plan-item priority-${escapeHtml(item.priority || "optional")}">
+          <header>
+            <span>${escapeHtml(priorityLabels[item.priority] || "Plan")}</span>
+            <small>${escapeHtml(item.category || "Activity")}</small>
+          </header>
+          <h4>${escapeHtml(item.title)}</h4>
+          <p>${escapeHtml(item.detail)}</p>
+          ${item.timing ? `<time>${escapeHtml(item.timing)}</time>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+  return `
+    <aside class="daily-dashboard" aria-label="Game-day plan for ${escapeHtml(dashboard.date)}">
+      <div class="daily-dashboard-head">
+        <div>
+          <span>Game-Day Dashboard</span>
+          <h3>${escapeHtml(dashboard.weekday)}</h3>
+        </div>
+        <strong>${escapeHtml(dashboard.date)}</strong>
+      </div>
+      <div class="daily-plan-grid">${items}</div>
     </aside>
   `;
 }
@@ -681,6 +732,7 @@ function rememberExactAnswer(question, response) {
     sections: response.sections || [],
     table: response.table || null,
     fusionWorkshop: response.fusionWorkshop || null,
+    dailyDashboard: response.dailyDashboard || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode,
     companion: response.companion
@@ -788,6 +840,7 @@ async function addAssistantMessage(response, options = {}) {
     : "";
   const bossPrep = renderBossPrepCard(response.bossPrep);
   const fusionWorkshop = renderFusionWorkshop(response.fusionWorkshop);
+  const dailyDashboard = renderDailyDashboard(response.dailyDashboard);
   const sourceLinks = (response.sources || [])
     .map(
       (item) =>
@@ -820,6 +873,7 @@ async function addAssistantMessage(response, options = {}) {
       <div class="message-extra is-pending">
         ${bossPrep}
         ${fusionWorkshop}
+        ${dailyDashboard}
         ${sections ? `<div class="section-grid">${sections}</div>` : ""}
         ${table}
         ${sourceFooter}
@@ -886,6 +940,7 @@ function normalizeApiResponse(data) {
     table: data.tables?.[0]?.rows,
     bossPrep: data.bossPrep || null,
     fusionWorkshop: data.fusionWorkshop || null,
+    dailyDashboard: data.dailyDashboard || null,
     missing: data.missingInfo || "No missing information reported.",
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,
@@ -1232,6 +1287,16 @@ document.addEventListener("submit", (event) => {
       .map((name) => name.trim())
       .filter(Boolean)
       .slice(0, 24),
+    currentSocialLinks: String(data.get("currentSocialLinks") || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 24),
+    activeRequests: String(data.get("activeRequests") || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 30),
     dlcOwnership: data.get("dlcOwnership"),
     socialStats: {
       academics: data.get("academics"),

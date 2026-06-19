@@ -1609,5 +1609,65 @@
     "hallucinationSensitive": true,
     "maxSources": 1,
     "maxAnswerCharacters": 700
+  },
+  {
+    "id": "game-day-dashboard-june-deadlines",
+    "category": "schedule",
+    "origin": "user_transcript",
+    "question": "What should I do today?",
+    "playerProfile": {
+      "currentMonth": "June",
+      "currentDate": "June 5",
+      "currentSocialLinks": ["Emperor", "Hierophant"],
+      "activeRequests": ["12"],
+      "tartarusBlock": "Arqa",
+      "tartarusFloor": "42F"
+    },
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Friday", "June 5", "Request 12"],
+    "mustIncludeAny": ["Hidetoshi", "Bunkichi", "Emperor and Empress"],
+    "mustNotInclude": ["Yukari's Social Link", "April 23"],
+    "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
+    "maxSources": 6,
+    "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "game-day-dashboard-needs-exact-date",
+    "category": "schedule",
+    "origin": "curated",
+    "question": "What should I do today?",
+    "playerProfile": {
+      "currentMonth": "June"
+    },
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldClarify": true,
+    "shouldUseSources": false,
+    "mustIncludeAll": ["exact in-game date", "weekday"],
+    "mustNotInclude": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "game-day-dashboard-january-endgame",
+    "category": "schedule",
+    "origin": "curated",
+    "question": "Show my game day dashboard",
+    "playerProfile": {
+      "currentMonth": "January",
+      "currentDate": "January 29",
+      "currentSocialLinks": ["Aeon"],
+      "tartarusBlock": "Adamah",
+      "tartarusFloor": "242F"
+    },
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Friday", "January 29", "Final Tartarus mission"],
+    "mustIncludeAny": ["Aigis", "January 31"],
+    "mustNotInclude": ["Fuuka or Aigis"],
+    "forbidUnsupportedExactness": true,
+    "hallucinationSensitive": true,
+    "maxSources": 5,
+    "maxAnswerCharacters": 1200
   }
 ]

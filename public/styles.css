@@ -707,6 +707,125 @@ textarea:focus-visible {
     rgba(2,7,32,.64);
   box-shadow: inset 4px 0 0 var(--cyan), 0 14px 38px rgba(0,0,0,.2);
 }
+.daily-dashboard {
+  margin-top: 1rem;
+  border: 1px solid rgba(85,247,255,.5);
+  background:
+    linear-gradient(145deg, rgba(7,92,255,.18), transparent 48%),
+    rgba(2,7,32,.7);
+  box-shadow: inset 4px 0 0 var(--cyan), 0 16px 40px rgba(0,0,0,.24);
+}
+.daily-dashboard-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .85rem 1rem;
+  border-bottom: 1px solid rgba(85,247,255,.24);
+}
+.daily-dashboard-head span {
+  color: var(--cyan);
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: .7rem;
+  font-style: italic;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.daily-dashboard-head h3 {
+  margin: .12rem 0 0;
+  color: var(--ice);
+  font-size: 1.25rem;
+  font-weight: 950;
+}
+.daily-dashboard-head strong {
+  color: var(--ice);
+  font-size: 1rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.daily-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .7rem;
+  padding: .85rem;
+}
+.daily-plan-item {
+  position: relative;
+  min-width: 0;
+  padding: .78rem .82rem .82rem;
+  border: 1px solid rgba(85,247,255,.22);
+  background: rgba(5,17,67,.82);
+  overflow: hidden;
+}
+.daily-plan-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: rgba(85,247,255,.55);
+}
+.daily-plan-item.priority-urgent {
+  border-color: rgba(255,92,92,.64);
+  background:
+    linear-gradient(135deg, rgba(255,70,70,.16), transparent 54%),
+    rgba(5,17,67,.88);
+}
+.daily-plan-item.priority-urgent::before {
+  background: #ff5c5c;
+  box-shadow: 0 0 16px rgba(255,92,92,.65);
+}
+.daily-plan-item.priority-recommended::before {
+  background: var(--cyan);
+}
+.daily-plan-item.priority-optional {
+  opacity: .86;
+}
+.daily-plan-item header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  margin-bottom: .45rem;
+}
+.daily-plan-item header span,
+.daily-plan-item header small {
+  font-size: .65rem;
+  font-weight: 950;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.daily-plan-item header span {
+  color: var(--cyan);
+}
+.daily-plan-item.priority-urgent header span {
+  color: #ff9898;
+}
+.daily-plan-item header small {
+  color: rgba(239,250,255,.58);
+}
+.daily-plan-item h4 {
+  margin: 0 0 .35rem;
+  color: var(--ice);
+  font-size: .96rem;
+  line-height: 1.25;
+}
+.daily-plan-item p {
+  margin: 0;
+  color: rgba(239,250,255,.78);
+  font-size: .82rem;
+  font-weight: 720;
+  line-height: 1.42;
+}
+.daily-plan-item time {
+  display: inline-block;
+  margin-top: .58rem;
+  color: var(--cyan);
+  font-size: .67rem;
+  font-weight: 950;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
 .fusion-workshop-head {
   display: flex;
   align-items: end;
@@ -1493,6 +1612,14 @@ footer span {
     gap: .25rem;
   }
   .fusion-recipe-grid {
+    grid-template-columns: 1fr;
+  }
+  .daily-dashboard-head {
+    align-items: start;
+    flex-direction: column;
+    gap: .2rem;
+  }
+  .daily-plan-grid {
     grid-template-columns: 1fr;
   }
   .fusion-recipe-card li {

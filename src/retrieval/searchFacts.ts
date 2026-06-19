@@ -85,7 +85,11 @@ export async function searchFacts(
 ): Promise<FactMatch[]> {
   signal?.throwIfAborted();
   const analysis = analyzeRetrievalQuery(query);
+  const exactRequestNumber = query.match(
+    /\b(?:elizabeth\s+)?request\s*#?\s*(\d{1,3})\b/i,
+  )?.[1];
   const likelyTerms = [...new Set([
+    exactRequestNumber ? `request ${exactRequestNumber}` : undefined,
     analysis.primarySubject,
     ...analysis.entityCandidates,
     ...likelyEntityTerms(query),
@@ -235,6 +239,10 @@ export async function searchFacts(
   const entityRelevance = (fact: FactMatch): number => {
     const entityName = fact.entity.normalized_name || normalizeName(fact.entity.name);
     if (!entityName) return 0;
+    if (exactRequestNumber) {
+      if (new RegExp(`^request ${exactRequestNumber}\\b`).test(entityName)) return 180;
+      if (/^request \d+\b/.test(entityName)) return -120;
+    }
     if (analysis.date && entityName.includes(normalizeName(analysis.date))) {
       const classroomBonus =
         /\b(classroom|school question|quiz|answer)\b/i.test(query) &&
