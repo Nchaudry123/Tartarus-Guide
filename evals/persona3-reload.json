@@ -1575,6 +1575,34 @@
     "maxAnswerCharacters": 1400
   },
   {
+    "id": "conversation-referential-healer-comparison",
+    "category": "conversation",
+    "origin": "curated",
+    "question": "Which one is better if I want the safer dedicated healer?",
+    "history": [
+      {
+        "role": "user",
+        "content": "Should Yukari or Ken be my main healer?"
+      },
+      {
+        "role": "assistant",
+        "content": "Yukari is the more focused healer, while Ken mixes healing with broader utility. Which tradeoff fits your party?"
+      }
+    ],
+    "playerProfile": {
+      "currentLevel": "42",
+      "activeParty": ["Akihiko", "Mitsuru"]
+    },
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Yukari", "Ken"],
+    "mustIncludeAny": ["healer", "healing", "dedicated"],
+    "mustNotInclude": ["Who are you comparing", "Which characters"],
+    "hallucinationSensitive": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 1200
+  },
+  {
     "id": "fusion-conversation-second-route-reference",
     "category": "fusion",
     "origin": "curated",

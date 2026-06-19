@@ -13,6 +13,8 @@ export type ConversationContext = {
 
 const referentialReplyPattern =
   /\b(?:it|that|those|them|this|these|either|neither|both|the first|the second|the other|other options?|different routes?|none of those|same one|previous answer|that one|which one|what about|how about)\b/i;
+const previousAnswerReferencePattern =
+  /\b(?:it|that|those|them|this|these|either|neither|both|the first|the second|the other|same one|that one|which one|previous answer|your answer|you said|you mentioned|wrong|incorrect|not correct|why is|why would|explain)\b/i;
 
 function wordCount(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
@@ -137,7 +139,18 @@ function activeThreadStart(history: ConversationMessage[]): number {
   return start;
 }
 
-function formatUserThread(thread: ConversationMessage[], currentReply: string): string {
+function compactContext(value: string, maxLength = 900): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 3).trim()}...`
+    : normalized;
+}
+
+function formatUserThread(
+  thread: ConversationMessage[],
+  currentReply: string,
+  previousAssistant: string | undefined,
+): string {
   const userTurns = thread
     .filter((message) => message.role === "user")
     .map((message) => message.content.trim())
@@ -147,8 +160,13 @@ function formatUserThread(thread: ConversationMessage[], currentReply: string): 
   return [
     `The user's active request is: ${initialRequest}`,
     ...details.map((detail) => `Additional detail from the user: ${detail}`),
+    previousAssistant && previousAnswerReferencePattern.test(currentReply)
+      ? `The previous assistant reply being referenced is: ${compactContext(previousAssistant)}`
+      : undefined,
     `The user's latest follow-up is: ${currentReply}`,
-  ].join("\n");
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join("\n");
 }
 
 export function resolveConversationContext(
@@ -182,7 +200,7 @@ export function resolveConversationContext(
 
   const resolvedReply = resolveFusionRouteReference(question, previousAssistant);
   return {
-    analysisQuestion: formatUserThread(activeThread, resolvedReply),
+    analysisQuestion: formatUserThread(activeThread, resolvedReply, previousAssistant),
     previousTopic,
     previousAssistant,
     activeThread,
