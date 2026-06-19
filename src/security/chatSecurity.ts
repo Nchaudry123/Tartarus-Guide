@@ -45,7 +45,7 @@ export const ChatRequestSchema = z
           })
           .strict(),
       )
-      .max(12)
+      .max(24)
       .optional(),
     playerProfile: PlayerProfileSchema.optional(),
     debug: z.boolean().optional(),

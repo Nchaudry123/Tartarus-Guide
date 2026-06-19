@@ -108,7 +108,7 @@ function loadChatHistory() {
               typeof message.content === "string" &&
               message.content.trim(),
           )
-          .slice(-12)
+          .slice(-24)
       : [];
   } catch {
     return [];
@@ -181,7 +181,7 @@ function savePlayerProfile(options = {}) {
 
 function rememberTurn(role, content) {
   chatHistory.push({ role, content });
-  chatHistory.splice(0, Math.max(0, chatHistory.length - 12));
+  chatHistory.splice(0, Math.max(0, chatHistory.length - 24));
   saveChatHistory();
 }
 
@@ -279,7 +279,7 @@ async function openSavedAnswer(id) {
 function buildPackedHistory() {
   return chatHistory
     .filter((message) => message?.content?.trim() && (message.role === "user" || message.role === "assistant"))
-    .slice(-12);
+    .slice(-24);
 }
 
 function mergeProfileUpdates(updates, options = {}) {
@@ -1067,7 +1067,7 @@ async function readEventStream(response, onStatus, onToken) {
   return normalizeApiResponse(finalResponse);
 }
 
-async function requestAnswer(question, history = chatHistory.slice(-8), signal) {
+async function requestAnswer(question, history = chatHistory.slice(-24), signal) {
   if (!apiAvailable) {
     return mockAnswer(question);
   }

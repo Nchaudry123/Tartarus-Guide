@@ -63,6 +63,10 @@ import {
   asksForDailyDashboard,
   buildDailyDashboard,
 } from "../../../src/quality/dailyPlanner";
+import {
+  normalizeConversationHistory,
+  resolveConversationContext,
+} from "../../../src/quality/conversationContext";
 
 export const runtime = "nodejs";
 
@@ -485,123 +489,11 @@ function fusionDlcClarificationResponse(
   return response;
 }
 
-function isShortContextReply(question: string): boolean {
-  const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
-  const wordCount = text.split(/\s+/).filter(Boolean).length;
-  return (
-    (wordCount <= 5 &&
-      (/^(yes|yeah|yep|sure|okay|ok|no|nope|nah|not really|kind of|sort of|maybe|i do|i don't|i dont|boss|fusion|persona|tartarus|social links?|party|team|no persona dlc|base game only|i have all persona dlc|all persona dlc|what is it|what are they|which one|who is it|tell me about it|how do i fuse it|this is wrong|that's wrong|thats wrong|incorrect|not correct|that is incorrect)$/.test(
-        text,
-      ) ||
-        /^(what about|how about|and|but)\b/.test(text))) ||
-    (wordCount <= 8 &&
-      /^i\s+(?:(?:do not|don't|dont|can't|cant|cannot|haven't|havent)\s+have|have|unlocked|didn't unlock|didnt unlock)\b/.test(
-        text,
-      ))
-  );
-}
-
-function assistantInvitesReply(message: string | undefined): boolean {
-  if (!message) return false;
-  return (
-    message.includes("?") ||
-    /\b(?:tell me|share|choose|pick|select|do you have|are you|which one|what is|what are|send me|let me know)\b/i.test(
-      message,
-    )
-  );
-}
-
-function isContextualConversationReply(
-  question: string,
-  previousAssistant: string | undefined,
-): boolean {
-  if (isShortContextReply(question)) return true;
-  const normalized = question.trim();
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-  const explicitNewQuestion =
-    /^(?:how|what|which|where|when|who|why|can you|could you|would you|should i|is there|are there|does|do)\b/i.test(
-      normalized,
-    ) && /[?]$/.test(normalized);
-  const refersBack =
-    /\b(?:it|that|those|them|this|these|either|neither|both|the first|the second|other options?|different routes?|none of those|same one|previous answer)\b/i.test(
-      normalized,
-    );
-  return (
-    refersBack ||
-    (assistantInvitesReply(previousAssistant) && wordCount <= 40 && !explicitNewQuestion)
-  );
-}
-
-function resolveFusionRouteReference(
-  question: string,
-  previousAssistant: string | undefined,
-): string {
-  const ordinal = question.match(/\b(first|second)\s+(?:pair|route|one)\b/i)?.[1]?.toLowerCase();
-  if (!ordinal || !previousAssistant) return question;
-  const routes = previousAssistant.match(
-    /\btwo routes to\s+.+?\s+are\s+(.+?)\s+or\s+(.+?)\.\s*do you have either pair/i,
-  );
-  const selected = ordinal === "first" ? routes?.[1] : routes?.[2];
-  return selected ? `I have ${selected.replace(/\s*\+\s*/g, " and ")}` : question;
-}
-
-function normalizeConversationHistory(
-  question: string,
-  history: ChatRequest["history"] = [],
-): NonNullable<ChatRequest["history"]> {
-  const normalized = (history ?? [])
-    .filter(
-      (message): message is NonNullable<ChatRequest["history"]>[number] =>
-        Boolean(message?.content?.trim()) && (message.role === "user" || message.role === "assistant"),
-    )
-    .slice(-12);
-  const last = normalized.at(-1);
-  if (
-    last?.role === "user" &&
-    last.content.trim().toLowerCase() === question.trim().toLowerCase()
-  ) {
-    normalized.pop();
-  }
-  return normalized;
-}
-
 function contextualizeQuestion(
   question: string,
   history: NonNullable<ChatRequest["history"]>,
-): {
-  analysisQuestion: string;
-  previousTopic?: string;
-  previousAssistant?: string;
-  shortReply: boolean;
-} {
-  const previousAssistant = [...history]
-    .reverse()
-    .find((message) => message.role === "assistant")?.content;
-  const shortReply = isContextualConversationReply(question, previousAssistant);
-  if (!shortReply) {
-    return {
-      analysisQuestion: question,
-      previousAssistant,
-      shortReply: false,
-    };
-  }
-  const previousTopic = [...history]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "user" &&
-        !isShortContextReply(message.content) &&
-        message.content.trim().toLowerCase() !== question.trim().toLowerCase(),
-    )?.content;
-
-  if (!previousTopic) return { analysisQuestion: question, shortReply: true };
-  const resolvedReply = resolveFusionRouteReference(question, previousAssistant);
-  return {
-    analysisQuestion: `${previousTopic}\nThe user's follow-up message is: ${resolvedReply}`,
-    previousTopic,
-    previousAssistant,
-    shortReply: true,
-  };
+): ReturnType<typeof resolveConversationContext> {
+  return resolveConversationContext(question, history);
 }
 
 function rejectedClarificationResponse(

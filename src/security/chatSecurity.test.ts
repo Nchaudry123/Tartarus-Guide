@@ -27,7 +27,7 @@ test("chat requests reject oversized fields and unexpected keys", () => {
   assert.equal(
     ChatRequestSchema.safeParse({
       question: "Help me",
-      history: Array.from({ length: 13 }, () => ({ role: "user", content: "hello" })),
+      history: Array.from({ length: 25 }, () => ({ role: "user", content: "hello" })),
     }).success,
     false,
   );
