@@ -1547,6 +1547,24 @@
     "maxAnswerCharacters": 700
   },
   {
+    "id": "fusion-tool-natural-make-wording",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "How do I make Loki?",
+    "playerProfile": {
+      "dlcOwnership": "none"
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["base-game", "Loki", "Do you have either pair"],
+    "mustNotInclude": ["check the fusion chart", "consult a guide"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
+  },
+  {
     "id": "conversation-long-answer-keeps-active-task",
     "category": "conversation",
     "origin": "curated",

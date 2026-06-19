@@ -158,7 +158,7 @@ function formatUserThread(
   const [initialRequest, ...details] = userTurns;
   if (!initialRequest) return currentReply;
   return [
-    `The user's active request is: ${initialRequest}`,
+    `The user's active conversation goal is: ${initialRequest}`,
     ...details.map((detail) => `Additional detail from the user: ${detail}`),
     previousAssistant && previousAnswerReferencePattern.test(currentReply)
       ? `The previous assistant reply being referenced is: ${compactContext(previousAssistant)}`

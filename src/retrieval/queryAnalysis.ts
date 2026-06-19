@@ -1,5 +1,9 @@
 import { normalizeName } from "../db/client";
 import type { EntityType } from "../types/schema";
+import {
+  isFusionRecipeRequest,
+  isPersonaKnowledgeRequest,
+} from "../quality/personaRouting";
 
 const stopWords = new Set([
   "about",
@@ -88,10 +92,15 @@ function extractPrimarySubject(
   if (/\bfinal boss\b/i.test(query)) return undefined;
 
   const patterns = [
+    /\bwhat (?:arcana|base level|level|skills?|stats?|affinities).{0,80}\bis\s+(.+?)(?=[?.!,]|$)/i,
+    /\bwhat (?:arcana|base level|level|skills?|stats?|affinities).{0,80}\bdoes\s+(.+?)\s+(?:have|learn|use)\b/i,
+    /\b(?:stats?|skills?|build|affinities|weaknesses|resistances)\s+(?:for|of)\s+(.+?)(?=[?.!,]|$)/i,
     /\bwhat (?:is|are)\s+(?:the\s+)?(.+?)(?=\s+(?:weak|resist|null|drain|repel|located|location)\b|[?.!,]|$)/i,
     /\bhow (?:do|can|should) i (?:beat|fight|handle|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
     /\b(?:strategy for|fight against|prepare for)\s+(?:the\s+)?(.+?)(?=\s+(?:with|using|at|on|and)\b|[?.!,]|$)/i,
     /\b(?:how (?:do|can) i fuse|should i (?:fuse|get|use))\s+(.+?)(?=\s+(?:with|using|at|on|and|worth|good)\b|[?.!,]|$)/i,
+    /\bhow (?:do|can|should|would) i (?:make|create|summon|obtain|get)\s+(?:a|an|the\s+)?(.+?)(?=\s+(?:with|using|from|at|on)\b|[?.!,]|$)/i,
+    /\b(?:possible fusions?|fusion recipes?|fusion routes?|recipes?|routes?|ingredients?|parents?)\s+(?:for|to)\s+(.+?)(?=[?.!,]|$)/i,
     /\b(?:is|would)\s+(.+?)\s+(?:be\s+)?(?:worth|good|viable|useful)\b/i,
     /\bwhen can i (?:start|unlock|meet)\s+(?:the\s+)?(.+?)(?=\s+(?:social link|s-?link)\b|[?.!,]|$)/i,
     /\b((?:elizabeth\s+)?request\s*#?\s*\d{1,3})\b/i,
@@ -138,7 +147,7 @@ const categoryEntityTypes: Record<RetrievalQueryAnalysis["category"], EntityType
 function detectCategory(query: string): RetrievalQueryAnalysis["category"] {
   if (/\b(weak|resist|null|drain|repel|affinit)/i.test(query)) return "enemy";
   if (/\b(social link|s-link|rank|romance)\b/i.test(query)) return "social_link";
-  if (/\b(fuse|fusions?|persona|compendium|inherit|arcana|recipes?)\b/i.test(query)) return "fusion";
+  if (isPersonaKnowledgeRequest(query)) return "fusion";
   if (/\b(story|ending|plot|final boss|spoiler)\b/i.test(query)) return "story";
   if (
     /\b(boss|full moon|gatekeeper|priestess|emperor|empress|hanged man|how (?:do|can) i beat|strategy for|fight against|prepare for)\b/i.test(
