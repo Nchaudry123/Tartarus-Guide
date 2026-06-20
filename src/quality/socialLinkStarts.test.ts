@@ -72,4 +72,10 @@ test("does not treat ordinary uses of when as a Social Link start request", () =
     ),
     null,
   );
+  assert.equal(
+    socialLinkStartForQuestion(
+      "Start with a Persona recommendation for my party with Yukari.",
+    ),
+    null,
+  );
 });

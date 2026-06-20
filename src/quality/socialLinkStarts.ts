@@ -265,8 +265,9 @@ export function asksForAllSocialLinkStarts(question: string): boolean {
 
 export function socialLinkStartForQuestion(question: string): SocialLinkStart | null {
   const explicitSocialLink = /\b(?:social links?|s-?links?|arcana)\b/i.test(question);
+  const startLanguage = question.replace(/\bstart\s+(?:with|by)\b/gi, "");
   const asksForStartAction =
-    /\b(?:start|unlock|available|availability|begin|earliest)\b/i.test(question);
+    /\b(?:start|unlock|available|availability|begin|earliest)\b/i.test(startLanguage);
   if (!asksForStartAction && !(explicitSocialLink && /\bwhen\b/i.test(question))) {
     return null;
   }
