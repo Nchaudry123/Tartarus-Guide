@@ -71,6 +71,7 @@ import {
   isFusionRecipeRequest,
   isPersonaKnowledgeRequest,
 } from "../../../src/quality/personaRouting";
+import { asksForRecommendation } from "../../../src/quality/recommendationMode";
 
 export const runtime = "nodejs";
 
@@ -739,6 +740,83 @@ function fuukaRoleResponse(
       chunkCount: 0,
       groundingStatus: "verified",
       guardrailNotes: ["Fuuka was kept outside the three selectable frontline slots."],
+    };
+  }
+  return response;
+}
+
+function healerComparisonResponse(
+  question: string,
+  profileUpdates: PlayerProfile,
+  debug: boolean,
+): ChatResponse | null {
+  if (
+    !/\byukari\b/i.test(question) ||
+    !/\bken\b/i.test(question) ||
+    !/\b(?:heal|healer|healing|support)\b/i.test(question)
+  ) {
+    return null;
+  }
+
+  const response = withMode({
+    answer:
+      "Use Yukari as the dedicated healer. Choose Ken instead when you want one slot to split healing duties with Light damage and broader utility.",
+    sections: [
+      {
+        title: "The Tradeoff",
+        content:
+          "Yukari is the cleaner pick when reliable party healing is the job you need filled. Ken is the flexible alternative when another teammate or the protagonist can share recovery and you value a wider mixed role.",
+      },
+    ],
+    recommendation: {
+      title: "Dedicated Healer",
+      primary: {
+        name: "Yukari",
+        reason: "She is the more focused choice when consistent party healing is the priority.",
+      },
+      alternatives: [
+        {
+          name: "Ken",
+          tradeoff: "Choose him when you want healing combined with Light damage and utility.",
+        },
+      ],
+      decidingFactor:
+        "Pick Yukari for healing consistency; pick Ken when the rest of the party can share recovery.",
+      nextStep: "Tell me the other two frontline members and I will check the full team balance.",
+    },
+    sources: [
+      {
+        title: "Yukari Takeba Best Build, Characteristics and Skills",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435575",
+        domain: "game8.co",
+      },
+      {
+        title: "Ken Amada Best Build, Characteristics and Skills",
+        url: "https://game8.co/games/Persona-3-Reload/archives/435583",
+        domain: "game8.co",
+      },
+    ],
+    confidence: 0.96,
+    missingInfo: "The other two frontline members determine whether Ken's flexibility is more valuable.",
+    companion: {
+      intent: "Team Building",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: sanitizeSuggestedPrompts([
+        "My other members are Akihiko and Mitsuru",
+        "Build me the safest frontline",
+        "I want more damage instead",
+      ]),
+    },
+  }, "rag");
+  if (debug) {
+    response.diagnostics = {
+      factCount: 2,
+      chunkCount: 0,
+      groundingStatus: "verified",
+      guardrailNotes: [
+        "The healer comparison used fixed role tradeoffs and did not invent an elemental weakness.",
+      ],
     };
   }
   return response;
@@ -1699,11 +1777,51 @@ function normalizeRagResponse(
     : [];
 
   const confidence = typeof value.confidence === "number" ? Math.max(0, Math.min(1, value.confidence)) : 0.55;
+  const rawRecommendation =
+    value.recommendation && typeof value.recommendation === "object"
+      ? (value.recommendation as Record<string, unknown>)
+      : null;
+  const rawPrimary =
+    rawRecommendation?.primary && typeof rawRecommendation.primary === "object"
+      ? (rawRecommendation.primary as Record<string, unknown>)
+      : null;
+  const recommendationTitle = asString(rawRecommendation?.title);
+  const primaryName = asString(rawPrimary?.name);
+  const primaryReason = asString(rawPrimary?.reason);
+  const alternatives = Array.isArray(rawRecommendation?.alternatives)
+    ? rawRecommendation.alternatives
+        .map((alternative) => {
+          const item =
+            alternative && typeof alternative === "object"
+              ? (alternative as Record<string, unknown>)
+              : {};
+          const name = asString(item.name);
+          const tradeoff = asString(item.tradeoff);
+          return name && tradeoff ? { name, tradeoff } : null;
+        })
+        .filter(
+          (
+            alternative,
+          ): alternative is { name: string; tradeoff: string } => Boolean(alternative),
+        )
+        .slice(0, 2)
+    : [];
+  const recommendation =
+    recommendationTitle && primaryName && primaryReason
+      ? {
+          title: recommendationTitle,
+          primary: { name: primaryName, reason: primaryReason },
+          alternatives: alternatives.length ? alternatives : undefined,
+          decidingFactor: asString(rawRecommendation?.decidingFactor) ?? undefined,
+          nextStep: asString(rawRecommendation?.nextStep) ?? undefined,
+        }
+      : undefined;
 
   return {
     answer: answer ?? "I found related material, but I need one more detail to give a useful answer instead of guessing.",
     sections,
     tables,
+    recommendation,
     sources: fallbackSources,
     confidence,
     missingInfo: asString(value.missingInfo) ?? "No additional missing information was reported.",
@@ -1724,6 +1842,58 @@ function responseFromPlainText(
     confidence: fallbackSources.length ? 0.68 : 0.55,
     missingInfo: "The assistant returned a plain response instead of structured JSON.",
     companion,
+  };
+}
+
+function ensureRecommendationCard(
+  question: string,
+  response: ChatResponse,
+): ChatResponse {
+  if (!asksForRecommendation(question) || response.recommendation) return response;
+  const candidates = partyMembers.filter((member) =>
+    new RegExp(`\\b${member}\\b`, "i").test(question),
+  );
+  if (candidates.length < 2) return response;
+
+  const answer = response.answer.trim();
+  const primary =
+    [...candidates].sort((a, b) => {
+      const aIndex = answer.toLowerCase().indexOf(a.toLowerCase());
+      const bIndex = answer.toLowerCase().indexOf(b.toLowerCase());
+      return (aIndex < 0 ? Number.MAX_SAFE_INTEGER : aIndex) -
+        (bIndex < 0 ? Number.MAX_SAFE_INTEGER : bIndex);
+    })[0] ?? candidates[0];
+  const alternatives = candidates
+    .filter((candidate) => candidate !== primary)
+    .slice(0, 2)
+    .map((candidate) => {
+      const supportingSection = response.sections?.find((section) =>
+        new RegExp(`\\b${candidate}\\b`, "i").test(section.content),
+      );
+      return {
+        name: candidate,
+        tradeoff:
+          supportingSection?.content ??
+          `Choose ${candidate} when their broader role fits the rest of your active party better.`,
+      };
+    });
+
+  return {
+    ...response,
+    recommendation: {
+      title: "Party Role Choice",
+      primary: {
+        name: primary,
+        reason: compactText(answer, 360),
+      },
+      alternatives,
+      decidingFactor:
+        "Use the primary pick for the role you asked about; switch only if the alternative covers a gap elsewhere in the party.",
+      nextStep:
+        response.missingInfo && !/no additional/i.test(response.missingInfo)
+          ? compactText(response.missingInfo, 220)
+          : "Tell me the other two frontline members and I will confirm the fit.",
+    },
   };
 }
 
@@ -3576,6 +3746,38 @@ function finalFightPersonaRecommendation(
             : `Use Lucifer as the durable all-round alternative with Debilitate. Helel is the offensive alternative for Morning Star; if both Helel and Satan are registered, Armageddon gives you a powerful option for Nyx's Death phase. ${levelNote}`,
       },
     ],
+    recommendation: {
+      title: "Final-Fight Persona",
+      primary: {
+        name: telosUnavailable ? "Lucifer" : "Orpheus Telos",
+        reason: telosUnavailable
+          ? "The strongest practical all-round fallback here, with room for Debilitate, damage, and durability."
+          : "The most flexible main Persona for a fight that changes affinities across many phases.",
+      },
+      alternatives: telosUnavailable
+        ? [
+            {
+              name: "Helel",
+              tradeoff: "Pick it when you want a more offensive Morning Star setup.",
+            },
+          ]
+        : [
+            {
+              name: "Lucifer",
+              tradeoff: "Pick it for a durable all-round build centered on Debilitate.",
+            },
+            {
+              name: "Helel",
+              tradeoff: "Pick it when raw Almighty offense matters more than flexibility.",
+            },
+          ],
+      decidingFactor: telosUnavailable
+        ? "Use Lucifer for stability; switch to Helel when your party already covers support."
+        : "Choose based on unlocks first, then whether you need flexibility, support, or maximum offense.",
+      nextStep: telosUnavailable
+        ? "Check whether Lucifer is unlocked and tell me which skills you can transfer."
+        : "Tell me which of Orpheus Telos, Lucifer, and Helel you have unlocked.",
+    },
     sources: [
       {
         title: "Nyx Avatar Boss Guide: Weakness and Resistances",
@@ -3646,6 +3848,22 @@ function levelBasedPersonaRecommendation(
           "High Pixie also carries Media and Tarukaja, so it stays useful when an enemy does not reward Ice damage. Keep another Persona for your missing elements rather than making one build cover everything.",
       },
     ],
+    recommendation: {
+      title: "Ice Persona at Your Level",
+      primary: {
+        name: "High Pixie",
+        reason: `It is available around level ${level} and combines immediate group Ice coverage with Bufula shortly after.`,
+      },
+      alternatives: [
+        {
+          name: "Your current Ice Persona",
+          tradeoff: "Keep it temporarily if it already has Bufula and stronger inherited support skills.",
+        },
+      ],
+      decidingFactor:
+        "Prefer High Pixie when you need both Ice coverage and useful support without overleveling.",
+      nextStep: "Share your current Persona stock and I will find the most reachable route.",
+    },
     sources: [
       {
         title: "How to Fuse High Pixie",
@@ -4258,6 +4476,12 @@ async function directRagResponse(
   if (asksToUseFuukaAsCombatMember(conversation.analysisQuestion)) {
     return fuukaRoleResponse(analysis.profileUpdates, debug);
   }
+  const healerComparison = healerComparisonResponse(
+    conversation.analysisQuestion,
+    analysis.profileUpdates,
+    debug,
+  );
+  if (healerComparison) return healerComparison;
   const floorRecommendation = tartarusFloorRecommendation(
     conversation.analysisQuestion,
     analysis.profileUpdates,
@@ -4631,6 +4855,13 @@ Return only JSON with this shape:
   "answer": "short direct answer",
   "sections": [{"title": "string", "content": "string"}],
   "tables": [{"title": "string", "columns": ["string"], "rows": [["string"]]}],
+  "recommendation": {
+    "title": "short decision label",
+    "primary": {"name": "primary pick", "reason": "why it fits this player"},
+    "alternatives": [{"name": "alternative", "tradeoff": "when it is better"}],
+    "decidingFactor": "the one factor that should decide",
+    "nextStep": "one concrete action"
+  } | null,
   "confidence": 0.0,
   "missingInfo": "string"
 }
@@ -4653,6 +4884,7 @@ Rules:
 - Never fill evidence gaps with plausible-sounding Persona knowledge. A shorter grounded answer is better than a detailed invented answer.
 - Combine the strongest facts into one cohesive recommendation instead of listing every matching page.
 - When the user asks for a recommendation, give one clear primary pick, one or two alternatives, and the tradeoff that would make each alternative better. Do not answer a recommendation request with only a demand for an exact name.
+- When Recommendation mode is active, populate recommendation with the same grounded choice described in the prose. Otherwise return recommendation as null.
 - Distinguish recommendations from exact recipes: recommendations may rank source-supported options conditionally, while exact fusion equations still require direct structured support.
 - You may give general coaching when the user is vague, but keep it principle-based, mark uncertainty naturally, and ask one useful follow-up.
 - Be practical, concise, and strategy-first. Give next actions, party/fusion/social priority ideas when relevant.
@@ -4693,6 +4925,7 @@ Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
 ${formatProgressContext(profileForPrompt)}
 Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
+Recommendation mode: ${asksForRecommendation(conversation.analysisQuestion) ? "Active. Make a clear choice and populate the recommendation card." : "Inactive. Return recommendation as null."}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 Follow-up questions to ask if useful: ${controllerFollowUps.join(" | ") || "None"}
@@ -4837,6 +5070,10 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         );
       }
     }
+    normalized = ensureRecommendationCard(
+      conversation.analysisQuestion,
+      normalized,
+    );
     const response = withMode(
       withBossPrep(
         applyGroundingGuardrails(

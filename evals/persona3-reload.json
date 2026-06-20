@@ -277,6 +277,9 @@
     "expectedIntent": "Team Building",
     "shouldUseSources": true,
     "mustIncludeAll": ["Yukari", "Ken"],
+    "mustIncludeAny": ["dedicated healer", "healing consistency", "flexible"],
+    "mustNotInclude": ["inherit", "elemental weakness", "Light affinity may"],
+    "hallucinationSensitive": true,
     "maxSources": 5
   },
   {

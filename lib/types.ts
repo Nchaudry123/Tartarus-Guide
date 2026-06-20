@@ -56,6 +56,20 @@ export type DailyDashboard = {
   items: DailyPlanItem[];
 };
 
+export type RecommendationCard = {
+  title: string;
+  primary: {
+    name: string;
+    reason: string;
+  };
+  alternatives?: Array<{
+    name: string;
+    tradeoff: string;
+  }>;
+  decidingFactor?: string;
+  nextStep?: string;
+};
+
 export type ChatRequest = {
   question: string;
   conversationId?: string;
@@ -96,6 +110,7 @@ export type ChatResponse = {
   bossPrep?: BossPrepCard;
   fusionWorkshop?: FusionWorkshop;
   dailyDashboard?: DailyDashboard;
+  recommendation?: RecommendationCard;
   sources: ChatSource[];
   confidence?: number;
   missingInfo?: string;

@@ -215,6 +215,7 @@ function normalizeResponseForSave(response) {
     bossPrep: response.bossPrep || null,
     fusionWorkshop: response.fusionWorkshop || null,
     dailyDashboard: response.dailyDashboard || null,
+    recommendation: response.recommendation || null,
     missing: response.missing,
     retrievalMode: response.retrievalMode || "rag",
     companion: response.companion
@@ -571,6 +572,36 @@ function renderDailyDashboard(dashboard) {
   `;
 }
 
+function renderRecommendationCard(recommendation) {
+  if (!recommendation?.primary?.name || !recommendation.primary.reason) return "";
+  const alternatives = (recommendation.alternatives || [])
+    .slice(0, 2)
+    .map(
+      (alternative) => `
+        <li>
+          <strong>${escapeHtml(alternative.name)}</strong>
+          <span>${escapeHtml(alternative.tradeoff)}</span>
+        </li>
+      `,
+    )
+    .join("");
+  return `
+    <aside class="recommendation-card" aria-label="${escapeHtml(recommendation.title || "Recommendation")}">
+      <header>
+        <span>Navigator Pick</span>
+        <small>${escapeHtml(recommendation.title || "Recommendation")}</small>
+      </header>
+      <div class="recommendation-primary">
+        <strong>${escapeHtml(recommendation.primary.name)}</strong>
+        <p>${escapeHtml(recommendation.primary.reason)}</p>
+      </div>
+      ${alternatives ? `<ul>${alternatives}</ul>` : ""}
+      ${recommendation.decidingFactor ? `<p class="recommendation-factor"><b>Deciding factor</b>${escapeHtml(recommendation.decidingFactor)}</p>` : ""}
+      ${recommendation.nextStep ? `<p class="recommendation-next"><b>Next move</b>${escapeHtml(recommendation.nextStep)}</p>` : ""}
+    </aside>
+  `;
+}
+
 function renderResponseExtras(response) {
   const sections = (response.sections || [])
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
@@ -600,6 +631,7 @@ function renderResponseExtras(response) {
     ${renderBossPrepCard(response.bossPrep)}
     ${renderFusionWorkshop(response.fusionWorkshop)}
     ${renderDailyDashboard(response.dailyDashboard)}
+    ${renderRecommendationCard(response.recommendation)}
     ${sections ? `<div class="section-grid">${sections}</div>` : ""}
     ${table}
     ${sourceFooter}
@@ -1026,6 +1058,7 @@ function normalizeApiResponse(data) {
     bossPrep: data.bossPrep || null,
     fusionWorkshop: data.fusionWorkshop || null,
     dailyDashboard: data.dailyDashboard || null,
+    recommendation: data.recommendation || null,
     missing: data.missingInfo || "No missing information reported.",
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,

@@ -783,6 +783,116 @@ textarea:focus-visible {
   gap: .7rem;
   padding: .85rem;
 }
+
+.recommendation-card {
+  margin-top: 24px;
+  border: 1px solid rgba(85, 247, 255, 0.52);
+  background:
+    linear-gradient(135deg, rgba(0, 222, 235, 0.12), transparent 42%),
+    rgba(5, 20, 63, 0.9);
+  box-shadow: 12px 14px 0 rgba(2, 10, 43, 0.24);
+  padding: 20px;
+}
+
+.recommendation-card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  color: #55f7ff;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.recommendation-card > header span {
+  font-weight: 900;
+}
+
+.recommendation-card > header small {
+  color: #b9cee6;
+  font-weight: 800;
+}
+
+.recommendation-primary {
+  border-left: 5px solid #55f7ff;
+  padding: 4px 0 4px 16px;
+}
+
+.recommendation-primary strong {
+  display: block;
+  color: #fff;
+  font-size: clamp(1.25rem, 2vw, 1.7rem);
+}
+
+.recommendation-primary p,
+.recommendation-card li span,
+.recommendation-factor,
+.recommendation-next {
+  color: #dcecff;
+  line-height: 1.55;
+}
+
+.recommendation-primary p {
+  margin: 5px 0 0;
+}
+
+.recommendation-card ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recommendation-card li {
+  padding: 12px;
+  background: rgba(52, 96, 154, 0.28);
+  border: 1px solid rgba(125, 177, 223, 0.24);
+}
+
+.recommendation-card li strong,
+.recommendation-card li span {
+  display: block;
+}
+
+.recommendation-card li strong {
+  color: #55f7ff;
+  margin-bottom: 4px;
+}
+
+.recommendation-factor,
+.recommendation-next {
+  display: grid;
+  grid-template-columns: 118px 1fr;
+  gap: 12px;
+  margin: 14px 0 0;
+}
+
+.recommendation-factor b,
+.recommendation-next b {
+  color: #55f7ff;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 720px) {
+  .recommendation-card {
+    padding: 16px;
+  }
+
+  .recommendation-card ul {
+    grid-template-columns: 1fr;
+  }
+
+  .recommendation-factor,
+  .recommendation-next {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
 .daily-plan-item {
   position: relative;
   min-width: 0;
