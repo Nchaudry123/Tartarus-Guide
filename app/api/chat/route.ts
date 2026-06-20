@@ -191,9 +191,15 @@ function uniqueStrings(values: Array<string | undefined>): string[] {
   return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+function isCorrectionFollowUp(question: string): boolean {
+  return /\b(?:latest follow-up|follow-up message) is:\s*(?:this|that|your answer|the answer)?\s*(?:is\s+)?(?:wrong|incorrect|not correct)\b/i.test(
+    question,
+  );
+}
+
 function detectIntent(question: string): CompanionIntent {
   const text = question.toLowerCase();
-  if (ultimatePersonaUnlockForQuestion(question)) {
+  if (!isCorrectionFollowUp(question) && ultimatePersonaUnlockForQuestion(question)) {
     return "Social Links";
   }
   if (
@@ -275,6 +281,7 @@ function socialLinkUltimatePersonaResponse(
   profileUpdates: PlayerProfile,
   debug: boolean,
 ): ChatResponse | null {
+  if (isCorrectionFollowUp(question)) return null;
   const unlock = ultimatePersonaUnlockForQuestion(question);
   if (!unlock) return null;
 
@@ -757,10 +764,18 @@ function healerComparisonResponse(
   ) {
     return null;
   }
+  const prefersFlexibility =
+    /\b(?:more damage|offense|offensive|light damage|utility|flexib|less healing|not a dedicated healer)\b/i.test(
+      question,
+    );
+  const primary = prefersFlexibility ? "Ken" : "Yukari";
+  const alternative = prefersFlexibility ? "Yukari" : "Ken";
 
   const response = withMode({
     answer:
-      "Use Yukari as the dedicated healer. Choose Ken instead when you want one slot to split healing duties with Light damage and broader utility.",
+      primary === "Yukari"
+        ? "Use Yukari as the dedicated healer. Choose Ken instead when you want one slot to split healing duties with Light damage and broader utility."
+        : "Use Ken for this setup because you care more about damage and utility than having a dedicated healer. Keep Yukari as the safer alternative when the party needs more consistent recovery.",
     sections: [
       {
         title: "The Tradeoff",
@@ -771,17 +786,23 @@ function healerComparisonResponse(
     recommendation: {
       title: "Dedicated Healer",
       primary: {
-        name: "Yukari",
-        reason: "She is the more focused choice when consistent party healing is the priority.",
+        name: primary,
+        reason:
+          primary === "Yukari"
+            ? "She is the more focused choice when consistent party healing is the priority."
+            : "He better fits a mixed role when healing can be shared and you want extra offensive utility.",
       },
       alternatives: [
         {
-          name: "Ken",
-          tradeoff: "Choose him when you want healing combined with Light damage and utility.",
+          name: alternative,
+          tradeoff:
+            alternative === "Ken"
+              ? "Choose him when you want healing combined with Light damage and utility."
+              : "Choose her when the party needs a more focused, consistent healer.",
         },
       ],
       decidingFactor:
-        "Pick Yukari for healing consistency; pick Ken when the rest of the party can share recovery.",
+        "Pick Yukari for healing consistency; pick Ken when the rest of the party can share recovery and you value offense.",
       nextStep: "Tell me the other two frontline members and I will check the full team balance.",
     },
     sources: [

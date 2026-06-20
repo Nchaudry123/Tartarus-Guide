@@ -1624,6 +1624,129 @@
     "maxAnswerCharacters": 1200
   },
   {
+    "id": "conversation-healer-priority-change",
+    "category": "team",
+    "origin": "curated",
+    "question": "Actually, I care more about damage and utility than having a dedicated healer.",
+    "history": [
+      {
+        "role": "user",
+        "content": "Should Yukari or Ken be my main healer?"
+      },
+      {
+        "role": "assistant",
+        "content": "Use Yukari as the dedicated healer. Ken is the flexible alternative when healing can be shared."
+      }
+    ],
+    "playerProfile": {
+      "currentLevel": "42",
+      "activeParty": ["Akihiko", "Mitsuru"]
+    },
+    "expectedIntent": "Team Building",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Ken", "Yukari"],
+    "mustIncludeAny": ["damage", "utility", "mixed role"],
+    "mustNotInclude": ["Use Yukari as the dedicated healer"],
+    "hallucinationSensitive": true,
+    "maxSources": 3,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "conversation-topic-switch-after-fusion",
+    "category": "social-links",
+    "origin": "curated",
+    "question": "Different question: when can I start Mitsuru's Social Link?",
+    "history": [
+      {
+        "role": "user",
+        "content": "How do I fuse Loki?"
+      },
+      {
+        "role": "assistant",
+        "content": "Do you have Persona DLC enabled?"
+      },
+      {
+        "role": "user",
+        "content": "No Persona DLC."
+      },
+      {
+        "role": "assistant",
+        "content": "Here are two base-game routes to Loki. Do you have either pair?"
+      }
+    ],
+    "expectedIntent": "Social Links",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Mitsuru", "November 21", "Academics"],
+    "mustNotInclude": ["Loki", "Persona DLC", "either pair"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 2,
+    "maxAnswerCharacters": 1000
+  },
+  {
+    "id": "conversation-owned-ingredients-natural-outcome",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "What do Ananta and Asura make?",
+    "playerProfile": {
+      "dlcOwnership": "none",
+      "ownedPersonas": ["Ananta", "Asura"]
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Ananta", "Asura", "Alilat"],
+    "mustNotInclude": ["What Persona are you trying to fuse", "check the fusion chart"],
+    "requiredDomains": ["aqiu384.github.io"],
+    "exactAnswer": true,
+    "hallucinationSensitive": true,
+    "maxSources": 1,
+    "maxAnswerCharacters": 700
+  },
+  {
+    "id": "conversation-three-step-party-coaching",
+    "category": "conversation",
+    "origin": "curated",
+    "question": "Start with a Persona recommendation that helps the SP problem.",
+    "history": [
+      {
+        "role": "user",
+        "content": "My party feels weak. I use Yukari, Junpei, and Akihiko."
+      },
+      {
+        "role": "assistant",
+        "content": "What feels weakest right now: damage, survivability, or running out of SP?"
+      },
+      {
+        "role": "user",
+        "content": "I keep running out of SP halfway through Tartarus."
+      },
+      {
+        "role": "assistant",
+        "content": "What level are you, and which Personas do you own?"
+      },
+      {
+        "role": "user",
+        "content": "I am level 24 and have Jack Frost, Rakshasa, and Hua Po."
+      },
+      {
+        "role": "assistant",
+        "content": "Do you want a party adjustment or a Persona recommendation first?"
+      }
+    ],
+    "playerProfile": {
+      "currentLevel": "24",
+      "activeParty": ["Yukari", "Junpei", "Akihiko"],
+      "ownedPersonas": ["Jack Frost", "Rakshasa", "Hua Po"]
+    },
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["SP", "Persona", "Jack Frost", "Rakshasa", "Hua Po"],
+    "mustNotInclude": ["What level are you", "Who is on your active team", "Are you stuck on a boss"],
+    "hallucinationSensitive": true,
+    "maxSources": 4,
+    "maxAnswerCharacters": 1500
+  },
+  {
     "id": "fusion-conversation-second-route-reference",
     "category": "fusion",
     "origin": "curated",
