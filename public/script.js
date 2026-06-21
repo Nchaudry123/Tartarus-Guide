@@ -38,6 +38,14 @@ let streamTokenBuffer = "";
 let streamFlushTimer = null;
 let chatScrollTimer = null;
 let dashboardRefreshTimer = null;
+let scrollFrame = 0;
+
+const latestButton = document.createElement("button");
+latestButton.type = "button";
+latestButton.className = "jump-to-latest";
+latestButton.setAttribute("aria-label", "Jump to the latest message");
+latestButton.innerHTML = `<span>Latest</span><strong aria-hidden="true">↓</strong>`;
+messages.parentElement?.appendChild(latestButton);
 let dashboardRefreshController = null;
 
 let apiAvailable = false;
@@ -822,6 +830,8 @@ function addUserMessage(text, options = {}) {
     </div>
   `;
   messages.appendChild(node);
+  autoStickToBottom = true;
+  updateLatestButton();
   scrollMessagesToBottom({ force: true });
   return node;
 }
@@ -920,6 +930,7 @@ function addLoading() {
     </div>
   `;
   messages.appendChild(node);
+  updateLatestButton();
   scrollMessagesToBottom({ force: true });
 }
 
@@ -955,7 +966,7 @@ function flushStreamTokens() {
   const answer = node.querySelector(".answer");
   if (answer) answer.textContent += streamTokenBuffer;
   streamTokenBuffer = "";
-  scrollMessagesToBottom({ force: true, behavior: "auto" });
+  scrollMessagesToBottom({ behavior: "auto" });
 }
 
 function resetStreamBuffer() {
@@ -1013,6 +1024,7 @@ async function addAssistantMessage(response, options = {}) {
       response,
     });
   }
+  updateLatestButton();
   scrollMessagesToBottom();
 }
 
@@ -1023,12 +1035,21 @@ function isNearMessagesBottom() {
 function scrollMessagesToBottom(options = {}) {
   const { force = false, behavior = "smooth" } = options;
   if (!force && !autoStickToBottom && !isNearMessagesBottom()) return;
-  requestAnimationFrame(() => {
+  window.cancelAnimationFrame(scrollFrame);
+  scrollFrame = requestAnimationFrame(() => {
     messages.scrollTo({
       top: messages.scrollHeight,
       behavior: motionEnabled() ? behavior : "auto",
     });
+    updateLatestButton();
   });
+}
+
+function updateLatestButton() {
+  const shouldShow = messages.scrollHeight > messages.clientHeight && !isNearMessagesBottom();
+  latestButton.classList.toggle("is-visible", shouldShow);
+  latestButton.setAttribute("aria-hidden", String(!shouldShow));
+  latestButton.tabIndex = shouldShow ? 0 : -1;
 }
 
 function setSending(sending) {
@@ -1187,6 +1208,7 @@ function renderEmptyState() {
       </div>
     </div>
   `;
+  updateLatestButton();
 }
 
 function updateRecent(question) {
@@ -1311,12 +1333,20 @@ input.addEventListener("blur", () => {
 
 messages.addEventListener("scroll", () => {
   autoStickToBottom = isNearMessagesBottom();
+  updateLatestButton();
   document.documentElement.classList.add("is-chat-scrolling");
   window.clearTimeout(chatScrollTimer);
   chatScrollTimer = window.setTimeout(() => {
     document.documentElement.classList.remove("is-chat-scrolling");
   }, 140);
 });
+
+latestButton.addEventListener("click", () => {
+  autoStickToBottom = true;
+  scrollMessagesToBottom({ force: true });
+});
+
+new ResizeObserver(updateLatestButton).observe(messages);
 
 categoryList?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");
