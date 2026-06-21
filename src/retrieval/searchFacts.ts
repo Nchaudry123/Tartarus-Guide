@@ -166,6 +166,18 @@ export async function searchFacts(
   }
   if (entities.length === 0) return [];
 
+  const exactEntityNames = new Set(
+    [
+      analysis.primarySubject,
+      normalizedQuery,
+    ]
+      .filter(Boolean)
+      .map((value) => normalizeName(value as string)),
+  );
+  const exactEntities = entities.filter((entity) =>
+    exactEntityNames.has(entity.normalized_name || normalizeName(entity.name)),
+  );
+
   let factsQuery = supabase
     .from("facts")
     .select(`
@@ -196,6 +208,36 @@ export async function searchFacts(
   }
 
   let rows = (data ?? []).map((row) => row as unknown as FactMatch);
+  if (exactEntities.length > 0 && exactEntities.length < entities.length) {
+    let exactFactsQuery = supabase
+      .from("facts")
+      .select(`
+        id,
+        fact_type,
+        value,
+        confidence,
+        notes,
+        entity:entities(id,name,type,aliases,normalized_name),
+        source:sources(id,title,url,domain,credibility_rank)
+      `)
+      .in(
+        "entity_id",
+        exactEntities.map((entity) => entity.id),
+      )
+      .order("confidence", { ascending: false })
+      .limit(Math.max(limit * 4, 30));
+    if (factTypes.length > 0) {
+      exactFactsQuery = exactFactsQuery.in("fact_type", factTypes);
+    }
+    if (signal) exactFactsQuery = exactFactsQuery.abortSignal(signal);
+    const { data: exactRows, error: exactFactsError } = await exactFactsQuery;
+    if (exactFactsError) throw exactFactsError;
+    rows = [
+      ...(exactRows ?? []).map((row) => row as unknown as FactMatch),
+      ...rows,
+    ];
+  }
+
   const ingredientEntityNames: string[] = [];
   if (factTypes.includes("fusion_recipe")) {
     const namedEntities = (entities ?? [])

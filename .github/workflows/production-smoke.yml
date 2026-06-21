@@ -1,0 +1,65 @@
+name: Production Smoke Test
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Production or preview URL to test
+        required: false
+        default: https://tartarus-guide.vercel.app
+
+concurrency:
+  group: production-smoke-${{ github.event.deployment.id || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+      github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      SMOKE_BASE_URL: ${{ inputs.base_url || github.event.deployment_status.environment_url }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for deployment
+        run: |
+          for attempt in {1..18}; do
+            if curl --fail --silent --show-error --max-time 15 "$SMOKE_BASE_URL" > /dev/null; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Deployment did not become reachable: $SMOKE_BASE_URL"
+          exit 1
+
+      - name: Run production smoke test
+        run: npm run smoke:production
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-smoke-diagnostics
+          path: smoke-artifacts/
+          if-no-files-found: ignore

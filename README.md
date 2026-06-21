@@ -251,6 +251,28 @@ Game8 affinity tables are parsed deterministically. Explicit table values take
 precedence over nearby strategy prose so a summoned enemy's weakness is not
 incorrectly assigned to the page's boss.
 
+### Post-deployment smoke test
+
+GitHub Actions listens for a successful Vercel `Production` deployment and then
+tests the exact deployed URL. The smoke suite checks:
+
+- production page availability;
+- a source-backed exact weakness answer;
+- DLC clarification followed by a resumed fusion answer;
+- structured recommendation data;
+- desktop recommendation rendering;
+- mobile viewport overflow;
+- compact exact-answer rendering without an unnecessary recommendation card.
+
+Run the same check manually against production or a preview:
+
+```bash
+SMOKE_BASE_URL=https://tartarus-guide.vercel.app npm run smoke:production
+SMOKE_BASE_URL=https://your-preview.vercel.app npm run smoke:production
+```
+
+Failures upload a screenshot and JSON diagnostics as a GitHub Actions artifact.
+
 The pipeline:
 
 1. Starts from curated Persona 3 Reload guide URLs.

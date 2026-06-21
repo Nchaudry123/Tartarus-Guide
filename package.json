@@ -26,6 +26,7 @@
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
     "test:security": "tsx --test src/security/chatSecurity.test.ts src/security/rateLimit.test.ts",
     "test:cache": "tsx --test src/cache/ttlCache.test.ts",
+    "smoke:production": "node scripts/smoke-production.mjs",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
     "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && ALLOW_CHAT_DEBUG=true DISABLE_CHAT_RATE_LIMIT=true npm run eval:gate && next build"
@@ -47,6 +48,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
+    "playwright": "^1.61.0",
     "postcss": "8.5.15",
     "tailwindcss": "^3.4.16",
     "tsx": "^4.19.1",

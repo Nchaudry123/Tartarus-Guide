@@ -280,6 +280,7 @@ export function buildFocusedQueries(
       break;
     case "fusion":
       queries = [
+        focus,
         `${focus} Megaten Fusion Tool fusion recipe prerequisite unlock`,
         `${focus} Megaten Fusion Tool level Arcana skills affinities inheritance stats heart item`,
       ];
