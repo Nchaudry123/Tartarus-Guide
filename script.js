@@ -27,6 +27,14 @@ let activeRequestController = null;
 let apiAvailable = false;
 let autoStickToBottom = true;
 let stableMobileHeight = window.innerHeight;
+let scrollFrame = 0;
+
+const latestButton = document.createElement("button");
+latestButton.type = "button";
+latestButton.className = "jump-to-latest";
+latestButton.setAttribute("aria-label", "Jump to the latest message");
+latestButton.innerHTML = `<span>Latest</span><strong aria-hidden="true">↓</strong>`;
+messages.parentElement?.appendChild(latestButton);
 
 function syncDeviceLayout() {
   const isMobile =
@@ -337,6 +345,8 @@ function addUserMessage(text) {
   node.className = "message user-message";
   node.innerHTML = `<div class="bubble">${escapeHtml(text)}</div>`;
   messages.appendChild(node);
+  autoStickToBottom = true;
+  updateLatestButton();
   scrollMessagesToBottom({ force: true });
 }
 
@@ -352,6 +362,7 @@ function addLoading() {
     </div>
   `;
   messages.appendChild(node);
+  updateLatestButton();
   scrollMessagesToBottom({ force: true });
 }
 
@@ -381,7 +392,7 @@ function appendStreamToken(delta) {
   }
   const answer = node.querySelector(".answer");
   if (answer) answer.textContent += delta;
-  scrollMessagesToBottom({ force: true, behavior: "auto" });
+  scrollMessagesToBottom({ behavior: "auto" });
 }
 
 async function addAssistantMessage(response) {
@@ -442,6 +453,7 @@ async function addAssistantMessage(response) {
   }
   node.querySelector(".message-extra")?.classList.remove("is-pending");
   rememberTurn("assistant", response.answer);
+  updateLatestButton();
   scrollMessagesToBottom();
 }
 
@@ -452,12 +464,21 @@ function isNearMessagesBottom() {
 function scrollMessagesToBottom(options = {}) {
   const { force = false, behavior = "smooth" } = options;
   if (!force && !autoStickToBottom && !isNearMessagesBottom()) return;
-  requestAnimationFrame(() => {
+  window.cancelAnimationFrame(scrollFrame);
+  scrollFrame = requestAnimationFrame(() => {
     messages.scrollTo({
       top: messages.scrollHeight,
       behavior: motionEnabled() ? behavior : "auto",
     });
+    updateLatestButton();
   });
+}
+
+function updateLatestButton() {
+  const shouldShow = messages.scrollHeight > messages.clientHeight && !isNearMessagesBottom();
+  latestButton.classList.toggle("is-visible", shouldShow);
+  latestButton.setAttribute("aria-hidden", String(!shouldShow));
+  latestButton.tabIndex = shouldShow ? 0 : -1;
 }
 
 function setSending(sending) {
@@ -625,6 +646,7 @@ function renderEmptyState() {
       </div>
     </div>
   `;
+  updateLatestButton();
 }
 
 function updateRecent(question) {
@@ -718,7 +740,15 @@ input.addEventListener("blur", () => {
 
 messages.addEventListener("scroll", () => {
   autoStickToBottom = isNearMessagesBottom();
+  updateLatestButton();
 });
+
+latestButton.addEventListener("click", () => {
+  autoStickToBottom = true;
+  scrollMessagesToBottom({ force: true });
+});
+
+new ResizeObserver(updateLatestButton).observe(messages);
 
 categoryList?.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");
