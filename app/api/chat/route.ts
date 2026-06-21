@@ -5141,9 +5141,6 @@ async function resolveChatRequest(
   }
 
   onProgress?.("Reading your question...");
-  const external = await externalRagResponse(question, body.conversationId, signal);
-  if (external) return external;
-
   const direct = await directRagResponse(
     question,
     body.playerProfile,
@@ -5152,7 +5149,14 @@ async function resolveChatRequest(
     onProgress,
     signal,
   );
-  const response = direct ?? withMode(mockResponse(question), "mock");
+  const external =
+    direct === null
+      ? await externalRagResponse(question, body.conversationId, signal)
+      : null;
+  const response =
+    direct ??
+    external ??
+    withMode(mockResponse(question), "mock");
   if (
     cacheKey &&
     response.retrievalMode === "rag" &&

@@ -57,6 +57,20 @@ test("resolves an ordinal fusion reply inside a longer thread", () => {
   assert.match(context.analysisQuestion, /Alilat/);
 });
 
+test("resolves a DLC answer without polluting the Persona target", () => {
+  const history = [
+    { role: "user" as const, content: "How do I fuse Loki?" },
+    { role: "assistant" as const, content: "Do you have Persona DLC enabled?" },
+  ];
+  const context = resolveConversationContext("No Persona DLC", history);
+
+  assert.equal(
+    context.analysisQuestion,
+    "How do I fuse Loki?\nNo Persona DLC; use the base-game fusion chart.",
+  );
+  assert.doesNotMatch(context.analysisQuestion, /active conversation goal/i);
+});
+
 test("carries prior options into a referential comparison", () => {
   const history = [
     { role: "user" as const, content: "Should Yukari or Ken be my main healer?" },

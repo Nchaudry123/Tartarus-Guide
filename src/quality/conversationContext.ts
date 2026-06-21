@@ -81,6 +81,21 @@ function resolveFusionRouteReference(
   return selected ? `I have ${selected.replace(/\s*\+\s*/g, " and ")}` : question;
 }
 
+function dlcModeReply(question: string): "none" | "all" | null {
+  if (
+    /\b(?:no|without|don't have|dont have|do not have)\s+(?:any\s+)?(?:persona\s+)?dlc\b/i.test(
+      question,
+    ) ||
+    /\bbase game only\b/i.test(question)
+  ) {
+    return "none";
+  }
+  if (/\b(?:have|use|own)\s+all\s+(?:persona\s+)?dlc\b|\ball persona dlc\b/i.test(question)) {
+    return "all";
+  }
+  return null;
+}
+
 export function normalizeConversationHistory(
   question: string,
   history: ConversationMessage[] = [],
@@ -199,8 +214,12 @@ export function resolveConversationContext(
   }
 
   const resolvedReply = resolveFusionRouteReference(question, previousAssistant);
+  const dlcMode = dlcModeReply(resolvedReply);
   return {
-    analysisQuestion: formatUserThread(activeThread, resolvedReply, previousAssistant),
+    analysisQuestion:
+      dlcMode && /\b(?:fuse|fusion|recipe|make|create)\b/i.test(previousTopic)
+        ? `${previousTopic}\n${dlcMode === "none" ? "No Persona DLC; use the base-game fusion chart." : "I have all Persona DLC enabled."}`
+        : formatUserThread(activeThread, resolvedReply, previousAssistant),
     previousTopic,
     previousAssistant,
     activeThread,
