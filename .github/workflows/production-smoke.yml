@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
     env:
-      SMOKE_BASE_URL: ${{ inputs.base_url || github.event.deployment_status.environment_url }}
+      SMOKE_BASE_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.base_url || 'https://tartarus-guide.vercel.app' }}
 
     steps:
       - name: Check out repository

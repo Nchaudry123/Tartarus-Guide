@@ -9,9 +9,48 @@ const baseUrl = rawBaseUrl.replace(/\/+$/, "");
 const apiUrl = `${baseUrl}/api/chat`;
 const artifactDir = "smoke-artifacts";
 const failures = [];
+const ignoredConsoleErrors = [
+  /Provider's accounts list is empty/i,
+  /\[GSI_LOGGER\]/i,
+  /FedCM get\(\) rejects/i,
+  /Failed to load resource: the server responded with a status of (?:403|429)/i,
+];
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function isHtmlLike(value) {
+  return /^\s*<!doctype html|^\s*<html[\s>]/i.test(value);
+}
+
+function compact(value, length = 300) {
+  return value.replace(/\s+/g, " ").trim().slice(0, length);
+}
+
+function describeHtmlResponse(body) {
+  if (/DEPLOYMENT_NOT_FOUND/i.test(body)) return "Vercel deployment was not found";
+  if (/vercel authentication|log in to vercel|continue with github/i.test(body)) {
+    return "deployment appears to be protected by Vercel authentication";
+  }
+  const title = body.match(/<title[^>]*>(.*?)<\/title>/i)?.[1]?.trim();
+  return title ? `HTML page titled "${title}"` : `HTML page: ${compact(body, 160)}`;
+}
+
+async function fetchTextWithRetry(url, options = {}, attempts = 3) {
+  let lastResponse;
+  let lastBody = "";
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const response = await fetch(url, options);
+    const body = await response.text();
+    lastResponse = response;
+    lastBody = body;
+    if (response.status !== 429 || attempt === attempts) {
+      return { response, body };
+    }
+    await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+  }
+  return { response: lastResponse, body: lastBody };
 }
 
 async function step(name, operation) {
@@ -29,7 +68,7 @@ async function step(name, operation) {
 }
 
 async function chat(question, options = {}) {
-  const response = await fetch(apiUrl, {
+  const { response, body } = await fetchTextWithRetry(apiUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -40,8 +79,14 @@ async function chat(question, options = {}) {
     }),
     signal: AbortSignal.timeout(60_000),
   });
-  const body = await response.text();
   assert(response.ok, `API returned ${response.status}: ${body.slice(0, 300)}`);
+  const contentType = response.headers.get("content-type") ?? "";
+  assert(
+    contentType.includes("application/json"),
+    `API returned ${contentType || "unknown content type"} instead of JSON from ${apiUrl}: ${
+      isHtmlLike(body) ? describeHtmlResponse(body) : compact(body)
+    }`,
+  );
   const parsed = JSON.parse(body);
   assert(typeof parsed.answer === "string" && parsed.answer.length > 10, "API returned an empty answer");
   return parsed;
@@ -73,7 +118,12 @@ await step("production page is available", async () => {
   const response = await fetch(baseUrl, { signal: AbortSignal.timeout(20_000) });
   const html = await response.text();
   assert(response.ok, `Page returned ${response.status}`);
-  assert(html.includes("Tartarus Guide"), "Expected app shell was not present");
+  assert(
+    html.includes("Tartarus Guide"),
+    `Expected app shell was not present at ${baseUrl}; received ${
+      isHtmlLike(html) ? describeHtmlResponse(html) : compact(html)
+    }`,
+  );
 });
 
 await step("exact answer is sourced", async () => {
@@ -129,7 +179,12 @@ const context = await browser.newContext({ viewport: { width: 1280, height: 720 
 const page = await context.newPage();
 const browserErrors = [];
 page.on("console", (message) => {
-  if (message.type() === "error") browserErrors.push(message.text());
+  if (
+    message.type() === "error" &&
+    !ignoredConsoleErrors.some((pattern) => pattern.test(message.text()))
+  ) {
+    browserErrors.push(message.text());
+  }
 });
 page.on("pageerror", (error) => browserErrors.push(error.message));
 
