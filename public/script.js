@@ -16,6 +16,7 @@ const chatHistoryKey = "tartarusChatHistoryV2";
 const exactAnswerCacheKey = "tartarusExactAnswerCacheV1";
 const playerProfileKey = "tartarusPlayerProfileV2";
 const savedAnswersKey = "tartarusSavedAnswersV1";
+const currentTaskKey = "tartarusCurrentTaskV1";
 const defaultInputPlaceholder = input?.placeholder || "Ask anything about Persona 3 Reload...";
 const maxQueuedQuestions = 5;
 const maxCachedExactAnswers = 24;
@@ -26,6 +27,7 @@ const recent = [];
 const chatHistory = loadChatHistory();
 const exactAnswerCache = loadExactAnswerCache();
 const savedAnswers = loadSavedAnswers();
+let currentTask = loadCurrentTask();
 let playerProfile = loadPlayerProfile();
 let isSending = false;
 let isProcessingQueue = false;
@@ -46,6 +48,11 @@ latestButton.className = "jump-to-latest";
 latestButton.setAttribute("aria-label", "Jump to the latest message");
 latestButton.innerHTML = `<span>Latest</span><strong aria-hidden="true">↓</strong>`;
 messages.parentElement?.appendChild(latestButton);
+const currentTaskCard = document.createElement("aside");
+currentTaskCard.className = "current-task-card";
+currentTaskCard.setAttribute("aria-live", "polite");
+currentTaskCard.setAttribute("aria-label", "Current conversation task");
+messages.parentElement?.insertBefore(currentTaskCard, messages);
 let dashboardRefreshController = null;
 
 let apiAvailable = false;
@@ -160,6 +167,15 @@ function loadSavedAnswers() {
   }
 }
 
+function loadCurrentTask() {
+  try {
+    const task = JSON.parse(window.sessionStorage.getItem(currentTaskKey) || "null");
+    return task && typeof task.title === "string" ? task : null;
+  } catch {
+    return null;
+  }
+}
+
 function saveChatHistory() {
   window.sessionStorage.setItem(chatHistoryKey, JSON.stringify(chatHistory));
 }
@@ -180,11 +196,162 @@ function saveSavedAnswers() {
   }
 }
 
+function saveCurrentTask() {
+  try {
+    if (currentTask) window.sessionStorage.setItem(currentTaskKey, JSON.stringify(currentTask));
+    else window.sessionStorage.removeItem(currentTaskKey);
+  } catch {
+    // Current-task UI is a convenience layer; ignore storage failures.
+  }
+}
+
 function savePlayerProfile(options = {}) {
   window.localStorage.setItem(playerProfileKey, JSON.stringify(playerProfile));
   window.sessionStorage.removeItem("tartarusPlayerProfile");
   renderMemorySummary();
   if (options.refreshDashboard) scheduleDashboardRefresh();
+}
+
+function taskTargetFromQuestion(question) {
+  const text = String(question || "").replace(/\s+/g, " ").trim();
+  const patterns = [
+    /\b(?:how\s+(?:do|can)\s+i\s+)?(?:fuse|make|create)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z0-9' -]{1,36})(?=[?.!,]|$)/i,
+    /\b(?:possible\s+)?(?:fusions?|recipes?|routes?)\s+(?:for|to)\s+(?:a\s+|an\s+|the\s+)?([a-z][a-z0-9' -]{1,36})(?=[?.!,]|$)/i,
+    /\b(?:beat|fight|defeat|prepare for)\s+(?:the\s+)?([a-z][a-z0-9' -]{2,36})(?=[?.!,]|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern)?.[1]?.trim();
+    if (match) return titleizeTaskText(match);
+  }
+  return "";
+}
+
+function titleizeTaskText(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .map((word) => (word ? word[0].toUpperCase() + word.slice(1).toLowerCase() : ""))
+    .join(" ");
+}
+
+function dlcTaskLabel(dlcMode = playerProfile.dlcOwnership) {
+  if (dlcMode === "all") return "DLC enabled";
+  if (dlcMode === "none") return "No DLC";
+  return "DLC not set";
+}
+
+function taskFromQuestion(question, status = "Working") {
+  const text = String(question || "").toLowerCase();
+  const target = taskTargetFromQuestion(question);
+  if (/\b(fuse|fusion|recipe|recipes|routes?|make|create)\b/.test(text)) {
+    return {
+      type: "fusion",
+      title: target ? `Fusing ${target}` : "Fusion route",
+      status,
+      meta: [dlcTaskLabel(), "Checking recipes"].filter(Boolean),
+    };
+  }
+  if (/\bwhat should i do today|what do i do today|today|schedule|priorit/i.test(text)) {
+    return {
+      type: "dashboard",
+      title: "Planning today",
+      status,
+      meta: [playerProfile.currentDate || playerProfile.currentMonth || "Player Memory", "Priorities"].filter(Boolean),
+    };
+  }
+  if (/\b(best|recommend|should i use|which)\b/.test(text)) {
+    return {
+      type: "recommendation",
+      title: target ? `Choosing ${target}` : "Choosing a recommendation",
+      status,
+      meta: [playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "", playerProfile.playstyle].filter(Boolean),
+    };
+  }
+  if (/\b(weak|weakness|resist|null|drain|repel)\b/.test(text)) {
+    return {
+      type: "exact",
+      title: target ? `Checking ${target}` : "Checking exact facts",
+      status,
+      meta: ["Guide-backed", "Exact answer"].filter(Boolean),
+    };
+  }
+  return {
+    type: "general",
+    title: compactTitle(question, 42) || "Guide conversation",
+    status,
+    meta: ["Conversation"].filter(Boolean),
+  };
+}
+
+function taskFromResponse(question, response) {
+  if (response?.fusionWorkshop?.target) {
+    const needsIngredients = (response.fusionWorkshop.recipes || []).some((recipe) => !recipe.ready);
+    return {
+      type: "fusion",
+      title: `Fusing ${response.fusionWorkshop.target}`,
+      status: needsIngredients ? "Need ingredients" : "Ready route found",
+      meta: [dlcTaskLabel(response.fusionWorkshop.dlcMode), `${response.fusionWorkshop.recipes.length} route${response.fusionWorkshop.recipes.length === 1 ? "" : "s"}`],
+    };
+  }
+  if (response?.dailyDashboard?.date) {
+    const urgent = (response.dailyDashboard.items || []).filter((item) => item.priority === "urgent").length;
+    return {
+      type: "dashboard",
+      title: "Planning today",
+      status: urgent ? `${urgent} urgent` : "Priorities ready",
+      meta: [response.dailyDashboard.date, response.dailyDashboard.weekday].filter(Boolean),
+    };
+  }
+  if (response?.recommendation?.primary?.name) {
+    return {
+      type: "recommendation",
+      title: response.recommendation.title || "Choosing a recommendation",
+      status: response.recommendation.primary.name,
+      meta: ["Navigator pick", response.recommendation.nextStep ? "Next move ready" : ""].filter(Boolean),
+    };
+  }
+  const missing = response?.missing && !/no additional detail/i.test(response.missing);
+  const fallback = taskFromQuestion(question, missing ? "Needs detail" : "Answered");
+  return {
+    ...fallback,
+    status: missing ? "Needs detail" : "Answered",
+    meta: missing ? [...fallback.meta.slice(0, 1), "One more detail"] : fallback.meta,
+  };
+}
+
+function setCurrentTask(task) {
+  currentTask = task;
+  saveCurrentTask();
+  renderCurrentTask();
+}
+
+function clearCurrentTask() {
+  currentTask = null;
+  saveCurrentTask();
+  renderCurrentTask();
+}
+
+function renderCurrentTask() {
+  if (!currentTaskCard) return;
+  if (!currentTask?.title) {
+    currentTaskCard.classList.remove("is-visible");
+    currentTaskCard.innerHTML = "";
+    return;
+  }
+  const meta = (currentTask.meta || [])
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((item) => `<span>${escapeHtml(item)}</span>`)
+    .join("");
+  currentTaskCard.className = `current-task-card is-visible task-${escapeHtml(currentTask.type || "general")}`;
+  currentTaskCard.innerHTML = `
+    <div>
+      <small>Current Task</small>
+      <strong>${escapeHtml(currentTask.title)}</strong>
+    </div>
+    <p>${escapeHtml(currentTask.status || "Working")}</p>
+    ${meta ? `<footer>${meta}</footer>` : ""}
+  `;
 }
 
 function rememberTurn(role, content) {
@@ -427,6 +594,7 @@ function closeMemoryDialog() {
 
 renderMemorySummary();
 renderRecentAnswers();
+renderCurrentTask();
 
 function escapeHtml(value) {
   return String(value)
@@ -697,6 +865,7 @@ async function refreshVisibleDashboard() {
     if (extra) extra.innerHTML = renderResponseExtras(response);
     message.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "rag")} is-dashboard-updated`;
     message.removeAttribute("aria-busy");
+    setCurrentTask(taskFromResponse("What should I do today?", response));
     saveAnswerSnapshot({
       question: "What should I do today?",
       response,
@@ -1019,6 +1188,7 @@ async function addAssistantMessage(response, options = {}) {
   node.querySelector(".message-extra")?.classList.remove("is-pending");
   if (!options.skipRemember) {
     rememberTurn("assistant", response.answer);
+    setCurrentTask(taskFromResponse(options.question || activeQuestion || response.answer, response));
     saveAnswerSnapshot({
       question: options.question || activeQuestion || "Recent guide answer",
       response,
@@ -1268,6 +1438,7 @@ async function askQueuedQuestion(question) {
   const requestController = new AbortController();
   activeRequestController = requestController;
   activeQuestion = question;
+  setCurrentTask(taskFromQuestion(question));
   setSending(true);
   setMenu(false);
   rememberTurn("user", question);
@@ -1393,6 +1564,7 @@ clearChat?.addEventListener("click", () => {
   saveSavedAnswers();
   renderRecentAnswers();
   renderEmptyState();
+  clearCurrentTask();
   setMenu(false);
   input.focus();
 });
