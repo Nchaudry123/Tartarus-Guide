@@ -1068,9 +1068,10 @@ async function dailyDashboardResponse(
   const dashboard = buildDailyDashboard(profile, requestFacts);
   if (!dashboard) return null;
   const first = dashboard.items[0];
-  const nextPriorities = dashboard.items
-    .slice(1, 4)
+  const recommendedLane = dashboard.items
+    .filter((item) => item.priority === "recommended")
     .map((item) => item.title)
+    .slice(0, 3)
     .join(", ");
   const urgentCount = dashboard.items.filter((item) => item.priority === "urgent").length;
   const sourceMap = new Map<string, ChatResponse["sources"][number]>();
@@ -1082,9 +1083,9 @@ async function dailyDashboardResponse(
 
   const response = withMode({
     answer:
-      `${dashboard.weekday}, ${dashboard.date}: ${urgentCount ? `you have ${urgentCount} urgent priorit${urgentCount === 1 ? "y" : "ies"}.` : "nothing tracked is due immediately."} ` +
+      `${dashboard.weekday}, ${dashboard.date}: ${urgentCount ? `you have ${urgentCount} urgent priorit${urgentCount === 1 ? "y" : "ies"} in the do-first lane.` : "nothing tracked is due immediately."} ` +
       (first
-        ? `Start with ${first.title}. ${first.detail}${nextPriorities ? ` Next up: ${nextPriorities}.` : ""}`
+        ? `Start with ${first.title}. ${first.detail}${recommendedLane ? ` The recommended lane is ${recommendedLane}.` : ""}`
         : "Use the day for your highest-priority Player Memory goal."),
     sections: [],
     dailyDashboard: dashboard,
