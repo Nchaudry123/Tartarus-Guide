@@ -75,7 +75,7 @@ function resolveFusionRouteReference(
   const ordinal = question.match(/\b(first|second)\s+(?:pair|route|one)\b/i)?.[1]?.toLowerCase();
   if (!ordinal || !previousAssistant) return question;
   const routes = previousAssistant.match(
-    /\btwo routes to\s+.+?\s+are\s+(.+?)\s+or\s+(.+?)\.\s*do you have either pair/i,
+    /\btwo routes to\s+.+?(?:\s+are|:)\s+(.+?)\s+or\s+(.+?)\.\s*do you have either pair/i,
   );
   const selected = ordinal === "first" ? routes?.[1] : routes?.[2];
   return selected ? `I have ${selected.replace(/\s*\+\s*/g, " and ")}` : question;
