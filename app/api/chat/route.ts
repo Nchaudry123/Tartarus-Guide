@@ -494,6 +494,24 @@ function fusionDlcClarificationResponse(
   return response;
 }
 
+function personasMentionedAsOwned(question: string): string[] {
+  const matches = [
+    ...question.matchAll(
+      /\b(?:i have|i own|my personas are|owned personas?|personas?:)\s+([a-z0-9,' /+-]{3,140})/gi,
+    ),
+  ];
+  return uniqueStrings(
+    matches.flatMap((match) =>
+      splitProfileList(
+        match[1]
+          .replace(/\b(?:the user's latest follow-up is|additional detail from the user|do you have either pair)\b.*$/i, "")
+          .trim(),
+        12,
+      ).map(titleCase),
+    ),
+  );
+}
+
 function contextualizeQuestion(
   question: string,
   history: NonNullable<ChatRequest["history"]>,
@@ -2390,7 +2408,10 @@ function structuredFusionResponse(
   );
   if (!targetRecipes.length) return null;
 
-  const owned = new Set((profile.ownedPersonas ?? []).map((name) => name.toLowerCase()));
+  const mentionedOwned = personasMentionedAsOwned(question);
+  const owned = new Set(
+    [...(profile.ownedPersonas ?? []), ...mentionedOwned].map((name) => name.toLowerCase()),
+  );
   const ingredientOwnership = (fact: (typeof targetRecipes)[number]) =>
     fact.value
       .split(/\s*\+\s*/)
@@ -2419,13 +2440,27 @@ function structuredFusionResponse(
     return ingredients.length > 0 && ingredients.every((name) => owned.has(name));
   });
   const answer = completeRecipe
-    ? `You already own the ingredients for ${target}: fuse ${completeRecipe.value}.`
+    ? `Perfect, you already own a working route. Fuse ${completeRecipe.value} to make ${target}.`
     : selected.length > 1
-      ? `For your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart, two routes to ${target} are ${selected[0].value} or ${selected[1].value}. Do you have either pair?`
-      : `${target} uses ${selected[0].value} on your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart. Do you have those ingredients?`;
+      ? `For your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart, start with these two routes to ${target}: ${selected[0].value} or ${selected[1].value}. Do you have either pair?`
+      : `For your ${dlcMode === "all" ? "DLC-enabled" : "base-game"} fusion chart, ${target} uses ${selected[0].value}. Do you have those ingredients?`;
   const response = withMode({
     answer,
-    sections: [],
+    sections: completeRecipe
+      ? [
+          {
+            title: "Next Step",
+            content:
+              "Open the Velvet Room, choose the shown pair, and confirm the preview result before fusing.",
+          },
+        ]
+      : [
+          {
+            title: "Fusion Check",
+            content:
+              "Pick the route you already own. If you do not have either pair, ask for another route and I will keep walking the chain backward.",
+          },
+        ],
     fusionWorkshop: {
       target,
       dlcMode,
@@ -2450,7 +2485,9 @@ function structuredFusionResponse(
   }, "rag");
   response.companion = {
     ...response.companion,
-    suggestedPrompts: selected.map((fact) => `I have ${fact.value.replace(" + ", " and ")}`),
+    suggestedPrompts: completeRecipe
+      ? ["What skills should I keep?", "Show another route"]
+      : selected.map((fact, index) => `I have the ${index === 0 ? "first" : "second"} pair`),
   };
   if (debug) {
     response.diagnostics = {

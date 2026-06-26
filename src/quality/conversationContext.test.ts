@@ -57,6 +57,21 @@ test("resolves an ordinal fusion reply inside a longer thread", () => {
   assert.match(context.analysisQuestion, /Alilat/);
 });
 
+test("resolves ordinal fusion replies from guided route wording", () => {
+  const history = [
+    { role: "user" as const, content: "How can I fuse Loki?" },
+    {
+      role: "assistant" as const,
+      content:
+        "For your base-game fusion chart, start with these two routes to Loki: Legion + Rangda or Naga Raja + Byakko. Do you have either pair?",
+    },
+  ];
+  const context = resolveConversationContext("I have the first pair.", history);
+
+  assert.match(context.analysisQuestion, /Legion and Rangda/);
+  assert.match(context.analysisQuestion, /Loki/);
+});
+
 test("resolves a DLC answer without polluting the Persona target", () => {
   const history = [
     { role: "user" as const, content: "How do I fuse Loki?" },
