@@ -821,6 +821,43 @@ function renderAnswerStatus(response) {
   `;
 }
 
+function uniquePrompts(prompts) {
+  const seen = new Set();
+  return prompts
+    .map((prompt) => String(prompt || "").trim())
+    .filter(Boolean)
+    .filter((prompt) => {
+      const key = prompt.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 4);
+}
+
+function contextualSuggestedPrompts(response) {
+  const prompts = [...(response.companion?.suggestedPrompts || [])];
+  if (response.fusionWorkshop?.target) {
+    const missingIngredients = (response.fusionWorkshop.recipes || [])
+      .flatMap((recipe) => recipe.ingredients || [])
+      .filter((ingredient) => !ingredient.owned)
+      .map((ingredient) => ingredient.name);
+    if (missingIngredients[0]) prompts.push(`How do I fuse ${missingIngredients[0]}?`);
+    prompts.push("Show another route", "What skills should I keep?");
+  } else if (/persona dlc/i.test(response.answer || "") || /persona dlc/i.test(response.missing || "")) {
+    prompts.push("No Persona DLC", "I have all Persona DLC");
+  } else if (response.recommendation?.primary?.name) {
+    prompts.push("Why this pick?", "Show a safer option", "What level do I need?");
+  } else if (response.dailyDashboard?.date) {
+    prompts.push("Refresh today’s plan", "What should I do next?", "Update Player Memory");
+  } else if (needsMoreDetail(response)) {
+    prompts.push("Use my Player Memory", "Let me rephrase", "Ask one focused question");
+  } else if (Array.isArray(response.sources) && response.sources.length) {
+    prompts.push("How should I use this?", "What should I do next?");
+  }
+  return uniquePrompts(prompts);
+}
+
 function renderResponseExtras(response) {
   const sections = (response.sections || [])
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
@@ -842,7 +879,7 @@ function renderResponseExtras(response) {
         <footer>${sourceLinks}</footer>
       </details>`
     : "";
-  const prompts = (response.companion?.suggestedPrompts || [])
+  const prompts = contextualSuggestedPrompts(response)
     .slice(0, 3)
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
@@ -1592,7 +1629,12 @@ enterApp.addEventListener("click", () => {
 
 messages.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");
-  if (button) queueQuestion(button.dataset.prompt);
+  if (!button) return;
+  if (button.dataset.prompt === "Update Player Memory") {
+    openMemoryDialog();
+    return;
+  }
+  queueQuestion(button.dataset.prompt);
 });
 
 recentList?.addEventListener("click", (event) => {
