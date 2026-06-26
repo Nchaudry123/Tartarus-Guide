@@ -1009,6 +1009,59 @@ textarea:focus-visible {
   letter-spacing: 0.08em;
 }
 
+.answer-status {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin: 1rem 0;
+  padding: .62rem .74rem;
+  border: 1px solid rgba(85,247,255,.24);
+  background:
+    linear-gradient(120deg, rgba(85,247,255,.1), transparent 48%),
+    rgba(2,7,32,.42);
+}
+.answer-status span {
+  flex: 0 0 auto;
+  color: var(--cyan);
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: .68rem;
+  font-style: italic;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.answer-status p {
+  min-width: 0;
+  margin: 0;
+  color: rgba(239,250,255,.76);
+  font-size: .78rem;
+  font-weight: 780;
+  line-height: 1.35;
+}
+.answer-status-verified {
+  border-color: rgba(116,255,159,.34);
+  background:
+    linear-gradient(120deg, rgba(116,255,159,.12), transparent 48%),
+    rgba(2,7,32,.42);
+}
+.answer-status-verified span {
+  color: #74ff9f;
+}
+.answer-status-needs-detail {
+  border-color: rgba(255,190,79,.38);
+  background:
+    linear-gradient(120deg, rgba(255,190,79,.14), transparent 48%),
+    rgba(2,7,32,.46);
+}
+.answer-status-needs-detail span {
+  color: #ffcf70;
+}
+.answer-status-offline {
+  border-color: rgba(255,105,200,.34);
+}
+.answer-status-offline span {
+  color: #ff8bd6;
+}
+
 @media (max-width: 720px) {
   .recommendation-card {
     padding: 16px;
@@ -1022,6 +1075,12 @@ textarea:focus-visible {
   .recommendation-next {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+
+  .answer-status {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: .28rem;
   }
 }
 .daily-plan-item {
