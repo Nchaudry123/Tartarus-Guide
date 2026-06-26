@@ -392,6 +392,7 @@ function normalizeResponseForSave(response) {
     dailyDashboard: response.dailyDashboard || null,
     recommendation: response.recommendation || null,
     missing: response.missing,
+    confidence: response.confidence,
     retrievalMode: response.retrievalMode || "rag",
     companion: response.companion
       ? { suggestedPrompts: response.companion.suggestedPrompts || [] }
@@ -778,6 +779,48 @@ function renderRecommendationCard(recommendation) {
   `;
 }
 
+function needsMoreDetail(response) {
+  return Boolean(
+    response?.missing &&
+      !/^(?:no additional detail is needed|no missing information reported)\.?$/i.test(String(response.missing).trim()),
+  );
+}
+
+function renderAnswerStatus(response) {
+  const hasSources = Array.isArray(response.sources) && response.sources.length > 0;
+  const needsDetail = needsMoreDetail(response);
+  const mode = response.retrievalMode || "mock";
+  const status = needsDetail
+    ? {
+        tone: "needs-detail",
+        label: "Needs One Detail",
+        detail: response.missing,
+      }
+    : hasSources && mode === "rag"
+      ? {
+          tone: "verified",
+          label: "Guide-Checked",
+          detail: `${response.sources.length} trusted source${response.sources.length === 1 ? "" : "s"} used.`,
+        }
+      : mode === "error"
+        ? {
+            tone: "offline",
+            label: "Connection Check",
+            detail: "The guide connection dropped, but the conversation is still saved.",
+          }
+        : {
+            tone: "draft",
+            label: "Companion Note",
+            detail: "Helpful guidance, with exact details checked when source support is available.",
+          };
+  return `
+    <aside class="answer-status answer-status-${escapeHtml(status.tone)}" aria-label="${escapeHtml(status.label)}">
+      <span>${escapeHtml(status.label)}</span>
+      <p>${escapeHtml(status.detail)}</p>
+    </aside>
+  `;
+}
+
 function renderResponseExtras(response) {
   const sections = (response.sections || [])
     .map(([title, content]) => `<section><h3>${escapeHtml(title)}</h3>${renderText(content)}</section>`)
@@ -804,6 +847,7 @@ function renderResponseExtras(response) {
     .map((prompt) => `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`)
     .join("");
   return `
+    ${renderAnswerStatus(response)}
     ${renderBossPrepCard(response.bossPrep)}
     ${renderFusionWorkshop(response.fusionWorkshop)}
     ${renderDailyDashboard(response.dailyDashboard)}
@@ -1063,6 +1107,7 @@ function rememberExactAnswer(question, response) {
     fusionWorkshop: response.fusionWorkshop || null,
     dailyDashboard: response.dailyDashboard || null,
     missing: response.missing,
+    confidence: response.confidence,
     retrievalMode: response.retrievalMode,
     companion: response.companion
       ? { suggestedPrompts: response.companion.suggestedPrompts || [] }
@@ -1251,6 +1296,7 @@ function normalizeApiResponse(data) {
     dailyDashboard: data.dailyDashboard || null,
     recommendation: data.recommendation || null,
     missing: data.missingInfo || "No missing information reported.",
+    confidence: data.confidence,
     retrievalMode: data.retrievalMode || "mock",
     companion: data.companion,
     sources: data.sources || [],
