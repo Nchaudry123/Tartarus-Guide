@@ -908,11 +908,51 @@ textarea:focus-visible {
   letter-spacing: .04em;
   text-transform: uppercase;
 }
+.daily-priority-stack {
+  display: grid;
+  gap: .82rem;
+  padding: .85rem;
+}
+.daily-priority-lane {
+  min-width: 0;
+}
+.daily-priority-lane > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .48rem;
+  padding: 0 .08rem;
+}
+.daily-priority-lane > header span {
+  color: var(--cyan);
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: .72rem;
+  font-style: italic;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.daily-priority-lane > header strong {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid rgba(85,247,255,.36);
+  border-radius: 50%;
+  color: rgba(239,250,255,.9);
+  font-size: .72rem;
+  font-weight: 950;
+}
+.daily-priority-lane.lane-urgent > header span {
+  color: #ff9898;
+}
+.daily-priority-lane.lane-optional > header span {
+  color: rgba(239,250,255,.66);
+}
 .daily-plan-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .7rem;
-  padding: .85rem;
 }
 
 .recommendation-card {
@@ -2049,6 +2089,10 @@ footer span {
   }
   .daily-plan-grid {
     grid-template-columns: 1fr;
+  }
+
+  .daily-priority-stack {
+    padding: .7rem;
   }
   .fusion-recipe-card li {
     grid-template-columns: auto minmax(0, 1fr);

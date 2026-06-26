@@ -720,9 +720,7 @@ function renderDailyDashboard(dashboard) {
     recommended: "Recommended",
     optional: "If time allows",
   };
-  const items = dashboard.items
-    .map(
-      (item) => `
+  const renderItem = (item) => `
         <article class="daily-plan-item priority-${escapeHtml(item.priority || "optional")}">
           <header>
             <span>${escapeHtml(priorityLabels[item.priority] || "Plan")}</span>
@@ -732,8 +730,21 @@ function renderDailyDashboard(dashboard) {
           <p>${escapeHtml(item.detail)}</p>
           ${item.timing ? `<time>${escapeHtml(item.timing)}</time>` : ""}
         </article>
-      `,
-    )
+      `;
+  const lanes = ["urgent", "recommended", "optional"]
+    .map((priority) => {
+      const items = dashboard.items.filter((item) => (item.priority || "optional") === priority);
+      if (!items.length) return "";
+      return `
+        <section class="daily-priority-lane lane-${escapeHtml(priority)}">
+          <header>
+            <span>${escapeHtml(priorityLabels[priority])}</span>
+            <strong>${items.length}</strong>
+          </header>
+          <div class="daily-plan-grid">${items.map(renderItem).join("")}</div>
+        </section>
+      `;
+    })
     .join("");
   return `
     <aside class="daily-dashboard" aria-label="Game-day plan for ${escapeHtml(dashboard.date)}" aria-live="polite">
@@ -744,7 +755,7 @@ function renderDailyDashboard(dashboard) {
         </div>
         <strong>${escapeHtml(dashboard.date)}</strong>
       </div>
-      <div class="daily-plan-grid">${items}</div>
+      <div class="daily-priority-stack">${lanes}</div>
     </aside>
   `;
 }

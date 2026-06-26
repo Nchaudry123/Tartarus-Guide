@@ -64,9 +64,10 @@ test("prioritizes expiring requests, available tracked links, and the next opera
   assert.equal(dashboard.items[0].priority, "urgent");
   assert.match(dashboard.items[0].title, /Request 12/i);
   assert.match(dashboard.items[0].timing ?? "", /1 day left/i);
+  assert.match(dashboard.items[1].title, /Emperor and Empress/i);
   assert(dashboard.items.some((item) => /Hidetoshi/.test(item.title)));
   assert(dashboard.items.some((item) => /Bunkichi/.test(item.title)));
-  assert(dashboard.items.some((item) => /Emperor and Empress/.test(item.title)));
+  assert.equal(dashboard.items.at(-1)?.category, "Activity");
 });
 
 test("does not invent active links or requests when Player Memory does not track them", () => {

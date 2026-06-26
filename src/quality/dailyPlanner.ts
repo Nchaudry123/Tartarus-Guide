@@ -44,6 +44,13 @@ const priorityOrder: Record<DailyPlanItem["priority"], number> = {
   optional: 2,
 };
 
+const categoryOrder: Record<DailyPlanItem["category"], number> = {
+  Request: 0,
+  Tartarus: 1,
+  "Social Link": 2,
+  Activity: 3,
+};
+
 function normalize(value: string): string {
   return value
     .toLowerCase()
@@ -334,7 +341,11 @@ export function buildDailyDashboard(
     });
   }
   items.push(activityItem(profile, links));
-  items.sort((left, right) => priorityOrder[left.priority] - priorityOrder[right.priority]);
+  items.sort(
+    (left, right) =>
+      priorityOrder[left.priority] - priorityOrder[right.priority] ||
+      categoryOrder[left.category] - categoryOrder[right.category],
+  );
 
   return {
     date: `${date.month} ${date.day}`,
