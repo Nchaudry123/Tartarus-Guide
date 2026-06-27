@@ -3782,6 +3782,11 @@ function finalFightPersonaRecommendation(
   const telosOwned =
     !telosUnavailable &&
     /\b(?:i have|i've got|ive got|unlocked|using)\b.{0,30}\borpheus telos\b/i.test(question);
+  const wantsSaferOption = /\b(?:safer|stable|defensive|survivable)\b/i.test(question);
+  const asksLevelTarget = /\bwhat\s+level\s+do\s+i\s+need\b|\brecommended\s+level\b|\blevel\s+target\b/i.test(
+    question,
+  );
+  const primaryName = telosUnavailable || wantsSaferOption ? "Lucifer" : "Orpheus Telos";
   const levelNote = Number.isFinite(level)
     ? level >= 89
       ? `At level ${level}, your level is already high enough for the recommended endgame options; build quality and unlocks matter more than grinding.`
@@ -3790,7 +3795,11 @@ function finalFightPersonaRecommendation(
 
   const response = withMode({
     answer:
-      telosUnavailable
+      asksLevelTarget
+        ? `${levelNote} For the January 31 fight, I would still build toward ${primaryName} as your main target and keep a backup Persona for support or recovery.`
+        : wantsSaferOption
+          ? "The safer final-fight option is Lucifer. Use it when you want a stable main Persona that can carry Debilitate, durability, and flexible damage instead of relying on Orpheus Telos being unlocked."
+          : telosUnavailable
         ? "Since Orpheus Telos is unavailable, make Lucifer your main Persona for the January 31 fight. It is a practical all-round fallback because it can carry Debilitate while covering damage and durability."
         : telosOwned
           ? "Keep Orpheus Telos as your main Persona for the January 31 fight. Nyx Avatar changes affinities across many phases, so a flexible Almighty build is more dependable than betting the whole fight on one element."
@@ -3814,13 +3823,17 @@ function finalFightPersonaRecommendation(
     recommendation: {
       title: "Final-Fight Persona",
       primary: {
-        name: telosUnavailable ? "Lucifer" : "Orpheus Telos",
-        reason: telosUnavailable
+        name: primaryName,
+        reason: telosUnavailable || wantsSaferOption
           ? "The strongest practical all-round fallback here, with room for Debilitate, damage, and durability."
           : "The most flexible main Persona for a fight that changes affinities across many phases.",
       },
-      alternatives: telosUnavailable
+      alternatives: telosUnavailable || wantsSaferOption
         ? [
+            {
+              name: "Orpheus Telos",
+              tradeoff: "Pick it if it is unlocked and you want maximum flexibility across Nyx Avatar's changing phases.",
+            },
             {
               name: "Helel",
               tradeoff: "Pick it when you want a more offensive Morning Star setup.",
@@ -3838,8 +3851,10 @@ function finalFightPersonaRecommendation(
           ],
       decidingFactor: telosUnavailable
         ? "Use Lucifer for stability; switch to Helel when your party already covers support."
-        : "Choose based on unlocks first, then whether you need flexibility, support, or maximum offense.",
-      nextStep: telosUnavailable
+        : wantsSaferOption
+          ? "Use Lucifer when consistency matters more than the highest-ceiling unlock."
+          : "Choose based on unlocks first, then whether you need flexibility, support, or maximum offense.",
+      nextStep: telosUnavailable || wantsSaferOption
         ? "Check whether Lucifer is unlocked and tell me which skills you can transfer."
         : "Tell me which of Orpheus Telos, Lucifer, and Helel you have unlocked.",
     },

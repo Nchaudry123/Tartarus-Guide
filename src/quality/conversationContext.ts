@@ -51,6 +51,23 @@ function isFusionSkillFollowUp(
   );
 }
 
+function isRecommendationFollowUp(
+  question: string,
+  previousAssistant: string | undefined,
+): boolean {
+  if (!previousAssistant) return false;
+  if (
+    !/\b(?:recommend|recommendation|pick|option|alternative|next move|persona|party|build)\b/i.test(
+      previousAssistant,
+    )
+  ) {
+    return false;
+  }
+  return /\b(?:why\s+(?:this|that)\s+pick|show\s+(?:a\s+)?(?:safer|another|different)\s+option|what\s+level\s+do\s+i\s+need|why\s+should\s+i\s+choose|what\s+about\s+(?:the\s+)?(?:alternative|other))\b/i.test(
+    question,
+  );
+}
+
 export function isShortContextReply(question: string): boolean {
   const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
   const count = wordCount(text);
@@ -82,6 +99,7 @@ export function isContextualConversationReply(
   previousAssistant: string | undefined,
 ): boolean {
   if (isFusionSkillFollowUp(question, previousAssistant)) return true;
+  if (isRecommendationFollowUp(question, previousAssistant)) return true;
   if (isShortContextReply(question)) return true;
   const normalized = question.trim();
   if (referentialReplyPattern.test(normalized)) return true;

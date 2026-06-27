@@ -201,6 +201,33 @@ await step("recommendation payload is structured", async () => {
   );
 });
 
+await step("recommendation follow-up keeps context", async () => {
+  const playerProfile = {
+    currentMonth: "January",
+    currentLevel: "90",
+    spoilerPreference: "open",
+  };
+  const first = await chat("What is the best Persona to use for the final boss?", {
+    playerProfile,
+  });
+  const followUp = await chat("What level do I need?", {
+    playerProfile,
+    history: [
+      { role: "user", content: "What is the best Persona to use for the final boss?" },
+      { role: "assistant", content: first.answer },
+    ],
+  });
+  assert(
+    /\b(?:level|76\+|90|January 31|Nyx|final)\b/i.test(followUp.answer),
+    "Recommendation level follow-up lost the final-fight context",
+  );
+  assert(followUp.recommendation?.primary?.name, "Recommendation follow-up did not keep a primary pick");
+  assert(
+    !/what specific aspect of the game/i.test(followUp.answer),
+    "Recommendation follow-up fell back to a generic clarification",
+  );
+});
+
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
 const page = await context.newPage();

@@ -94,6 +94,21 @@ test("keeps skill follow-ups attached to the fused Persona", () => {
   assert.match(context.analysisQuestion, /fuse Loki/i);
 });
 
+test("keeps recommendation button follow-ups attached to the prior pick", () => {
+  const history = [
+    { role: "user" as const, content: "What is the best Persona to use for the final boss?" },
+    {
+      role: "assistant" as const,
+      content:
+        "My first pick for the January 31 fight is Orpheus Telos. Lucifer is the safer alternative. Tell me which one you have unlocked.",
+    },
+  ];
+  const context = resolveConversationContext("What level do I need?", history);
+
+  assert.match(context.analysisQuestion, /best Persona to use for the final boss/i);
+  assert.match(context.analysisQuestion, /latest follow-up is: What level do I need/i);
+});
+
 test("resolves a DLC answer without polluting the Persona target", () => {
   const history = [
     { role: "user" as const, content: "How do I fuse Loki?" },
