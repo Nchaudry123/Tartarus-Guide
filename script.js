@@ -55,7 +55,7 @@ currentTaskCard.setAttribute("aria-label", "Current conversation task");
 messages.parentElement?.insertBefore(currentTaskCard, messages);
 let dashboardRefreshController = null;
 
-let apiAvailable = false;
+let apiAvailable = true;
 let autoStickToBottom = true;
 let stableMobileHeight = window.innerHeight;
 
@@ -1442,6 +1442,10 @@ async function checkApiStatus() {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ question: "__status__" }),
     });
+    if (response.status === 429) {
+      apiAvailable = true;
+      return;
+    }
     const data = response.ok ? await response.json() : {};
     setApiStatus(response.ok ? data.retrievalMode || "mock" : "mock");
   } catch {

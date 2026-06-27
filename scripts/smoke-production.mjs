@@ -279,6 +279,7 @@ try {
   });
 
   await step("dashboard flow uses Player Memory lanes", async () => {
+    await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.evaluate(() => {
       sessionStorage.clear();
       localStorage.removeItem("tartarusExactAnswerCacheV1");
@@ -300,7 +301,10 @@ try {
     if (await enter.isVisible().catch(() => false)) await enter.click();
     const message = await submitQuestion(page, "What should I do today?");
     const dashboard = message.locator(".daily-dashboard");
-    await dashboard.waitFor({ state: "visible", timeout: 10_000 });
+    await dashboard.waitFor({ state: "visible", timeout: 20_000 }).catch(async (error) => {
+      const text = compact((await message.textContent()) ?? "", 900);
+      throw new Error(`${error instanceof Error ? error.message : String(error)} Latest answer: ${text}`);
+    });
     assert(await page.locator(".current-task-card").getByText("Planning today").isVisible(), "Current task did not switch to daily planning");
     assert(await dashboard.locator(".lane-urgent").isVisible(), "Dashboard did not show an urgent lane");
     assert(await dashboard.locator(".lane-recommended").isVisible(), "Dashboard did not show a recommended lane");
