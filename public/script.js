@@ -793,7 +793,7 @@ function renderRecommendationCard(recommendation) {
 function needsMoreDetail(response) {
   return Boolean(
     response?.missing &&
-      !/^(?:no additional detail is needed|no missing information reported)\.?$/i.test(String(response.missing).trim()),
+      !/^(?:no additional detail is needed|no missing information reported|update player memory whenever)\b/i.test(String(response.missing).trim()),
   );
 }
 

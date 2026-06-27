@@ -251,6 +251,36 @@ try {
     assert((await message.locator(".source-drawer").count()) === 1, "Exact answer source drawer is missing");
   });
 
+  await step("dashboard flow uses Player Memory lanes", async () => {
+    await page.evaluate(() => {
+      sessionStorage.clear();
+      localStorage.removeItem("tartarusExactAnswerCacheV1");
+      localStorage.removeItem("tartarusSavedAnswersV1");
+      localStorage.setItem(
+        "tartarusPlayerProfileV2",
+        JSON.stringify({
+          currentDate: "June 5",
+          currentMonth: "June",
+          currentSocialLinks: ["Emperor", "Hierophant"],
+          activeRequests: ["12"],
+          tartarusBlock: "Arqa",
+          tartarusFloor: "42F",
+        }),
+      );
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    const enter = page.getByRole("button", { name: "Enter Records", exact: true });
+    if (await enter.isVisible().catch(() => false)) await enter.click();
+    const message = await submitQuestion(page, "What should I do today?");
+    const dashboard = message.locator(".daily-dashboard");
+    await dashboard.waitFor({ state: "visible", timeout: 10_000 });
+    assert(await page.locator(".current-task-card").getByText("Planning today").isVisible(), "Current task did not switch to daily planning");
+    assert(await dashboard.locator(".lane-urgent").isVisible(), "Dashboard did not show an urgent lane");
+    assert(await dashboard.locator(".lane-recommended").isVisible(), "Dashboard did not show a recommended lane");
+    assert(await dashboard.locator(".lane-optional").isVisible(), "Dashboard did not show an optional lane");
+    assert(await dashboard.getByText(/Request 12|Elizabeth Request 12/i).isVisible(), "Tracked request did not appear in the dashboard");
+  });
+
   assert(browserErrors.length === 0, `Browser console errors: ${browserErrors.join(" | ")}`);
 } catch (error) {
   failures.push(`browser harness: ${error instanceof Error ? error.message : String(error)}`);
