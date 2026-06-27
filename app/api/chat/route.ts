@@ -2319,6 +2319,7 @@ function structuredFusionResponse(
   profile: PlayerProfile,
 ): ChatResponse | null {
   const normalizedQuestion = question.toLowerCase();
+  if (/\bskills?\s+should\s+i\s+keep\s+for\b/i.test(question)) return null;
   const dlcMode = profile.dlcOwnership;
   if (!dlcMode) return null;
   const recipeFacts = facts.filter((fact) => {
@@ -2517,12 +2518,17 @@ function structuredPersonaProfileResponse(
     return null;
   }
 
-  const matches = facts.filter(
+  const matchedFacts = facts.filter(
     (fact) =>
       fact.entity.type === "persona" &&
       isFusionToolUrl(fact.source.url) &&
       factMatchesQuestionSubject(question, fact.entity.name),
   );
+  const subject = likelyExactSubject(question)?.toLowerCase();
+  const exactSubjectFacts = subject
+    ? matchedFacts.filter((fact) => fact.entity.name.toLowerCase() === subject)
+    : [];
+  const matches = exactSubjectFacts.length ? exactSubjectFacts : matchedFacts;
   if (!matches.length) return null;
 
   const persona = matches[0].entity.name;
@@ -4700,7 +4706,15 @@ async function directRagResponse(
   if (levelRecommendation) return levelRecommendation;
 
   onProgress?.(progressMessage(controller.intent, controller.action));
+  const personaProfileSubject = /\bskills?\s+should\s+i\s+keep\s+for\b/i.test(
+    conversation.analysisQuestion,
+  )
+    ? likelyExactSubject(conversation.analysisQuestion)
+    : null;
   const retrievalQueries = uniqueStrings([
+    personaProfileSubject
+      ? `What skills should I keep for ${personaProfileSubject} after fusing it?`
+      : undefined,
     ...controller.retrievalQueries,
     controller.retrievalQuery,
   ]).slice(0, 4);

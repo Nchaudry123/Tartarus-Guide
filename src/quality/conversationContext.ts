@@ -31,6 +31,26 @@ function isExplicitStandaloneQuestion(value: string): boolean {
   );
 }
 
+function fusionResultTarget(previousAssistant: string | undefined): string | null {
+  if (!previousAssistant) return null;
+  return (
+    previousAssistant.match(/\bfuse\s+.+?\s+to\s+make\s+([A-Z][A-Za-z0-9' -]{1,36})\b/i)?.[1]?.trim() ??
+    previousAssistant.match(/\btwo routes to\s+([A-Z][A-Za-z0-9' -]{1,36})\b/i)?.[1]?.trim() ??
+    null
+  );
+}
+
+function isFusionSkillFollowUp(
+  question: string,
+  previousAssistant: string | undefined,
+): boolean {
+  return (
+    /\b(?:what|which)\s+skills?\s+(?:should|do|can)\s+i\s+(?:keep|inherit|choose|carry)\b/i.test(
+      question,
+    ) && Boolean(fusionResultTarget(previousAssistant))
+  );
+}
+
 export function isShortContextReply(question: string): boolean {
   const text = question.toLowerCase().trim().replace(/[.!?]+$/g, "");
   const count = wordCount(text);
@@ -61,6 +81,7 @@ export function isContextualConversationReply(
   question: string,
   previousAssistant: string | undefined,
 ): boolean {
+  if (isFusionSkillFollowUp(question, previousAssistant)) return true;
   if (isShortContextReply(question)) return true;
   const normalized = question.trim();
   if (referentialReplyPattern.test(normalized)) return true;
@@ -79,6 +100,15 @@ function resolveFusionRouteReference(
   );
   const selected = ordinal === "first" ? routes?.[1] : routes?.[2];
   return selected ? `I have ${selected.replace(/\s*\+\s*/g, " and ")}` : question;
+}
+
+function resolveFusionSkillReference(
+  question: string,
+  previousAssistant: string | undefined,
+): string {
+  if (!isFusionSkillFollowUp(question, previousAssistant)) return question;
+  const target = fusionResultTarget(previousAssistant);
+  return target ? `What skills should I keep for ${target} after fusing it?` : question;
 }
 
 function dlcModeReply(question: string): "none" | "all" | null {
@@ -213,7 +243,10 @@ export function resolveConversationContext(
     };
   }
 
-  const resolvedReply = resolveFusionRouteReference(question, previousAssistant);
+  const resolvedReply = resolveFusionSkillReference(
+    resolveFusionRouteReference(question, previousAssistant),
+    previousAssistant,
+  );
   const dlcMode = dlcModeReply(resolvedReply);
   return {
     analysisQuestion:

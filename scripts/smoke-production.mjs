@@ -156,6 +156,33 @@ await step("DLC clarification resumes the fusion task", async () => {
     second.sources?.some((source) => source.domain === "aqiu384.github.io"),
     "Fusion follow-up did not cite the Megaten Fusion Tool",
   );
+  const third = await chat("I have the first pair", {
+    history: [
+      { role: "user", content: "How do I fuse Loki?" },
+      { role: "assistant", content: first.answer },
+      { role: "user", content: "No Persona DLC" },
+      { role: "assistant", content: second.answer },
+    ],
+    playerProfile: { dlcOwnership: "none" },
+  });
+  assert(/\bLoki\b/i.test(third.answer), "Fusion route ownership follow-up lost the Loki target");
+  assert(/already own|working route|ready/i.test(third.answer), "Fusion route ownership follow-up did not accept the selected pair");
+  const fourth = await chat("What skills should I keep?", {
+    history: [
+      { role: "user", content: "How do I fuse Loki?" },
+      { role: "assistant", content: first.answer },
+      { role: "user", content: "No Persona DLC" },
+      { role: "assistant", content: second.answer },
+      { role: "user", content: "I have the first pair" },
+      { role: "assistant", content: third.answer },
+    ],
+    playerProfile: { dlcOwnership: "none" },
+  });
+  assert(/\bLoki\b/i.test(fourth.answer), "Fusion skill follow-up did not stay on Loki");
+  assert(
+    /\bskills?\b/i.test(fourth.answer) || fourth.sections?.some((section) => /skills?/i.test(`${section.title} ${section.content}`)),
+    "Fusion skill follow-up did not answer with skill guidance",
+  );
 });
 
 await step("recommendation payload is structured", async () => {
