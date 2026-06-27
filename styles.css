@@ -2311,7 +2311,8 @@ footer span {
   flex: 1 1 auto;
   min-height: 0;
   gap: .82rem;
-  padding: .95rem .75rem;
+  padding: .95rem .75rem 1.1rem;
+  scroll-padding-block: 5.5rem 1rem;
 }
 
 :root.is-mobile .current-task-card {
@@ -2367,11 +2368,16 @@ footer span {
   max-width: calc(100% - 2.85rem);
   padding: .84rem .86rem;
   border-left-width: 3px;
+  border-color: rgba(85,247,255,.24);
+  background:
+    linear-gradient(145deg, rgba(85,247,255,.08), transparent 45%),
+    linear-gradient(135deg, rgba(2,7,32,.92), rgba(10,28,80,.9));
+  box-shadow: 0 10px 28px rgba(0,0,0,.22);
 }
 
 :root.is-mobile .message.user-message .bubble {
-  max-width: 86%;
-  padding: .72rem .82rem;
+  max-width: min(92%, 22rem);
+  padding: .76rem .86rem;
   font-size: .95rem;
   box-shadow: 3px 4px 0 rgba(2,7,32,.2);
 }
@@ -2446,16 +2452,71 @@ footer span {
 :root.is-mobile .empty-examples button,
 :root.is-mobile .followups button {
   flex: 0 0 auto;
-  max-width: 11.5rem;
+  max-width: 12.75rem;
+  min-height: 2.7rem;
   scroll-snap-align: start;
+}
+
+:root.is-mobile .recommendation-card,
+:root.is-mobile .daily-dashboard {
+  margin-top: .86rem;
+  width: 100%;
+  max-width: 100%;
+  box-shadow: 0 10px 26px rgba(0,0,0,.24);
+}
+
+:root.is-mobile .recommendation-card {
+  padding: .9rem;
+}
+
+:root.is-mobile .recommendation-card > header {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: .2rem;
+  margin-bottom: .78rem;
+}
+
+:root.is-mobile .recommendation-primary {
+  padding-left: .78rem;
+  border-left-width: 4px;
+}
+
+:root.is-mobile .recommendation-primary strong {
+  font-size: 1.18rem;
+}
+
+:root.is-mobile .recommendation-card li {
+  padding: .72rem;
+}
+
+:root.is-mobile .daily-dashboard-head {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: .3rem;
+  padding: .74rem .82rem;
+}
+
+:root.is-mobile .daily-priority-stack {
+  padding: .72rem;
+}
+
+:root.is-mobile .daily-plan-grid {
+  grid-template-columns: 1fr;
+  gap: .58rem;
+}
+
+:root.is-mobile .daily-plan-item {
+  padding: .72rem .76rem .76rem;
 }
 
 :root.is-mobile .chat-form {
   flex: 0 0 auto;
-  gap: .48rem;
-  padding: .62rem .68rem calc(.62rem + env(safe-area-inset-bottom));
-  background: rgba(2,7,32,.94);
-  border-top: 1px solid rgba(85,247,255,.2);
+  gap: .56rem;
+  padding: .7rem .72rem calc(.72rem + env(safe-area-inset-bottom));
+  background:
+    linear-gradient(180deg, rgba(7,20,64,.88), rgba(2,7,32,.97));
+  border-top: 1px solid rgba(85,247,255,.32);
+  box-shadow: 0 -14px 30px rgba(2,7,32,.42);
 }
 
 :root.is-mobile .chat-form textarea {
@@ -2482,8 +2543,9 @@ footer span {
 }
 
 :root.is-mobile .chat-form button {
-  width: 3.45rem;
-  min-width: 3.45rem;
+  width: 3.6rem;
+  min-width: 3.6rem;
+  min-height: 3.6rem;
   font-size: 1.25rem;
   border: 1px solid rgba(85,247,255,.16);
   box-shadow: 0 0 20px rgba(7,92,255,.24);
