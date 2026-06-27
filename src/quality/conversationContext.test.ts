@@ -72,6 +72,28 @@ test("resolves ordinal fusion replies from guided route wording", () => {
   assert.match(context.analysisQuestion, /Loki/);
 });
 
+test("keeps skill follow-ups attached to the fused Persona", () => {
+  const history = [
+    { role: "user" as const, content: "How can I fuse Loki?" },
+    { role: "assistant" as const, content: "Do you have Persona DLC enabled?" },
+    { role: "user" as const, content: "No Persona DLC" },
+    {
+      role: "assistant" as const,
+      content:
+        "For your base-game fusion chart, start with these two routes to Loki: Abaddon + Sandalphon or Abaddon + Yurlungur. Do you have either pair?",
+    },
+    { role: "user" as const, content: "I have the first pair" },
+    {
+      role: "assistant" as const,
+      content: "Perfect, you already own a working route. Fuse Abaddon + Sandalphon to make Loki.",
+    },
+  ];
+  const context = resolveConversationContext("What skills should I keep?", history);
+
+  assert.match(context.analysisQuestion, /skills should I keep for Loki/i);
+  assert.match(context.analysisQuestion, /fuse Loki/i);
+});
+
 test("resolves a DLC answer without polluting the Persona target", () => {
   const history = [
     { role: "user" as const, content: "How do I fuse Loki?" },
