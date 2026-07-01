@@ -25,6 +25,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#071440",
 };
 
@@ -33,7 +36,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <head>
         <meta name="mobile-web-app-capable" content="yes" />
-        <link rel="stylesheet" href="/styles.css?v=mobile-chat-pass" />
+        <link rel="stylesheet" href="/styles.css?v=standalone-mobile-fixes" />
       </head>
       <body>{children}</body>
     </html>

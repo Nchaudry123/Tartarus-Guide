@@ -59,6 +59,13 @@ let apiAvailable = true;
 let autoStickToBottom = true;
 let stableMobileHeight = window.innerHeight;
 
+function syncInstallMode() {
+  const standalone =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.navigator.standalone === true;
+  document.documentElement.classList.toggle("is-standalone", standalone);
+}
+
 function syncDeviceLayout() {
   const isMobile =
     window.matchMedia("(max-width: 760px)").matches ||
@@ -84,7 +91,9 @@ function syncDeviceLayout() {
   if (isMobile) window.scrollTo(0, 0);
 }
 
+syncInstallMode();
 syncDeviceLayout();
+window.matchMedia("(display-mode: standalone)").addEventListener?.("change", syncInstallMode);
 window.addEventListener("resize", syncDeviceLayout);
 window.visualViewport?.addEventListener("resize", syncDeviceLayout);
 window.visualViewport?.addEventListener("scroll", syncDeviceLayout);
