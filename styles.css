@@ -12,7 +12,11 @@
 
 * { box-sizing: border-box; }
 html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: var(--navy); }
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
 button, input, textarea { font: inherit; }
 button,
 a,
@@ -2241,12 +2245,13 @@ footer span {
 :root.is-mobile .menu-toggle {
   top: max(.65rem, env(safe-area-inset-top));
   left: max(.65rem, env(safe-area-inset-left));
-  width: 2.75rem;
-  height: 2.75rem;
+  width: 2.9rem;
+  height: 2.9rem;
   z-index: 12;
   border-color: rgba(85,247,255,.38);
   background: rgba(2,7,32,.78);
   backdrop-filter: blur(12px);
+  box-shadow: 0 10px 26px rgba(0,0,0,.28), inset 0 0 0 1px rgba(85,247,255,.08);
 }
 
 :root.is-mobile .side-panel {
@@ -2279,9 +2284,11 @@ footer span {
 :root.is-mobile .hero {
   flex: 0 0 auto;
   min-height: 0;
-  padding: max(.72rem, env(safe-area-inset-top)) .75rem .48rem 3.95rem;
-  background: rgba(2,7,32,.28);
-  backdrop-filter: blur(10px);
+  padding: max(.66rem, env(safe-area-inset-top)) max(.78rem, env(safe-area-inset-right)) .52rem calc(4.05rem + env(safe-area-inset-left));
+  background:
+    linear-gradient(180deg, rgba(2,7,32,.58), rgba(2,7,32,.22));
+  border-bottom: 1px solid rgba(85,247,255,.12);
+  backdrop-filter: blur(14px);
 }
 
 :root.is-mobile .eyebrow {
@@ -2294,7 +2301,7 @@ footer span {
 
 :root.is-mobile .hero h1 {
   margin-top: .12rem;
-  font-size: clamp(2.25rem, 11vw, 3.15rem);
+  font-size: clamp(2.05rem, 10.2vw, 2.9rem);
   line-height: .86;
   text-shadow: 4px 5px 0 rgba(2,7,32,.42);
 }
@@ -2306,8 +2313,9 @@ footer span {
 
 :root.is-mobile .subtitle {
   margin-top: .28rem;
-  font-size: .84rem;
+  font-size: .8rem;
   line-height: 1.15;
+  max-width: 26rem;
 }
 
 :root.is-mobile .chat-window {
@@ -2315,15 +2323,17 @@ footer span {
   min-height: 0;
   border-inline: 0;
   border-bottom: 0;
-  background: linear-gradient(180deg, rgba(8,23,68,.66), rgba(2,7,32,.8));
-  box-shadow: inset 0 1px 0 rgba(85,247,255,.2);
+  background:
+    radial-gradient(circle at 18% 0, rgba(85,247,255,.08), transparent 34%),
+    linear-gradient(180deg, rgba(8,23,68,.72), rgba(2,7,32,.84));
+  box-shadow: inset 0 1px 0 rgba(85,247,255,.2), inset 0 -1px 0 rgba(85,247,255,.08);
 }
 
 :root.is-mobile .messages {
   flex: 1 1 auto;
   min-height: 0;
-  gap: .82rem;
-  padding: .95rem .75rem 1.1rem;
+  gap: .9rem;
+  padding: .92rem max(.78rem, env(safe-area-inset-right)) 1.15rem max(.78rem, env(safe-area-inset-left));
   scroll-padding-block: 5.5rem 1rem;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
@@ -2333,9 +2343,13 @@ footer span {
   align-items: flex-start;
   flex-wrap: wrap;
   gap: .55rem;
-  margin: .65rem .75rem 0;
-  padding: .65rem .7rem .68rem .78rem;
-  box-shadow: 7px 7px 0 rgba(2,7,32,.14);
+  margin: .62rem max(.78rem, env(safe-area-inset-right)) 0 max(.78rem, env(safe-area-inset-left));
+  padding: .64rem .72rem .68rem .78rem;
+  border-color: rgba(85,247,255,.42);
+  background:
+    linear-gradient(135deg, rgba(85,247,255,.1), transparent 48%),
+    rgba(5,20,63,.82);
+  box-shadow: 0 10px 24px rgba(2,7,32,.22);
 }
 
 :root.is-mobile .current-task-card strong {
@@ -2380,8 +2394,9 @@ footer span {
 :root.is-mobile .assistant-message .bubble {
   width: auto;
   max-width: calc(100% - 2.85rem);
-  padding: .84rem .86rem;
+  padding: .9rem .92rem;
   border-left-width: 3px;
+  border-radius: .08rem .58rem .58rem .08rem;
   border-color: rgba(85,247,255,.24);
   background:
     linear-gradient(145deg, rgba(85,247,255,.08), transparent 45%),
@@ -2391,7 +2406,7 @@ footer span {
 
 :root.is-mobile .message.user-message .bubble {
   max-width: min(92%, 22rem);
-  padding: .76rem .86rem;
+  padding: .78rem .9rem;
   font-size: .95rem;
   box-shadow: 3px 4px 0 rgba(2,7,32,.2);
 }
@@ -2453,9 +2468,11 @@ footer span {
   flex-wrap: nowrap;
   justify-content: flex-start;
   overflow-x: auto;
-  padding-bottom: .15rem;
+  margin-inline: -.12rem;
+  padding: .08rem .12rem .25rem;
   scrollbar-width: none;
   scroll-snap-type: x proximity;
+  mask-image: linear-gradient(90deg, transparent, #000 .7rem, #000 calc(100% - 1.6rem), transparent);
 }
 
 :root.is-mobile .empty-examples::-webkit-scrollbar,
@@ -2476,6 +2493,7 @@ footer span {
   margin-top: .86rem;
   width: 100%;
   max-width: 100%;
+  border-radius: .08rem .72rem .72rem .08rem;
   box-shadow: 0 10px 26px rgba(0,0,0,.24);
 }
 
@@ -2521,12 +2539,13 @@ footer span {
 
 :root.is-mobile .daily-plan-item {
   padding: .72rem .76rem .76rem;
+  border-radius: .04rem .48rem .48rem .04rem;
 }
 
 :root.is-mobile .chat-form {
   flex: 0 0 auto;
   gap: .56rem;
-  padding: .7rem .72rem calc(.72rem + env(safe-area-inset-bottom));
+  padding: .7rem max(.72rem, env(safe-area-inset-right)) calc(.72rem + env(safe-area-inset-bottom)) max(.72rem, env(safe-area-inset-left));
   background:
     linear-gradient(180deg, rgba(7,20,64,.88), rgba(2,7,32,.97));
   border-top: 1px solid rgba(85,247,255,.32);
@@ -2541,7 +2560,7 @@ footer span {
 :root.is-mobile .chat-form textarea {
   min-height: 3.45rem;
   max-height: 8.8rem;
-  padding: .76rem .84rem;
+  padding: .82rem .92rem;
   border: 1px solid rgba(85,247,255,.46);
   background: rgba(223,252,255,.08);
   color: var(--ice);
@@ -2562,21 +2581,23 @@ footer span {
 }
 
 :root.is-mobile .chat-form button {
-  width: 3.6rem;
-  min-width: 3.6rem;
-  min-height: 3.6rem;
+  width: 3.7rem;
+  min-width: 3.7rem;
+  min-height: 3.7rem;
   font-size: 1.25rem;
   border: 1px solid rgba(85,247,255,.16);
   box-shadow: 0 0 20px rgba(7,92,255,.24);
 }
 
 :root.is-mobile .jump-to-latest {
-  right: .75rem;
-  bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  right: max(.78rem, env(safe-area-inset-right));
+  bottom: calc(4.95rem + env(safe-area-inset-bottom));
+  min-height: 2.6rem;
+  padding-inline: .78rem .62rem;
 }
 
 :root.is-mobile.has-conversation .hero {
-  padding-block: max(.58rem, env(safe-area-inset-top)) .42rem;
+  padding-block: max(.5rem, env(safe-area-inset-top)) .38rem;
 }
 
 :root.is-mobile.has-conversation .eyebrow {
@@ -2585,7 +2606,7 @@ footer span {
 }
 
 :root.is-mobile.has-conversation .hero h1 {
-  font-size: clamp(1.9rem, 9vw, 2.55rem);
+  font-size: clamp(1.72rem, 8.2vw, 2.34rem);
   line-height: .84;
 }
 
@@ -2620,6 +2641,45 @@ footer span {
 :root.is-mobile.keyboard-open .chat-form textarea {
   min-height: 3.2rem;
   max-height: 6.5rem;
+}
+
+:root.is-short-mobile .hero {
+  padding-block: max(.46rem, env(safe-area-inset-top)) .32rem;
+}
+
+:root.is-short-mobile .hero h1 {
+  font-size: clamp(1.68rem, 8.8vw, 2.2rem);
+}
+
+:root.is-short-mobile .subtitle,
+:root.is-landscape-mobile .subtitle {
+  display: none;
+}
+
+:root.is-short-mobile .messages {
+  gap: .72rem;
+  padding-top: .68rem;
+}
+
+:root.is-short-mobile .current-task-card footer {
+  display: none;
+}
+
+:root.is-landscape-mobile .hero {
+  padding-block: max(.36rem, env(safe-area-inset-top)) .28rem;
+}
+
+:root.is-landscape-mobile .hero h1 {
+  font-size: clamp(1.48rem, 5.8vw, 2rem);
+}
+
+:root.is-landscape-mobile .eyebrow {
+  display: none;
+}
+
+:root.is-landscape-mobile .chat-form textarea {
+  min-height: 2.9rem;
+  max-height: 5rem;
 }
 
 .memory-panel {

@@ -77,15 +77,20 @@ function syncDeviceLayout() {
     ? Math.max(0, window.innerHeight - viewportHeight - viewportOffsetTop)
     : 0;
   const keyboardOpen = isMobile && document.activeElement === input && keyboardOffset > 120;
+  const shortMobile = isMobile && viewportHeight < 720;
+  const landscapeMobile = isMobile && window.innerWidth > viewportHeight;
 
   if (isMobile && !keyboardOpen) {
     stableMobileHeight = window.innerHeight;
   }
 
   document.documentElement.classList.toggle("is-mobile", isMobile);
+  document.documentElement.classList.toggle("is-short-mobile", shortMobile);
+  document.documentElement.classList.toggle("is-landscape-mobile", landscapeMobile);
   document.documentElement.classList.toggle("keyboard-open", keyboardOpen);
   const appHeight = keyboardOpen ? viewportHeight : isMobile ? stableMobileHeight : window.innerHeight;
   document.documentElement.style.setProperty("--app-height", `${appHeight}px`);
+  document.documentElement.style.setProperty("--visible-vh", `${viewportHeight}px`);
   document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
 
   if (isMobile) window.scrollTo(0, 0);

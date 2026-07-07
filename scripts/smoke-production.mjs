@@ -258,18 +258,38 @@ try {
     await page.setViewportSize({ width: 390, height: 844 });
     const layout = await page.evaluate(() => {
       const card = document.querySelector(".recommendation-card");
+      const chatWindow = document.querySelector(".chat-window");
+      const messages = document.querySelector(".messages");
+      const form = document.querySelector(".chat-form");
+      const input = document.querySelector("#questionInput");
+      const send = document.querySelector(".chat-form button");
       if (!card) return null;
       const bounds = card.getBoundingClientRect();
+      const formBounds = form?.getBoundingClientRect();
+      const inputBounds = input?.getBoundingClientRect();
+      const sendBounds = send?.getBoundingClientRect();
       return {
         viewportWidth: document.documentElement.clientWidth,
+        viewportHeight: window.innerHeight,
         pageWidth: document.documentElement.scrollWidth,
         cardLeft: bounds.left,
         cardRight: bounds.right,
+        chatHeight: chatWindow?.getBoundingClientRect().height ?? 0,
+        messagesHeight: messages?.getBoundingClientRect().height ?? 0,
+        formBottom: formBounds?.bottom ?? 0,
+        inputHeight: inputBounds?.height ?? 0,
+        sendWidth: sendBounds?.width ?? 0,
+        sendHeight: sendBounds?.height ?? 0,
       };
     });
     assert(layout, "Recommendation card disappeared at the mobile breakpoint");
     assert(layout.pageWidth <= layout.viewportWidth + 1, `Page overflowed by ${layout.pageWidth - layout.viewportWidth}px`);
     assert(layout.cardLeft >= 0 && layout.cardRight <= layout.viewportWidth + 1, "Recommendation card exceeds the viewport");
+    assert(layout.chatHeight > 500, "Mobile chat window does not leave enough reading space");
+    assert(layout.messagesHeight > 360, "Mobile message list collapsed too small");
+    assert(layout.formBottom <= layout.viewportHeight + 1, "Mobile composer extends below the viewport");
+    assert(layout.inputHeight >= 48, "Mobile text input is too small to tap comfortably");
+    assert(layout.sendWidth >= 44 && layout.sendHeight >= 44, "Mobile send button is below the recommended tap target");
   });
 
   await step("exact answers stay compact in the UI", async () => {
