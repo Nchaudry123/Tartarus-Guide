@@ -53,12 +53,12 @@
           <h2>Records</h2>
         </div>
         <nav class="category-list" id="categoryList">
-          <button type="button" data-prompt="What enemy weaknesses should I know early?">Shadows</button>
-          <button type="button" data-prompt="How do I prepare for the next full moon boss?">Bosses</button>
-          <button type="button" data-prompt="How do I fuse Jack Frost?">Personas</button>
-          <button type="button" data-prompt="Which Social Links should I prioritize?">Social Links</button>
-          <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Requests</button>
-          <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus</button>
+          <button type="button" data-prompt="What is Dancing Hand weak to?">Shadow weaknesses</button>
+          <button type="button" data-prompt="How do I prepare for the next full moon boss?">Full moon bosses</button>
+          <button type="button" data-prompt="How do I fuse Jack Frost?">Fusion routes</button>
+          <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">Social Links</button>
+          <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Elizabeth requests</button>
+          <button type="button" data-prompt="What should I do today?">Plan my day</button>
         </nav>
         <section class="memory-panel" aria-labelledby="memoryPanelTitle">
           <div>
@@ -79,11 +79,14 @@
       </aside>
 
       <section class="chat-stage">
-        <header class="hero">
+        <header class="hero hero-compact">
           <div>
             <p class="eyebrow">Strategy Terminal</p>
             <h1>Tartarus <span>Guide</span></h1>
-            <p class="subtitle">Ask anything about Persona 3 Reload.</p>
+            <p class="subtitle">Your Persona 3 Reload coach — ask anything, follow up naturally.</p>
+          </div>
+          <div class="hero-actions">
+            <button type="button" id="newChatBtn" class="ghost-btn" title="Start a new conversation">New chat</button>
           </div>
         </header>
 
@@ -91,8 +94,25 @@
           <div class="messages" id="messages">
             <div class="empty-state">
               <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
-              <h2>What do you need help with?</h2>
-              <p>Try asking for a weakness, boss strategy, fusion route, Social Link choice, Elizabeth request, or daily-life tip.</p>
+              <h2>What are we tackling?</h2>
+              <p>Talk like you would to a friend who finished the game — weaknesses, bosses, fusion, Social Links, requests, or your day plan.</p>
+              <div class="empty-categories" aria-label="Starter topics">
+                <div class="empty-cat">
+                  <span>Combat</span>
+                  <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
+                  <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+                </div>
+                <div class="empty-cat">
+                  <span>Progress</span>
+                  <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+                  <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">August Social Links</button>
+                </div>
+                <div class="empty-cat">
+                  <span>Build</span>
+                  <button type="button" data-prompt="How do I fuse Jack Frost?">Fuse Jack Frost</button>
+                  <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus loadout</button>
+                </div>
+              </div>
               <div class="empty-examples">
                 <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
                 <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
@@ -101,11 +121,19 @@
             </div>
           </div>
 
-          <form class="chat-form" id="chatForm">
-            <label class="sr-only" for="questionInput">Ask a Persona 3 Reload question</label>
-            <textarea id="questionInput" rows="2" autocomplete="off" placeholder="Ask anything about Persona 3 Reload..."></textarea>
-            <button type="submit" aria-label="Send question">➜</button>
-          </form>
+          <div class="composer-dock">
+            <div class="sticky-suggestions" id="stickySuggestions" hidden aria-label="Suggested follow-ups"></div>
+            <form class="chat-form" id="chatForm">
+              <label class="sr-only" for="questionInput">Ask a Persona 3 Reload question</label>
+              <div class="composer-shell">
+                <textarea id="questionInput" rows="1" autocomplete="off" placeholder="Message SEES Navigator…"></textarea>
+                <div class="composer-meta">
+                  <span class="composer-hint">Enter to send · Shift+Enter for newline</span>
+                  <button type="submit" aria-label="Send question">➜</button>
+                </div>
+              </div>
+            </form>
+          </div>
         </section>
       </section>
     </main>
