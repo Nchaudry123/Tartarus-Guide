@@ -6,6 +6,24 @@ import {
   resolveConversationContext,
 } from "./conversationContext";
 
+test("bare these/this without prior assistant is not contextual", () => {
+  assert.equal(isContextualConversationReply("how do i craft these", undefined), false);
+  assert.equal(isContextualConversationReply("how do i craft these", ""), false);
+  assert.equal(
+    isContextualConversationReply(
+      "how do i craft these",
+      "Two routes to Loki: Abaddon + Sandalphon or Abaddon + Yurlungur.",
+    ),
+    true,
+  );
+});
+
+test("vague craft openers stay standalone analysis questions", () => {
+  const context = resolveConversationContext("how do i craft these", []);
+  assert.equal(context.shortReply, false);
+  assert.equal(context.analysisQuestion, "how do i craft these");
+});
+
 test("keeps the original task through several clarification turns", () => {
   const history = [
     { role: "user" as const, content: "My party feels weak. I use Yukari, Junpei, and Akihiko." },
