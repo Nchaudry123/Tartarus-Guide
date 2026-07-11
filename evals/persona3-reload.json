@@ -60,6 +60,8 @@
     "expectedIntent": "Enemy Weakness",
     "shouldUseSources": true,
     "requiredDomains": ["ign.com", "game8.co"],
+    "mustIncludeAny": ["Fire", "fire"],
+    "mustIncludeAll": ["Fire"],
     "forbidUnsupportedExactness": true,
     "exactAnswer": true,
     "hallucinationSensitive": true
@@ -70,6 +72,19 @@
     "question": "What are the weaknesses and resistances of the Dancing Hand in Thebel?",
     "expectedIntent": "Enemy Weakness",
     "shouldUseSources": true,
+    "mustIncludeAny": ["Fire", "Ice", "fire", "ice"],
+    "forbidUnsupportedExactness": true,
+    "exactAnswer": true,
+    "hallucinationSensitive": true
+  },
+  {
+    "id": "enemy-resistance-check",
+    "category": "enemy",
+    "origin": "user_transcript",
+    "question": "What does Dancing Hand resist?",
+    "expectedIntent": "Enemy Weakness",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Ice", "ice"],
     "forbidUnsupportedExactness": true,
     "exactAnswer": true,
     "hallucinationSensitive": true
