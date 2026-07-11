@@ -1003,18 +1003,19 @@ function motionEnabled() {
 
 async function typeText(node, value) {
   const text = String(value || "");
-  if (!motionEnabled() || text.length > 1200) {
+  // Keep non-stream fallbacks snappy: only lightly animate short answers.
+  if (!motionEnabled() || text.length > 280) {
     node.textContent = text;
     scrollMessagesToBottom({ behavior: "auto" });
     return;
   }
 
   node.textContent = "";
-  const chunkSize = text.length > 420 ? 4 : 2;
+  const chunkSize = text.length > 140 ? 6 : 3;
   for (let index = 0; index < text.length; index += chunkSize) {
     node.textContent += text.slice(index, index + chunkSize);
-    if (index % 36 === 0) scrollMessagesToBottom({ behavior: "auto" });
-    await new Promise((resolve) => window.setTimeout(resolve, 10));
+    if (index % 48 === 0) scrollMessagesToBottom({ behavior: "auto" });
+    await new Promise((resolve) => window.setTimeout(resolve, 4));
   }
 }
 
@@ -1201,20 +1202,24 @@ function addLoading() {
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble typing" role="status" aria-live="polite">
-      <span class="loading-status">Understanding your question...</span>
+      <span class="loading-status">On it...</span>
       <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   `;
   messages.appendChild(node);
   updateLatestButton();
-  scrollMessagesToBottom({ force: true });
+  scrollMessagesToBottom({ force: true, behavior: "auto" });
 }
 
 function updateLoadingStatus(message) {
   const status = document.querySelector("#loading .loading-status");
-  if (!status || !message) return;
-  status.textContent = message;
-  scrollMessagesToBottom();
+  if (!status || !message || status.textContent === message) return;
+  status.classList.add("is-swapping");
+  window.setTimeout(() => {
+    status.textContent = message;
+    status.classList.remove("is-swapping");
+  }, 90);
+  scrollMessagesToBottom({ behavior: "auto" });
 }
 
 function ensureStreamingMessage() {
@@ -1232,6 +1237,7 @@ function ensureStreamingMessage() {
       </div>
     `;
     messages.appendChild(node);
+    scrollMessagesToBottom({ force: true, behavior: "auto" });
   }
   return node;
 }
@@ -1246,7 +1252,10 @@ function flushStreamTokens() {
 }
 
 function resetStreamBuffer() {
-  if (streamFlushTimer) window.clearTimeout(streamFlushTimer);
+  if (streamFlushTimer != null) {
+    window.cancelAnimationFrame(streamFlushTimer);
+    window.clearTimeout(streamFlushTimer);
+  }
   streamFlushTimer = null;
   streamTokenBuffer = "";
 }
@@ -1255,10 +1264,11 @@ function appendStreamToken(delta) {
   if (!delta) return;
   streamTokenBuffer += delta;
   if (streamFlushTimer) return;
-  streamFlushTimer = window.setTimeout(() => {
+  // Paint on the next frame for smoother streaming than a fixed 40ms poll.
+  streamFlushTimer = window.requestAnimationFrame(() => {
     streamFlushTimer = null;
     flushStreamTokens();
-  }, 40);
+  });
 }
 
 async function addAssistantMessage(response, options = {}) {
@@ -1271,28 +1281,58 @@ async function addAssistantMessage(response, options = {}) {
   });
   let node = document.getElementById("streamingAssistant");
   const streamed = Boolean(node);
+  const streamedAnswer = streamed ? node.querySelector(".answer")?.textContent || "" : "";
   if (!node) node = document.createElement("article");
   node.removeAttribute("id");
-  node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")}`;
+  node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")} is-settling`;
   if (response.dailyDashboard) node.dataset.dashboardHost = "true";
-  node.innerHTML = `
-    <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
-    <div class="bubble">
-      <span class="assistant-name">SEES Navigator</span>
-      <div class="answer is-typing"></div>
-      <div class="message-extra is-pending">
-        ${renderResponseExtras(response)}
+
+  const extrasHtml = renderResponseExtras(response);
+  if (streamed) {
+    // Keep the streamed prose, then enrich the bubble without a full retype flash.
+    const bubble = node.querySelector(".bubble");
+    if (bubble) {
+      const answerNode = bubble.querySelector(".answer");
+      if (answerNode) {
+        answerNode.classList.remove("is-typing");
+        // Prefer formatted final text; fall back to streamed plain text.
+        answerNode.innerHTML = renderText(response.answer || streamedAnswer);
+      }
+      let extra = bubble.querySelector(".message-extra");
+      if (!extra) {
+        extra = document.createElement("div");
+        extra.className = "message-extra is-pending";
+        bubble.appendChild(extra);
+      }
+      extra.innerHTML = extrasHtml;
+      // Force reflow so the staggered reveal animation always plays.
+      void extra.offsetWidth;
+      requestAnimationFrame(() => extra.classList.remove("is-pending"));
+    }
+  } else {
+    node.innerHTML = `
+      <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
+      <div class="bubble">
+        <span class="assistant-name">SEES Navigator</span>
+        <div class="answer is-typing"></div>
+        <div class="message-extra is-pending">
+          ${extrasHtml}
+        </div>
       </div>
-    </div>
-  `;
-  if (!streamed) messages.appendChild(node);
-  const answerNode = node.querySelector(".answer");
-  if (answerNode) {
-    if (!streamed) await typeText(answerNode, response.answer);
-    answerNode.classList.remove("is-typing");
-    answerNode.innerHTML = renderText(response.answer);
+    `;
+    messages.appendChild(node);
+    const answerNode = node.querySelector(".answer");
+    if (answerNode) {
+      await typeText(answerNode, response.answer);
+      answerNode.classList.remove("is-typing");
+      answerNode.innerHTML = renderText(response.answer);
+    }
+    const extra = node.querySelector(".message-extra");
+    requestAnimationFrame(() => extra?.classList.remove("is-pending"));
   }
-  node.querySelector(".message-extra")?.classList.remove("is-pending");
+
+  requestAnimationFrame(() => node.classList.remove("is-settling"));
+
   if (!options.skipRemember) {
     rememberTurn("assistant", response.answer);
     setCurrentTask(taskFromResponse(options.question || activeQuestion || response.answer, response));
@@ -1302,7 +1342,7 @@ async function addAssistantMessage(response, options = {}) {
     });
   }
   updateLatestButton();
-  scrollMessagesToBottom();
+  scrollMessagesToBottom({ behavior: motionEnabled() ? "smooth" : "auto" });
 }
 
 function isNearMessagesBottom() {
@@ -1406,7 +1446,7 @@ async function requestAnswer(question, history = chatHistory.slice(-24), signal)
 
   const cachedAnswer = getCachedExactAnswer(question);
   if (cachedAnswer) {
-    updateLoadingStatus("Using the recent exact answer...");
+    updateLoadingStatus("Pulling that up...");
     return cachedAnswer;
   }
 
@@ -1554,6 +1594,10 @@ async function askQueuedQuestion(question) {
   setSending(true);
   setMenu(false);
   rememberTurn("user", question);
+  // Keep the composer ready for the next thought while this one generates.
+  if (!document.documentElement.classList.contains("is-mobile")) {
+    input?.focus({ preventScroll: true });
+  }
   addLoading();
   try {
     const response = await requestAnswer(question, priorHistory, requestController.signal);
@@ -1575,7 +1619,8 @@ async function askQueuedQuestion(question) {
       activeRequestController = null;
       activeQuestion = "";
       setSending(chatQueue.length > 0);
-      if (!document.documentElement.classList.contains("is-mobile")) input.focus();
+      // Always restore focus so multi-turn feels continuous.
+      input?.focus({ preventScroll: true });
     }
   }
 }
@@ -1645,16 +1690,45 @@ function setMenu(open) {
 
 menuToggle.addEventListener("click", () => setMenu(!sidePanel.classList.contains("is-open")));
 
-enterApp.addEventListener("click", () => {
+const entranceSeenKey = "tartarusEntranceSeenV1";
+
+function skipEntranceIfReturning() {
+  try {
+    if (window.localStorage.getItem(entranceSeenKey) === "1" && entranceScreen) {
+      entranceScreen.classList.add("is-hidden");
+      appShell?.classList.add("is-entering");
+      return true;
+    }
+  } catch {
+    /* ignore storage failures */
+  }
+  return false;
+}
+
+function markEntranceSeen() {
+  try {
+    window.localStorage.setItem(entranceSeenKey, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+enterApp?.addEventListener("click", () => {
   if (entranceScreen.classList.contains("is-exiting")) return;
   enterApp.disabled = true;
+  markEntranceSeen();
   entranceScreen.classList.add("is-exiting");
   appShell?.classList.add("is-entering");
   window.setTimeout(() => {
     entranceScreen.classList.add("is-hidden");
-    input.focus();
-  }, 720);
+    input?.focus({ preventScroll: true });
+  }, 480);
 });
+
+// Returning users skip the splash so chat feels instant.
+if (skipEntranceIfReturning()) {
+  window.setTimeout(() => input?.focus({ preventScroll: true }), 40);
+}
 
 messages.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-prompt]");

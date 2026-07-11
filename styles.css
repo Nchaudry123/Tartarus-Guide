@@ -1506,6 +1506,27 @@ footer span {
   color: var(--ice);
   font-size: .86rem;
   font-weight: 850;
+  transition: opacity .12s ease, transform .12s ease;
+}
+.loading-status.is-swapping {
+  opacity: .35;
+  transform: translateY(.12rem);
+}
+.assistant-message.is-settling .bubble {
+  transition: box-shadow .28s ease, border-color .28s ease;
+}
+.assistant-message.is-streaming .bubble {
+  border-color: rgba(85,247,255,.34);
+  box-shadow: 0 18px 42px rgba(0,0,0,.22), 0 0 28px rgba(85,247,255,.12);
+}
+.chat-form.is-sending textarea {
+  border-color: rgba(85,247,255,.28);
+}
+.chat-form.is-sending button[type="submit"].is-stop {
+  animation: sendPulse 1.2s ease-in-out infinite;
+}
+@keyframes sendPulse {
+  50% { filter: brightness(1.12); box-shadow: 0 0 18px rgba(85,247,255,.28); }
 }
 .typing-dots {
   display: inline-flex;
