@@ -19,7 +19,7 @@
     "ingest:gaps": "tsx src/ingest/analyzeCoverage.ts",
     "ingest:cleanup": "tsx src/ingest/cleanupInvalidFacts.ts",
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
-    "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --exact-fail-under=0.85 --hallucination-fail-under=0.95 --delay-ms=250",
+    "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --exact-fail-under=0.85 --hallucination-fail-under=0.95 --category-fail-under=0.75 --category-min-cases=3 --delay-ms=250",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
     "eval:retrieval": "tsx src/eval/testRetrievalHeuristics.ts",
     "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/conversationContext.test.ts src/quality/personaRouting.test.ts src/quality/recommendationMode.test.ts src/quality/relationships.test.ts src/quality/socialLinkStarts.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts src/quality/dailyPlanner.test.ts src/retrieval/liveGuideVerification.test.ts",
