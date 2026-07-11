@@ -293,7 +293,7 @@ function taskFromQuestion(question, status = "On it") {
   if (/\bwhat should i do today|what do i do today|today|schedule\b/i.test(text)) {
     return {
       type: "dashboard",
-      title: "Today’s plan",
+      title: "Planning today",
       status,
       meta: [playerProfile.currentDate || playerProfile.currentMonth || ""].filter(Boolean),
     };
