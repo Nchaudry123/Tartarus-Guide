@@ -87,6 +87,7 @@ function syncInstallMode() {
 function syncDeviceLayout() {
   const isMobile =
     window.matchMedia("(max-width: 760px)").matches ||
+    window.innerWidth <= 760 ||
     (window.matchMedia("(pointer: coarse)").matches && window.innerWidth < 900);
   const viewport = window.visualViewport;
   const viewportHeight = viewport?.height || window.innerHeight;
@@ -1556,6 +1557,9 @@ async function addAssistantMessage(response, options = {}) {
   requestAnimationFrame(() => {
     node.classList.remove("is-settling");
     node.classList.add("is-settled");
+    // Clear residual entrance animation transforms that can skew getBoundingClientRect.
+    node.style.transform = "none";
+    node.style.filter = "none";
   });
 
   if (!options.skipRemember) {
@@ -2158,6 +2162,14 @@ function skipEntranceIfReturning() {
   }
 }
 
+function settleAppShell() {
+  // Drop entrance animation transforms so layout geometry stays viewport-true
+  // (critical for mobile overflow checks after desktop→mobile resize).
+  appShell?.classList.remove("is-entering");
+  appShell?.classList.add("is-settled");
+  document.documentElement.classList.add("ui-settled");
+}
+
 enterApp?.addEventListener("click", () => {
   if (entranceScreen.classList.contains("is-exiting")) return;
   enterApp.disabled = true;
@@ -2167,10 +2179,12 @@ enterApp?.addEventListener("click", () => {
     entranceScreen.classList.add("is-hidden");
     input?.focus({ preventScroll: true });
   }, 480);
+  window.setTimeout(settleAppShell, 820);
 });
 
 // Resume straight into chat when history already exists on this device.
 if (skipEntranceIfReturning()) {
+  settleAppShell();
   window.setTimeout(() => input?.focus({ preventScroll: true }), 40);
 }
 
