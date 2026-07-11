@@ -7,7 +7,18 @@ const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
 const newChatBtn = document.getElementById("newChatBtn");
+const sideNewChat = document.getElementById("sideNewChat");
 const stickySuggestions = document.getElementById("stickySuggestions");
+const profileContextBar = document.getElementById("profileContextBar");
+const quickActions = document.getElementById("quickActions");
+const recentSearch = document.getElementById("recentSearch");
+const voiceInputBtn = document.getElementById("voiceInputBtn");
+const exportChatBtn = document.getElementById("exportChatBtn");
+const exportChatHeaderBtn = document.getElementById("exportChatHeaderBtn");
+const focusComposerBtn = document.getElementById("focusComposerBtn");
+const openMemoryTool = document.getElementById("openMemoryTool");
+const planTodayBtn = document.getElementById("planTodayBtn");
+const memoryQuickBtn = document.getElementById("memoryQuickBtn");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -24,6 +35,8 @@ const maxQueuedQuestions = 5;
 const maxCachedExactAnswers = 24;
 const maxSavedAnswers = 30;
 const exactAnswerCacheTtlMs = 1000 * 60 * 30;
+const isApplePlatform = /Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent || "");
+const modKeyLabel = isApplePlatform ? "⌘" : "Ctrl";
 
 const recent = [];
 const chatHistory = loadChatHistory();
@@ -56,6 +69,9 @@ currentTaskCard.setAttribute("aria-live", "polite");
 currentTaskCard.setAttribute("aria-label", "Current conversation task");
 messages.parentElement?.insertBefore(currentTaskCard, messages);
 let dashboardRefreshController = null;
+let lastAskedQuestion = "";
+let isListeningVoice = false;
+let speechRecognition = null;
 
 let apiAvailable = true;
 let autoStickToBottom = true;
@@ -475,14 +491,26 @@ function normalizeResponseForSave(response) {
   };
 }
 
-function renderRecentAnswers() {
+function renderRecentAnswers(filterText = recentSearch?.value || "") {
   if (!recentList) return;
   if (!savedAnswers.length) {
     recentList.innerHTML = "<p>Recent chats stay saved on this device.</p>";
     return;
   }
-  recentList.innerHTML = savedAnswers
-    .slice(0, 6)
+  const needle = String(filterText || "").trim().toLowerCase();
+  const filtered = needle
+    ? savedAnswers.filter(
+        (item) =>
+          item.question.toLowerCase().includes(needle) ||
+          item.answer.toLowerCase().includes(needle),
+      )
+    : savedAnswers;
+  if (!filtered.length) {
+    recentList.innerHTML = `<p>No recent chats match “${escapeHtml(filterText)}”.</p>`;
+    return;
+  }
+  recentList.innerHTML = filtered
+    .slice(0, 8)
     .map(
       (item) => `
         <article class="recent-item">
@@ -598,6 +626,65 @@ function cleanProfile(profile) {
   );
 }
 
+function profileContextChips() {
+  const chips = [];
+  if (playerProfile.currentDate || playerProfile.currentMonth) {
+    chips.push({
+      label: playerProfile.currentDate || playerProfile.currentMonth,
+      title: "Current date in-game",
+    });
+  } else if (playerProfile.currentMonth) {
+    chips.push({ label: playerProfile.currentMonth, title: "Current month" });
+  }
+  if (playerProfile.currentLevel) {
+    chips.push({ label: `Lv ${playerProfile.currentLevel}`, title: "Player level" });
+  }
+  if (playerProfile.difficulty) {
+    chips.push({ label: playerProfile.difficulty, title: "Difficulty" });
+  }
+  const tartarusProgress = [playerProfile.tartarusBlock, playerProfile.tartarusFloor].filter(Boolean).join(" ");
+  if (tartarusProgress) {
+    chips.push({ label: tartarusProgress, title: "Tartarus progress" });
+  }
+  if (playerProfile.playstyle) {
+    chips.push({ label: playerProfile.playstyle, title: "Playstyle" });
+  }
+  if (playerProfile.dlcOwnership === "all") {
+    chips.push({ label: "DLC on", title: "Persona DLC enabled" });
+  } else if (playerProfile.dlcOwnership === "none") {
+    chips.push({ label: "No DLC", title: "Base-game fusion routes" });
+  }
+  if (playerProfile.currentGoal) {
+    chips.push({
+      label: compactTitle(playerProfile.currentGoal, 28),
+      title: playerProfile.currentGoal,
+    });
+  }
+  return chips.slice(0, 6);
+}
+
+function renderProfileContextBar() {
+  if (!profileContextBar) return;
+  const chips = profileContextChips();
+  if (!chips.length) {
+    profileContextBar.hidden = true;
+    profileContextBar.innerHTML = "";
+    return;
+  }
+  profileContextBar.hidden = false;
+  profileContextBar.innerHTML = `
+    <div class="profile-context-chips">
+      ${chips
+        .map(
+          (chip) =>
+            `<button type="button" class="profile-chip" data-action-tool="memory" title="${escapeHtml(chip.title || chip.label)}">${escapeHtml(chip.label)}</button>`,
+        )
+        .join("")}
+      <button type="button" class="profile-chip profile-chip-edit" data-action-tool="memory" title="Edit player memory">Edit memory</button>
+    </div>
+  `;
+}
+
 function renderMemorySummary() {
   if (!memorySummary) return;
   const tartarusProgress = [playerProfile.tartarusBlock, playerProfile.tartarusFloor].filter(Boolean).join(" ");
@@ -627,6 +714,8 @@ function renderMemorySummary() {
     playerProfile.currentGoal ? `Goal: ${playerProfile.currentGoal}` : "",
   ].filter(Boolean);
   memorySummary.textContent = details.length ? details.join(" · ") : "No profile saved";
+  renderProfileContextBar();
+  refreshPersonalizedEmptyState();
 }
 
 function populateMemoryForm() {
@@ -1187,10 +1276,12 @@ function addUserMessage(text, options = {}) {
   clearEmpty();
   const node = document.createElement("article");
   node.className = `message user-message${options.queued ? " is-queued" : ""}`;
+  node.dataset.question = text;
   node.innerHTML = `
     <div class="bubble">
       <span class="message-text">${escapeHtml(text)}</span>
       <span class="queue-label">Queued</span>
+      ${userMessageActionsHtml()}
     </div>
   `;
   messages.appendChild(node);
@@ -1362,8 +1453,19 @@ function appendStreamToken(delta) {
 function messageActionsHtml() {
   return `
     <div class="message-actions">
-      <button type="button" data-action="copy">Copy</button>
-      <button type="button" data-action="ask-again">Ask follow-up</button>
+      <button type="button" data-action="copy" title="Copy answer">Copy</button>
+      <button type="button" data-action="regenerate" title="Ask this again">Regenerate</button>
+      <button type="button" data-action="save" title="Pin to Recent">Save</button>
+      <button type="button" data-action="ask-again" title="Focus the composer for a follow-up">Follow-up</button>
+    </div>
+  `;
+}
+
+function userMessageActionsHtml() {
+  return `
+    <div class="message-actions user-message-actions">
+      <button type="button" data-action="edit-resend" title="Edit and resend">Edit</button>
+      <button type="button" data-action="copy-question" title="Copy question">Copy</button>
     </div>
   `;
 }
@@ -1640,39 +1742,227 @@ function clearEmpty() {
   document.documentElement.classList.add("has-conversation");
 }
 
+function personalizedStarters() {
+  const month = playerProfile.currentMonth || "August";
+  const monthLabel = `${month[0].toUpperCase()}${month.slice(1)}`;
+  const block = playerProfile.tartarusBlock || "Arqa";
+  const starters = [
+    {
+      prompt: "What should I do today?",
+      label: "Plan my day",
+    },
+    {
+      prompt: `I'm in ${monthLabel} — which Social Links should I prioritize?`,
+      label: `${monthLabel} Social Links`,
+    },
+    {
+      prompt: `What should I bring before a Tartarus run in ${block}?`,
+      label: `${block} loadout`,
+    },
+    {
+      prompt: "How do I prepare for the next full moon boss?",
+      label: "Next full moon",
+    },
+  ];
+  if (playerProfile.currentGoal) {
+    starters.unshift({
+      prompt: `Help me with this goal: ${playerProfile.currentGoal}`,
+      label: compactTitle(playerProfile.currentGoal, 26),
+    });
+  }
+  return starters.slice(0, 4);
+}
+
 function renderEmptyState() {
   document.documentElement.classList.remove("has-conversation");
   clearStickySuggestions();
+  const personalized = personalizedStarters();
+  const month = playerProfile.currentMonth || "August";
+  const monthLabel = `${month[0].toUpperCase()}${month.slice(1)}`;
   messages.innerHTML = `
     <div class="empty-state">
       <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
       <h2>What are we tackling?</h2>
       <p>Talk like you would to a friend who finished the game — weaknesses, bosses, fusion, Social Links, requests, or your day plan.</p>
+      <div class="empty-quick" aria-label="Quick starts">
+        ${personalized
+          .map(
+            (item) =>
+              `<button type="button" data-prompt="${escapeHtml(item.prompt)}">${escapeHtml(item.label)}</button>`,
+          )
+          .join("")}
+      </div>
       <div class="empty-categories" aria-label="Starter topics">
         <div class="empty-cat">
           <span>Combat</span>
           <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
           <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+          <button type="button" data-prompt="How do I prepare for the next full moon boss?">Next full moon</button>
         </div>
         <div class="empty-cat">
           <span>Progress</span>
           <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
-          <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">August Social Links</button>
+          <button type="button" data-prompt="I'm in ${escapeHtml(monthLabel)} — which Social Links should I prioritize?">${escapeHtml(monthLabel)} Social Links</button>
+          <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Elizabeth requests</button>
         </div>
         <div class="empty-cat">
           <span>Build</span>
           <button type="button" data-prompt="How do I fuse Jack Frost?">Fuse Jack Frost</button>
           <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus loadout</button>
+          <button type="button" data-prompt="How do I raise Academics, Charm, and Courage efficiently?">Social stats grind</button>
         </div>
       </div>
       <div class="empty-examples">
         <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
         <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
         <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+        <button type="button" data-prompt="What should I do today?">Plan my day</button>
       </div>
+      <p class="empty-tip">Tip: set <button type="button" class="text-link" data-action-tool="memory">Player Memory</button> so day plans and Social Links match your save. ${modKeyLabel}K starts a new chat.</p>
     </div>
   `;
   updateLatestButton();
+}
+
+function refreshPersonalizedEmptyState() {
+  if (!messages.querySelector(".empty-state")) return;
+  renderEmptyState();
+}
+
+function buildConversationExport() {
+  const lines = ["# Tartarus Guide conversation", ""];
+  for (const turn of chatHistory) {
+    if (!turn?.content?.trim()) continue;
+    const who = turn.role === "user" ? "You" : "SEES Navigator";
+    lines.push(`## ${who}`, "", turn.content.trim(), "");
+  }
+  if (lines.length <= 2) {
+    return "No conversation yet. Ask something first.";
+  }
+  return lines.join("\n").trim() + "\n";
+}
+
+async function exportConversation() {
+  const text = buildConversationExport();
+  try {
+    await navigator.clipboard?.writeText(text);
+    showInputHint("Conversation copied.");
+  } catch {
+    // Fallback: open a downloadable blob.
+    try {
+      const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `tartarus-guide-chat-${new Date().toISOString().slice(0, 10)}.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showInputHint("Conversation downloaded.");
+    } catch {
+      showInputHint("Could not export this chat.");
+    }
+  }
+  setMenu(false);
+}
+
+function focusComposer(options = {}) {
+  setMenu(false);
+  input?.focus({ preventScroll: true });
+  if (options.hint) showInputHint(options.hint);
+  if (options.prefill != null && input) {
+    input.value = options.prefill;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+  }
+}
+
+function regenerateLastAnswer(messageNode) {
+  const previousUser =
+    messageNode?.previousElementSibling?.classList.contains("user-message")
+      ? messageNode.previousElementSibling
+      : null;
+  const question =
+    previousUser?.dataset?.question ||
+    previousUser?.querySelector(".message-text")?.textContent?.trim() ||
+    lastAskedQuestion ||
+    activeQuestion;
+  if (!question) {
+    showInputHint("Nothing to regenerate yet.");
+    return;
+  }
+  // Drop the last user/assistant pair from history so regenerate stays clean.
+  if (chatHistory.length >= 2) {
+    const last = chatHistory[chatHistory.length - 1];
+    const prev = chatHistory[chatHistory.length - 2];
+    if (last?.role === "assistant" && prev?.role === "user") {
+      chatHistory.splice(-2, 2);
+      saveChatHistory();
+    }
+  }
+  if (messageNode) messageNode.remove();
+  if (previousUser) previousUser.remove();
+  queueQuestion(question);
+}
+
+function setupVoiceInput() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition || !voiceInputBtn) return;
+  voiceInputBtn.hidden = false;
+  speechRecognition = new SpeechRecognition();
+  speechRecognition.lang = "en-US";
+  speechRecognition.interimResults = true;
+  speechRecognition.continuous = false;
+
+  speechRecognition.addEventListener("result", (event) => {
+    let transcript = "";
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      transcript += event.results[i][0]?.transcript || "";
+    }
+    if (!input || !transcript.trim()) return;
+    input.value = transcript.trim();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  speechRecognition.addEventListener("end", () => {
+    isListeningVoice = false;
+    voiceInputBtn?.classList.remove("is-listening");
+    voiceInputBtn?.setAttribute("aria-pressed", "false");
+  });
+  speechRecognition.addEventListener("error", () => {
+    isListeningVoice = false;
+    voiceInputBtn?.classList.remove("is-listening");
+    showInputHint("Voice input unavailable right now.");
+  });
+
+  voiceInputBtn.addEventListener("click", () => {
+    if (!speechRecognition) return;
+    if (isListeningVoice) {
+      speechRecognition.stop();
+      return;
+    }
+    try {
+      isListeningVoice = true;
+      voiceInputBtn.classList.add("is-listening");
+      voiceInputBtn.setAttribute("aria-pressed", "true");
+      speechRecognition.start();
+      showInputHint("Listening…");
+    } catch {
+      isListeningVoice = false;
+      voiceInputBtn.classList.remove("is-listening");
+      showInputHint("Could not start voice input.");
+    }
+  });
+}
+
+function updateShortcutHints() {
+  const sideHint = document.getElementById("sideShortcutsHint");
+  if (sideHint) {
+    sideHint.textContent = `${modKeyLabel}K new chat · ${modKeyLabel}/ focus · Esc menu`;
+  }
+  const composerHint = document.querySelector(".composer-hint");
+  if (composerHint) {
+    composerHint.textContent = `Enter to send · Shift+Enter newline · ${modKeyLabel}K new chat`;
+  }
 }
 
 function startNewChat() {
@@ -1751,6 +2041,7 @@ async function askQueuedQuestion(question) {
   const requestController = new AbortController();
   activeRequestController = requestController;
   activeQuestion = question;
+  lastAskedQuestion = question;
   setCurrentTask(taskFromQuestion(question));
   setSending(true);
   setMenu(false);
@@ -1883,27 +2174,75 @@ if (skipEntranceIfReturning()) {
   window.setTimeout(() => input?.focus({ preventScroll: true }), 40);
 }
 
+function flashActionButton(button, label = "Done") {
+  if (!button) return;
+  const original = button.textContent;
+  button.textContent = label;
+  button.classList.add("is-copied");
+  window.setTimeout(() => {
+    button.textContent = original;
+    button.classList.remove("is-copied");
+  }, 1400);
+}
+
 messages.addEventListener("click", (event) => {
+  const toolBtn = event.target.closest("[data-action-tool]");
+  if (toolBtn?.dataset.actionTool === "memory") {
+    openMemoryDialog();
+    return;
+  }
+
   const actionBtn = event.target.closest("button[data-action]");
   if (actionBtn) {
-    const messageNode = actionBtn.closest(".assistant-message");
-    if (actionBtn.dataset.action === "copy") {
-      const plain = messageNode?.querySelector(".answer")?.innerText?.trim() || "";
-      void navigator.clipboard?.writeText(plain).then(() => {
-        actionBtn.textContent = "Copied";
-        actionBtn.classList.add("is-copied");
-        window.setTimeout(() => {
-          actionBtn.textContent = "Copy";
-          actionBtn.classList.remove("is-copied");
-        }, 1400);
+    const assistantNode = actionBtn.closest(".assistant-message");
+    const userNode = actionBtn.closest(".user-message");
+
+    if (actionBtn.dataset.action === "copy" && assistantNode) {
+      const plain = assistantNode.querySelector(".answer")?.innerText?.trim() || "";
+      void navigator.clipboard?.writeText(plain).then(() => flashActionButton(actionBtn, "Copied"));
+      return;
+    }
+    if (actionBtn.dataset.action === "regenerate" && assistantNode) {
+      regenerateLastAnswer(assistantNode);
+      return;
+    }
+    if (actionBtn.dataset.action === "save" && assistantNode) {
+      const answer = assistantNode.querySelector(".answer")?.innerText?.trim() || "";
+      const previousUser = assistantNode.previousElementSibling?.classList.contains("user-message")
+        ? assistantNode.previousElementSibling
+        : null;
+      const question =
+        previousUser?.dataset?.question ||
+        previousUser?.querySelector(".message-text")?.textContent?.trim() ||
+        lastAskedQuestion ||
+        "Saved answer";
+      saveAnswerSnapshot({
+        question,
+        response: {
+          answer,
+          sections: [],
+          sources: [],
+          retrievalMode: "rag",
+        },
       });
+      flashActionButton(actionBtn, "Saved");
+      showInputHint("Pinned to Recent.");
       return;
     }
     if (actionBtn.dataset.action === "ask-again") {
-      input?.focus({ preventScroll: true });
-      if (input && !input.value.trim()) {
-        showInputHint("Ask a follow-up…");
-      }
+      focusComposer({ hint: "Ask a follow-up…" });
+      return;
+    }
+    if (actionBtn.dataset.action === "edit-resend" && userNode) {
+      const question =
+        userNode.dataset.question || userNode.querySelector(".message-text")?.textContent?.trim() || "";
+      focusComposer({ prefill: question, hint: "Edit, then send again." });
+      return;
+    }
+    if (actionBtn.dataset.action === "copy-question" && userNode) {
+      const plain =
+        userNode.dataset.question || userNode.querySelector(".message-text")?.textContent?.trim() || "";
+      void navigator.clipboard?.writeText(plain).then(() => flashActionButton(actionBtn, "Copied"));
       return;
     }
   }
@@ -1921,6 +2260,21 @@ stickySuggestions?.addEventListener("click", (event) => {
   if (button) queueQuestion(button.dataset.prompt);
 });
 
+quickActions?.addEventListener("click", (event) => {
+  const toolBtn = event.target.closest("[data-action-tool]");
+  if (toolBtn?.dataset.actionTool === "memory") {
+    openMemoryDialog();
+    return;
+  }
+  const button = event.target.closest("button[data-prompt]");
+  if (button) queueQuestion(button.dataset.prompt);
+});
+
+profileContextBar?.addEventListener("click", (event) => {
+  const toolBtn = event.target.closest("[data-action-tool]");
+  if (toolBtn?.dataset.actionTool === "memory") openMemoryDialog();
+});
+
 recentList?.addEventListener("click", (event) => {
   const openButton = event.target.closest("button[data-open-recent]");
   if (openButton) {
@@ -1928,10 +2282,15 @@ recentList?.addEventListener("click", (event) => {
   }
 });
 
+recentSearch?.addEventListener("input", () => {
+  renderRecentAnswers(recentSearch.value);
+});
+
 clearChat?.addEventListener("click", () => {
   recent.splice(0);
   chatHistory.splice(0);
   savedAnswers.splice(0);
+  lastAskedQuestion = "";
   saveChatHistory();
   saveSavedAnswers();
   renderRecentAnswers();
@@ -1939,6 +2298,59 @@ clearChat?.addEventListener("click", () => {
 });
 
 newChatBtn?.addEventListener("click", () => startNewChat());
+sideNewChat?.addEventListener("click", () => startNewChat());
+exportChatBtn?.addEventListener("click", () => void exportConversation());
+exportChatHeaderBtn?.addEventListener("click", () => void exportConversation());
+focusComposerBtn?.addEventListener("click", () => focusComposer());
+openMemoryTool?.addEventListener("click", () => openMemoryDialog());
+memoryQuickBtn?.addEventListener("click", () => openMemoryDialog());
+planTodayBtn?.addEventListener("click", () => {
+  const prompt = planTodayBtn.dataset.prompt || "What should I do today?";
+  queueQuestion(prompt);
+});
+
+document.addEventListener("keydown", (event) => {
+  const key = event.key.toLowerCase();
+  const mod = event.metaKey || event.ctrlKey;
+  const target = event.target;
+  const typingInField =
+    target instanceof HTMLElement &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
+      target.isContentEditable);
+
+  if (mod && key === "k") {
+    event.preventDefault();
+    startNewChat();
+    return;
+  }
+  if (mod && key === "/") {
+    event.preventDefault();
+    focusComposer();
+    return;
+  }
+  if (mod && key === "e" && !event.shiftKey) {
+    event.preventDefault();
+    void exportConversation();
+    return;
+  }
+  if (key === "escape") {
+    if (sidePanel?.classList.contains("is-open")) {
+      event.preventDefault();
+      setMenu(false);
+      return;
+    }
+    const memoryDialog = document.getElementById("memoryDialog");
+    if (memoryDialog?.open) {
+      closeMemoryDialog();
+    }
+  }
+  if (!typingInField && key === "/" && !mod && !event.altKey) {
+    event.preventDefault();
+    focusComposer();
+  }
+});
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("#openMemory")) {
@@ -2028,4 +2440,11 @@ window.addEventListener("storage", (event) => {
   scheduleDashboardRefresh();
 });
 
+updateShortcutHints();
+setupVoiceInput();
+renderProfileContextBar();
+if (!chatHistory.length) {
+  // Keep the static shell empty state, but refresh personalization if profile exists.
+  refreshPersonalizedEmptyState();
+}
 checkApiStatus();
