@@ -6,6 +6,8 @@ const recentList = document.getElementById("recentList");
 const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
+const newChatBtn = document.getElementById("newChatBtn");
+const stickySuggestions = document.getElementById("stickySuggestions");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -17,7 +19,7 @@ const exactAnswerCacheKey = "tartarusExactAnswerCacheV1";
 const playerProfileKey = "tartarusPlayerProfileV2";
 const savedAnswersKey = "tartarusSavedAnswersV1";
 const currentTaskKey = "tartarusCurrentTaskV1";
-const defaultInputPlaceholder = input?.placeholder || "Ask anything about Persona 3 Reload...";
+const defaultInputPlaceholder = input?.placeholder || "Message SEES Navigator…";
 const maxQueuedQuestions = 5;
 const maxCachedExactAnswers = 24;
 const maxSavedAnswers = 30;
@@ -353,7 +355,7 @@ function taskFromResponse(question, response) {
     const urgent = (response.dailyDashboard.items || []).filter((item) => item.priority === "urgent").length;
     return {
       type: "dashboard",
-      title: "Today’s plan",
+      title: "Planning today",
       status: urgent ? `${urgent} urgent` : "Priorities set",
       meta: [response.dailyDashboard.date].filter(Boolean),
     };
@@ -1357,6 +1359,38 @@ function appendStreamToken(delta) {
   });
 }
 
+function messageActionsHtml() {
+  return `
+    <div class="message-actions">
+      <button type="button" data-action="copy">Copy</button>
+      <button type="button" data-action="ask-again">Ask follow-up</button>
+    </div>
+  `;
+}
+
+function renderStickySuggestions(response) {
+  if (!stickySuggestions) return;
+  const prompts = contextualSuggestedPrompts(response).slice(0, 4);
+  if (!prompts.length) {
+    stickySuggestions.hidden = true;
+    stickySuggestions.innerHTML = "";
+    return;
+  }
+  stickySuggestions.hidden = false;
+  stickySuggestions.innerHTML = prompts
+    .map(
+      (prompt) =>
+        `<button type="button" data-prompt="${escapeHtml(prompt)}" title="${escapeHtml(prompt)}">${escapeHtml(promptLabel(prompt))}</button>`,
+    )
+    .join("");
+}
+
+function clearStickySuggestions() {
+  if (!stickySuggestions) return;
+  stickySuggestions.hidden = true;
+  stickySuggestions.innerHTML = "";
+}
+
 async function addAssistantMessage(response, options = {}) {
   flushStreamTokens();
   resetStreamBuffer();
@@ -1373,16 +1407,16 @@ async function addAssistantMessage(response, options = {}) {
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")} is-settling`;
   if (response.dailyDashboard) node.dataset.dashboardHost = "true";
 
+  const finalAnswer = response.answer || streamedAnswer;
   const extrasHtml = renderResponseExtras(response);
+  const actionsHtml = messageActionsHtml();
   if (streamed) {
-    // Keep the streamed prose, then enrich the bubble without a full retype flash.
     const bubble = node.querySelector(".bubble");
     if (bubble) {
       const answerNode = bubble.querySelector(".answer");
       if (answerNode) {
         answerNode.classList.remove("is-typing");
-        // Prefer formatted final text; fall back to streamed plain text.
-        answerNode.innerHTML = renderText(response.answer || streamedAnswer);
+        answerNode.innerHTML = renderText(finalAnswer);
       }
       let extra = bubble.querySelector(".message-extra");
       if (!extra) {
@@ -1390,8 +1424,7 @@ async function addAssistantMessage(response, options = {}) {
         extra.className = "message-extra is-pending";
         bubble.appendChild(extra);
       }
-      extra.innerHTML = extrasHtml;
-      // Force reflow so the staggered reveal animation always plays.
+      extra.innerHTML = extrasHtml + actionsHtml;
       void extra.offsetWidth;
       requestAnimationFrame(() => extra.classList.remove("is-pending"));
     }
@@ -1403,6 +1436,7 @@ async function addAssistantMessage(response, options = {}) {
         <div class="answer is-typing"></div>
         <div class="message-extra is-pending">
           ${extrasHtml}
+          ${actionsHtml}
         </div>
       </div>
     `;
@@ -1417,7 +1451,10 @@ async function addAssistantMessage(response, options = {}) {
     requestAnimationFrame(() => extra?.classList.remove("is-pending"));
   }
 
-  requestAnimationFrame(() => node.classList.remove("is-settling"));
+  requestAnimationFrame(() => {
+    node.classList.remove("is-settling");
+    node.classList.add("is-settled");
+  });
 
   if (!options.skipRemember) {
     rememberTurn("assistant", response.answer);
@@ -1427,6 +1464,7 @@ async function addAssistantMessage(response, options = {}) {
       response,
     });
   }
+  renderStickySuggestions(response);
   updateLatestButton();
   scrollMessagesToBottom({ behavior: motionEnabled() ? "smooth" : "auto" });
 }
@@ -1604,11 +1642,29 @@ function clearEmpty() {
 
 function renderEmptyState() {
   document.documentElement.classList.remove("has-conversation");
+  clearStickySuggestions();
   messages.innerHTML = `
     <div class="empty-state">
       <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
-      <h2>What do you need help with?</h2>
-      <p>Try asking for a weakness, boss strategy, fusion route, Social Link choice, Elizabeth request, or daily-life tip.</p>
+      <h2>What are we tackling?</h2>
+      <p>Talk like you would to a friend who finished the game — weaknesses, bosses, fusion, Social Links, requests, or your day plan.</p>
+      <div class="empty-categories" aria-label="Starter topics">
+        <div class="empty-cat">
+          <span>Combat</span>
+          <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
+          <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+        </div>
+        <div class="empty-cat">
+          <span>Progress</span>
+          <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+          <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">August Social Links</button>
+        </div>
+        <div class="empty-cat">
+          <span>Build</span>
+          <button type="button" data-prompt="How do I fuse Jack Frost?">Fuse Jack Frost</button>
+          <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus loadout</button>
+        </div>
+      </div>
       <div class="empty-examples">
         <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
         <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
@@ -1617,6 +1673,25 @@ function renderEmptyState() {
     </div>
   `;
   updateLatestButton();
+}
+
+function startNewChat() {
+  if (isSending) activeRequestController?.abort();
+  chatQueue.splice(0);
+  recent.splice(0);
+  chatHistory.splice(0);
+  saveChatHistory();
+  clearCurrentTask();
+  clearStickySuggestions();
+  renderEmptyState();
+  setMenu(false);
+  if (input) {
+    input.value = "";
+    input.style.height = "";
+  }
+  updateSendButtonState();
+  input?.focus({ preventScroll: true });
+  showInputHint("Fresh chat — ask anything.");
 }
 
 function updateRecent(question) {
@@ -1729,7 +1804,8 @@ input.addEventListener("keydown", (event) => {
 
 input.addEventListener("input", () => {
   input.style.height = "auto";
-  input.style.height = `${Math.min(input.scrollHeight, 192)}px`;
+  const next = Math.min(Math.max(input.scrollHeight, 42), 144);
+  input.style.height = `${next}px`;
   updateSendButtonState();
 });
 
@@ -1808,6 +1884,29 @@ if (skipEntranceIfReturning()) {
 }
 
 messages.addEventListener("click", (event) => {
+  const actionBtn = event.target.closest("button[data-action]");
+  if (actionBtn) {
+    const messageNode = actionBtn.closest(".assistant-message");
+    if (actionBtn.dataset.action === "copy") {
+      const plain = messageNode?.querySelector(".answer")?.innerText?.trim() || "";
+      void navigator.clipboard?.writeText(plain).then(() => {
+        actionBtn.textContent = "Copied";
+        actionBtn.classList.add("is-copied");
+        window.setTimeout(() => {
+          actionBtn.textContent = "Copy";
+          actionBtn.classList.remove("is-copied");
+        }, 1400);
+      });
+      return;
+    }
+    if (actionBtn.dataset.action === "ask-again") {
+      input?.focus({ preventScroll: true });
+      if (input && !input.value.trim()) {
+        showInputHint("Ask a follow-up…");
+      }
+      return;
+    }
+  }
   const button = event.target.closest("button[data-prompt]");
   if (!button) return;
   if (button.dataset.prompt === "Update Player Memory") {
@@ -1815,6 +1914,11 @@ messages.addEventListener("click", (event) => {
     return;
   }
   queueQuestion(button.dataset.prompt);
+});
+
+stickySuggestions?.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-prompt]");
+  if (button) queueQuestion(button.dataset.prompt);
 });
 
 recentList?.addEventListener("click", (event) => {
@@ -1831,11 +1935,10 @@ clearChat?.addEventListener("click", () => {
   saveChatHistory();
   saveSavedAnswers();
   renderRecentAnswers();
-  renderEmptyState();
-  clearCurrentTask();
-  setMenu(false);
-  input.focus();
+  startNewChat();
 });
+
+newChatBtn?.addEventListener("click", () => startNewChat());
 
 document.addEventListener("click", (event) => {
   if (event.target.closest("#openMemory")) {
