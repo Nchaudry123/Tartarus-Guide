@@ -60,6 +60,29 @@ const intentToFactTypes: Array<{ pattern: RegExp; types: FactType[] }> = [
 ];
 
 export function detectFactTypes(query: string): FactType[] {
+  // Skill-keep follow-ups often ride on fusion threads ("How do I fuse Loki?" +
+  // "What skills should I keep?"). Prefer profile/tip facts so fusion recipes
+  // do not crowd out Initial/Learned skills.
+  if (
+    /\bskills?\s+should\s+i\s+keep\b/i.test(query) ||
+    /\b(?:initial|learned)\s+skills?\b/i.test(query) ||
+    /\bwhat skills?\b/i.test(query)
+  ) {
+    return [
+      "tip",
+      "item_effect",
+      "prerequisite",
+      "weakness",
+      "resistance",
+      "nullifies",
+      "drains",
+      "repels",
+      "arcana",
+      "base_level",
+      "unlock_condition",
+    ];
+  }
+
   const matched = intentToFactTypes.flatMap((entry) => (entry.pattern.test(query) ? entry.types : []));
   return [...new Set(matched)];
 }
