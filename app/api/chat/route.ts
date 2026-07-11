@@ -4627,24 +4627,45 @@ async function directRagResponse(
     debug,
   );
   if (socialLinkStart) return socialLinkStart;
-  const canonicalRelationship = canonicalRelationshipAnswer(conversation.analysisQuestion);
+  const relationshipProfile = mergeProfile(playerProfile, analysis.profileUpdates);
+  const canonicalRelationship = canonicalRelationshipAnswer(
+    conversation.analysisQuestion,
+    relationshipProfile,
+  );
   if (canonicalRelationship) {
-    const needsPlayerProgress =
-      canonicalRelationship.startsWith("There is no single best Social Link order");
+    const needsFullProgress =
+      /there isn'?t one perfect Social Link order|without knowing your current date/i.test(
+        canonicalRelationship,
+      );
+    const needsStatsOnly =
+      !needsFullProgress &&
+      /Charm|Academics|Courage/i.test(canonicalRelationship) &&
+      /rank|rough|share|tell me/i.test(canonicalRelationship);
     return withMode({
       answer: canonicalRelationship,
       sections: [],
       sources: [],
       confidence: 0.99,
-      missingInfo: needsPlayerProgress
-        ? "Share your current in-game date and Social Stats for a personalized order."
-        : "No additional detail is needed.",
+      missingInfo: needsFullProgress
+        ? "Your month (or date) and rough Charm / Academics / Courage ranks."
+        : needsStatsOnly
+          ? "Rough Charm / Academics / Courage ranks."
+          : "No additional detail is needed.",
       companion: {
         intent: "Social Links",
-        profileUpdates: {},
-        followUpQuestions: needsPlayerProgress
-          ? ["What is your current in-game date, and what are your Academics, Charm, and Courage ranks?"]
-          : [],
+        profileUpdates: analysis.profileUpdates,
+        followUpQuestions: needsFullProgress
+          ? ["What month are you in, and roughly how are Charm, Academics, and Courage looking?"]
+          : needsStatsOnly
+            ? ["Charm / Academics / Courage — even rough ranks are fine."]
+            : [],
+        suggestedPrompts: expertSuggestedPrompts({
+          intent: "Social Links",
+          answer: canonicalRelationship,
+          missing: needsStatsOnly ? "social stats" : needsFullProgress ? "month and social stats" : "",
+          needsDetail: needsFullProgress || needsStatsOnly,
+          month: relationshipProfile.currentMonth,
+        }),
       },
     }, "rag");
   }
@@ -5172,13 +5193,13 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
         } else {
           normalized = {
             answer:
-              canonicalRelationshipAnswer(conversation.analysisQuestion) ??
-              "I can help with Social Links, but I need the exact character name and your current in-game date before giving a schedule or Arcana.",
+              canonicalRelationshipAnswer(conversation.analysisQuestion, controllerProfile) ??
+              "I can help with Social Links — which character are you asking about, and what month are you in?",
             sections: [],
             tables: [],
             sources: [],
             confidence: 0.72,
-            missingInfo: "Tell me the exact character and current in-game date.",
+            missingInfo: "Character name and current month (or date).",
             companion: responseCompanion,
           };
         }
@@ -5285,29 +5306,35 @@ async function resolveChatRequest(
 
 function withExpertConversationPolish(response: ChatResponse): ChatResponse {
   const companion = response.companion;
+  const needsDetail = Boolean(
+    response.missingInfo &&
+      !/^(?:no additional detail is needed|no missing information reported)\b/i.test(
+        response.missingInfo.trim(),
+      ),
+  );
+  const month =
+    companion?.profileUpdates?.currentMonth ||
+    response.answer?.match(
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\b/,
+    )?.[1];
   const prompts = expertSuggestedPrompts({
     intent: companion?.intent,
     answer: response.answer,
     missing: response.missingInfo,
     hasSources: Boolean(response.sources?.length),
     fusionTarget: response.fusionWorkshop?.target,
-    needsDetail: Boolean(
-      response.missingInfo &&
-        !/^(?:no additional detail is needed|no missing information reported)\b/i.test(
-          response.missingInfo.trim(),
-        ),
-    ),
+    needsDetail,
     serverPrompts: companion?.suggestedPrompts,
+    month,
   });
-  const unique = [...new Set(prompts.map((prompt) => prompt.trim()).filter(Boolean))].slice(0, 4);
-  if (!unique.length && !companion) return response;
+  if (!prompts.length && !companion) return response;
   return {
     ...response,
     companion: {
       intent: companion?.intent ?? "General Discussion",
       profileUpdates: companion?.profileUpdates ?? {},
       followUpQuestions: companion?.followUpQuestions ?? [],
-      suggestedPrompts: unique.length ? unique : companion?.suggestedPrompts,
+      suggestedPrompts: prompts.length ? prompts : companion?.suggestedPrompts,
     },
   };
 }

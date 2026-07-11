@@ -45,3 +45,16 @@ test("suggested prompts never use meta UI language for vague needs-detail", () =
   assert.ok(prompts.length >= 1);
   assert.ok(prompts.every((prompt) => !/Player Memory|rephrase|focused question/i.test(prompt)));
 });
+
+test("social link coaching does not get fusion chips from the word Persona in the answer", () => {
+  const prompts = expertSuggestedPrompts({
+    intent: "Social Links",
+    needsDetail: true,
+    missing: "Rough Charm / Academics / Courage ranks.",
+    answer:
+      "Bring a Persona of the matching Arcana when the link awards affinity points. Share Charm ranks.",
+    month: "August",
+  });
+  assert.ok(prompts.some((prompt) => /Charm|Academics|Courage|links/i.test(prompt)));
+  assert.ok(prompts.every((prompt) => !/fuse Jack Frost|fuse Loki|heart item/i.test(prompt)));
+});
