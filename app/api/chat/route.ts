@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { ChatRequest, ChatResponse, PlayerProfile } from "../../../lib/types";
 import {
@@ -44,11 +43,22 @@ import {
   requestedExactFactTypes,
 } from "../../../src/quality/exactFacts";
 import type { FactMatch } from "../../../src/types/schema";
-import { TtlCache } from "../../../src/cache/ttlCache";
 import {
   analyzeRetrievalQuery,
   buildFocusedQueries,
 } from "../../../src/retrieval/queryAnalysis";
+import type {
+  CompanionAnalysis,
+  CompanionIntent,
+  ControllerAction,
+  ControllerDecision,
+} from "../../../src/chat/types";
+import {
+  getCachedChatResponse,
+  responseCacheKey as buildResponseCacheKey,
+  setCachedChatResponse,
+} from "../../../src/chat/responseCache";
+import { progressMessage } from "../../../src/chat/progress";
 import {
   formatProgressContext,
   getProgressSnapshot,
@@ -96,95 +106,10 @@ function isFusionToolUrl(url: string): boolean {
   );
 }
 
-type CompanionIntent =
-  | "Enemy Weakness"
-  | "Boss Help"
-  | "Team Building"
-  | "Fusion Advice"
-  | "Social Links"
-  | "Daily Schedule Planning"
-  | "Tartarus Navigation"
-  | "Quest Help"
-  | "Story Guidance"
-  | "Achievement Hunting"
-  | "General Discussion";
-
-type CompanionAnalysis = {
-  intent: CompanionIntent;
-  retrievalQuery: string;
-  isAmbiguous: boolean;
-  followUpQuestions: string[];
-  profileUpdates: PlayerProfile;
-  profile: PlayerProfile;
-  spoilerCaution: boolean;
-};
-
-type ControllerAction =
-  | "answer_directly"
-  | "ask_clarifying_question"
-  | "search_guides"
-  | "search_structured_facts"
-  | "search_both";
-
-type ControllerDecision = {
-  action: ControllerAction;
-  intent: CompanionIntent;
-  retrievalQuery: string;
-  retrievalQueries: string[];
-  answer: string | null;
-  followUpQuestions: string[];
-  profileUpdates: PlayerProfile;
-  suggestedPrompts: string[];
-  spoilerCaution: boolean;
-};
-
 const partyMembers = [...combatPartyMembers];
-const responseCache = new TtlCache<ChatResponse>(128, 10 * 60_000);
 
 function responseCacheKey(body: Partial<ChatRequest>): string | null {
-  if (
-    body.debug ||
-    body.conversationId ||
-    body.history?.length ||
-    Object.values(body.playerProfile ?? {}).some((value) =>
-      Array.isArray(value) ? value.length > 0 : Boolean(value),
-    )
-  ) {
-    return null;
-  }
-
-  const question = body.question?.trim().toLowerCase().replace(/\s+/g, " ");
-  if (!question || question.length < 8 || isCasualMessage(question)) return null;
-  return createHash("sha256").update(question).digest("hex");
-}
-
-function progressMessage(intent: CompanionIntent, action: ControllerAction): string {
-  if (action === "search_guides") {
-    return intent === "Boss Help"
-      ? "Reviewing boss mechanics..."
-      : intent === "Tartarus Navigation"
-        ? "Mapping floors and encounters..."
-        : "Reviewing strategy notes...";
-  }
-
-  switch (intent) {
-    case "Enemy Weakness":
-      return "Checking affinities...";
-    case "Fusion Advice":
-      return "Validating fusion details...";
-    case "Social Links":
-      return "Checking schedules and unlocks...";
-    case "Quest Help":
-      return "Checking requirements and rewards...";
-    case "Daily Schedule Planning":
-      return "Checking the calendar...";
-    case "Tartarus Navigation":
-      return "Mapping floors and encounters...";
-    case "Boss Help":
-      return "Cross-checking boss mechanics...";
-    default:
-      return "Checking the details...";
-  }
+  return buildResponseCacheKey(body, { isCasualMessage });
 }
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
@@ -4250,14 +4175,47 @@ function deterministicControllerDecision(
     };
   }
 
-  if (exactWeaknessQuestion(question, analysis.intent)) {
+  if (exactWeaknessQuestion(question, analysis.intent) || analysis.intent === "Enemy Weakness") {
     const queries = buildFocusedQueries(question);
     const query = queries[0];
     return {
       ...base,
       action: "search_structured_facts",
       retrievalQuery: query,
-      retrievalQueries: queries,
+      // Keep fanout low for exact affinity lookups (embedding cost + latency).
+      retrievalQueries: queries.slice(0, 2),
+      followUpQuestions: [],
+    };
+  }
+
+  if (
+    isFusionRecipeRequest(question) ||
+    (analysis.intent === "Fusion Advice" &&
+      /\b(?:fuse|fusion|recipe|how (?:do|can) i (?:make|get)|how to (?:make|get|fuse))\b/i.test(question) &&
+      !analysis.isAmbiguous)
+  ) {
+    const queries = buildFocusedQueries(question);
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: queries[0],
+      retrievalQueries: queries.slice(0, 2),
+      followUpQuestions: [],
+    };
+  }
+
+  if (
+    analysis.intent === "Social Links" &&
+    socialLinkEntityAliasesForQuestion(question).length > 0 &&
+    !analysis.isAmbiguous
+  ) {
+    const aliases = socialLinkEntityAliasesForQuestion(question);
+    const primary = `${aliases.join(" ")} Persona 3 Reload Social Link start unlock schedule answers rewards`;
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: primary,
+      retrievalQueries: uniqueStrings([primary, ...buildFocusedQueries(question)]).slice(0, 2),
       followUpQuestions: [],
     };
   }
@@ -4433,6 +4391,7 @@ function deterministicControllerDecision(
   }
 
   const routeByIntent: Partial<Record<CompanionIntent, ControllerAction>> = {
+    "Enemy Weakness": "search_structured_facts",
     "Boss Help": "search_both",
     "Fusion Advice": "search_both",
     "Social Links": "search_both",
@@ -4487,6 +4446,8 @@ function deterministicControllerDecision(
   ].filter((value): value is string => Boolean(value));
   const focusedQueries = buildFocusedQueries(question, profileHints);
   const query = focusedQueries[0] ?? compactText(question, 240);
+  // Prefer fewer retrieval queries on structured-fact paths to cut embed + RPC latency.
+  const maxQueries = action === "search_structured_facts" ? 2 : 3;
   return {
     ...base,
     action,
@@ -4494,7 +4455,7 @@ function deterministicControllerDecision(
     retrievalQueries: uniqueStrings([
       ...(intentQueries[analysis.intent] ?? []),
       ...focusedQueries,
-    ]).slice(0, 4),
+    ]).slice(0, maxQueries),
     followUpQuestions: analysis.followUpQuestions,
   };
 }
@@ -4616,6 +4577,7 @@ async function directRagResponse(
     }, "rag");
   }
 
+  // Dynamic so mock/local mode can load without Supabase/chat credentials at module init.
   const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
@@ -4726,20 +4688,29 @@ async function directRagResponse(
   )
     ? likelyExactSubject(conversation.analysisQuestion)
     : null;
+  const maxRetrievalQueries =
+    controller.action === "search_structured_facts"
+      ? 2
+      : controller.action === "search_guides"
+        ? 2
+        : 3;
   const retrievalQueries = uniqueStrings([
     personaProfileSubject
       ? `What skills should I keep for ${personaProfileSubject} after fusing it?`
       : undefined,
     ...controller.retrievalQueries,
     controller.retrievalQuery,
-  ]).slice(0, 4);
+  ]).slice(0, maxRetrievalQueries);
+  const factOnly = controller.action === "search_structured_facts";
+  const guidesOnly = controller.action === "search_guides";
   const context = await buildPlannedContext(
     {
       queries: retrievalQueries,
-      includeFacts: controller.action !== "search_guides",
-      includeChunks: controller.action !== "search_structured_facts",
-      factLimit: 18,
-      chunkLimit: 12,
+      includeFacts: !guidesOnly,
+      includeChunks: !factOnly,
+      // Leaner contexts cut prompt tokens and embed/RPC work on hot paths.
+      factLimit: factOnly ? 10 : 14,
+      chunkLimit: guidesOnly ? 8 : 10,
     },
     signal,
   );
@@ -5201,7 +5172,7 @@ async function resolveChatRequest(
   const question = body.question?.trim() ?? "";
   signal?.throwIfAborted();
   const cacheKey = responseCacheKey(body);
-  const cached = cacheKey ? responseCache.get(cacheKey) : undefined;
+  const cached = cacheKey ? getCachedChatResponse(cacheKey) : undefined;
   if (cached) {
     onProgress?.("Loading a recent verified answer...");
     return cached;
@@ -5224,13 +5195,7 @@ async function resolveChatRequest(
     direct ??
     external ??
     withMode(mockResponse(question), "mock");
-  if (
-    cacheKey &&
-    response.retrievalMode === "rag" &&
-    (response.confidence ?? 0) >= 0.72
-  ) {
-    responseCache.set(cacheKey, response);
-  }
+  if (cacheKey) setCachedChatResponse(cacheKey, response);
   return response;
 }
 
@@ -5248,11 +5213,13 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
           (message) => emit({ type: "status", message }),
           request.signal,
         );
+        // Stream in larger word groups without artificial delays — the full
+        // answer is already ready, so fake typing only adds perceived latency.
         const tokens = response.answer.match(/\S+\s*/g) ?? [response.answer];
-        for (const delta of tokens) {
+        const groupSize = tokens.length > 80 ? 4 : tokens.length > 30 ? 3 : 2;
+        for (let index = 0; index < tokens.length; index += groupSize) {
           request.signal.throwIfAborted();
-          emit({ type: "token", delta });
-          await new Promise((resolve) => setTimeout(resolve, 6));
+          emit({ type: "token", delta: tokens.slice(index, index + groupSize).join("") });
         }
         emit({ type: "response", data: response });
       } catch (error) {

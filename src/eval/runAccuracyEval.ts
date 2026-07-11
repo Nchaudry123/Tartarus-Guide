@@ -51,6 +51,8 @@ const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
 const exactFailUnder = Number(args.get("exact-fail-under") ?? "0.8");
 const hallucinationFailUnder = Number(args.get("hallucination-fail-under") ?? "0.95");
+const categoryFailUnder = Number(args.get("category-fail-under") ?? "0");
+const categoryMinCases = Number(args.get("category-min-cases") ?? "3");
 const delayMs = Number(args.get("delay-ms") ?? "1000");
 const validateOnly = args.has("validate-only");
 const direct = args.has("direct");
@@ -465,6 +467,19 @@ async function main(): Promise<void> {
   if (score < failUnder) process.exitCode = 2;
   if (exactAnswerAccuracy !== null && exactAnswerAccuracy < exactFailUnder) process.exitCode = 2;
   if (hallucinationSafety !== null && hallucinationSafety < hallucinationFailUnder) process.exitCode = 2;
+  if (categoryFailUnder > 0) {
+    const weakCategories = Object.entries(categoryScores).filter(
+      ([, summary]) => summary.total >= categoryMinCases && summary.score < categoryFailUnder,
+    );
+    if (weakCategories.length) {
+      console.error(
+        `Category accuracy gate failed (< ${(categoryFailUnder * 100).toFixed(0)}% with >= ${categoryMinCases} cases): ${weakCategories
+          .map(([name, summary]) => `${name}=${(summary.score * 100).toFixed(1)}%`)
+          .join(", ")}`,
+      );
+      process.exitCode = 2;
+    }
+  }
 }
 
 main().catch((error) => {
