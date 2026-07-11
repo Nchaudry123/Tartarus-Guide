@@ -262,7 +262,7 @@ try {
       const messages = document.querySelector(".messages");
       const form = document.querySelector(".chat-form");
       const input = document.querySelector("#questionInput");
-      const send = document.querySelector(".chat-form button");
+      const send = document.querySelector('.chat-form button[type="submit"]');
       if (!card) return null;
       const bounds = card.getBoundingClientRect();
       const formBounds = form?.getBoundingClientRect();
