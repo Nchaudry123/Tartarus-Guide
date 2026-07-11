@@ -15,6 +15,13 @@ test("flags vague craft/fuse questions without a named target", () => {
   assert.equal(isVagueCreationQuestion("How do I fuse Jack Frost"), false);
   assert.equal(isVagueCreationQuestion("How do I fuse Jack Frost?"), false);
   assert.equal(isVagueCreationQuestion("what is dancing hand weak to"), false);
+  assert.equal(isVagueCreationQuestion("What skills should I keep?"), false);
+  assert.equal(
+    isVagueCreationQuestion(
+      "The user's active conversation goal is: How do I fuse Loki?\nThe user's latest follow-up is: What skills should I keep for Loki after fusing it?",
+    ),
+    false,
+  );
 });
 
 test("bare referential words are detected", () => {
