@@ -151,6 +151,63 @@ async function upsertEntity(fact: ExtractedFact): Promise<string> {
   return data.id as string;
 }
 
+/** Cached after first probe: production may still lack migration 004 (arcana/base_level). */
+let supportsExtendedFactTypes: boolean | null = null;
+
+function mapFactForSchema(fact: ExtractedFact): {
+  fact_type: ExtractedFact["fact_type"] | "tip";
+  value: string;
+} | null {
+  if (!fact.value) return null;
+  if (supportsExtendedFactTypes !== false) {
+    return { fact_type: fact.fact_type, value: fact.value };
+  }
+  if (fact.fact_type === "arcana") {
+    return { fact_type: "tip", value: `Arcana: ${fact.value}` };
+  }
+  if (fact.fact_type === "base_level") {
+    return { fact_type: "tip", value: `Base level: ${fact.value}` };
+  }
+  return { fact_type: fact.fact_type, value: fact.value };
+}
+
+async function probeExtendedFactTypes(
+  entityId: string,
+  sourceId: string,
+): Promise<boolean> {
+  if (supportsExtendedFactTypes !== null) return supportsExtendedFactTypes;
+
+  const probeValue = `schema-probe-extract-${Date.now()}`;
+  const { data, error } = await supabase
+    .from("facts")
+    .insert({
+      entity_id: entityId,
+      source_id: sourceId,
+      fact_type: "base_level",
+      value: probeValue,
+      confidence: 1,
+      notes: "Temporary fact extraction schema probe.",
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    if (error.code === "23514" && error.message.includes("facts_type_check")) {
+      supportsExtendedFactTypes = false;
+      console.warn(
+        "Database is missing migration 004 (arcana/base_level). Mapping those fact types to tip until the SQL is applied.",
+      );
+      return false;
+    }
+    throw error;
+  }
+
+  const { error: deleteError } = await supabase.from("facts").delete().eq("id", data.id);
+  if (deleteError) throw deleteError;
+  supportsExtendedFactTypes = true;
+  return true;
+}
+
 async function insertOrRefreshFact(
   fact: ExtractedFact,
   entityId: string,
@@ -158,13 +215,17 @@ async function insertOrRefreshFact(
 ): Promise<boolean> {
   if (!fact.value) return false;
 
+  await probeExtendedFactTypes(entityId, source.id);
+  const mapped = mapFactForSchema(fact);
+  if (!mapped) return false;
+
   const { data: existing, error: existingError } = await supabase
     .from("facts")
     .select("id,confidence,notes")
     .eq("entity_id", entityId)
     .eq("source_id", source.id)
-    .eq("fact_type", fact.fact_type)
-    .ilike("value", fact.value)
+    .eq("fact_type", mapped.fact_type)
+    .ilike("value", mapped.value)
     .maybeSingle();
 
   if (existingError) throw existingError;
@@ -187,8 +248,8 @@ async function insertOrRefreshFact(
   const { error } = await supabase.from("facts").insert({
     entity_id: entityId,
     source_id: source.id,
-    fact_type: fact.fact_type,
-    value: fact.value,
+    fact_type: mapped.fact_type,
+    value: mapped.value,
     confidence: fact.confidence,
     notes: fact.notes ?? null,
   });
