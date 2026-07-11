@@ -25,5 +25,6 @@ test("recognizes Persona profile and recommendation wording", () => {
   assert.equal(isPersonaKnowledgeRequest("Show me the stats for Loki."), true);
   assert.equal(isPersonaKnowledgeRequest("What is Satan's inheritance type?"), true);
   assert.equal(isPersonaKnowledgeRequest("Would Messiah be worth using?"), true);
+  assert.equal(isPersonaKnowledgeRequest("What skills should I keep for Loki after fusing it?"), true);
   assert.equal(isPersonaKnowledgeRequest("How should I build Yukari?"), false);
 });
