@@ -194,7 +194,33 @@ function linkedEpisodeCharacter(question: string): (typeof linkedEpisodeCharacte
   return null;
 }
 
-export function canonicalRelationshipAnswer(question: string): string | null {
+export type RelationshipProfileHint = {
+  currentMonth?: string;
+  currentDate?: string;
+  socialStats?: {
+    academics?: string;
+    charm?: string;
+    courage?: string;
+  };
+};
+
+function monthFromQuestion(question: string): string | undefined {
+  const match = question.match(
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+  );
+  if (!match) return undefined;
+  return match[1][0]!.toUpperCase() + match[1].slice(1).toLowerCase();
+}
+
+function hasSocialStats(profile?: RelationshipProfileHint): boolean {
+  const stats = profile?.socialStats;
+  return Boolean(stats?.academics || stats?.charm || stats?.courage);
+}
+
+export function canonicalRelationshipAnswer(
+  question: string,
+  profile?: RelationshipProfileHint,
+): string | null {
   if (!/\b(social links?|s-?links?|arcana|hang out|relationship)\b/i.test(question)) return null;
 
   const linkedCharacter = linkedEpisodeCharacter(question);
@@ -206,17 +232,48 @@ export function canonicalRelationshipAnswer(question: string): string | null {
     /\b(?:best|recommend|prioriti[sz]e|priority|focus|order)\b/i.test(question) &&
     /\b(?:early|first|start|priorit|focus|order|social links?)\b/i.test(question)
   ) {
+    const month = profile?.currentMonth || monthFromQuestion(question);
+    const statsKnown = hasSocialStats(profile);
+    const summerish = month && /july|august/i.test(month);
+
+    if (month && !statsKnown) {
+      if (summerish) {
+        return [
+          `You're in ${month} — if school’s still out (summer vacation runs into late August), school Social Links are locked.`,
+          "Lean on evening/city options that still work (Mutatsu, Tanaka when available, and any non-school links you’ve already opened), and don’t burn days waiting on classmates who can’t hang out yet.",
+          "The day school resumes, snap back to after-school links like Kenji, Kazushi, Yuko, Chihiro, and Hidetoshi before exam season squeezes them.",
+          "Rough ranks for Charm, Academics, and Courage and I’ll order the next few ranks for your stats.",
+        ].join(" ");
+      }
+      return [
+        `You're in ${month}, so the priority is protecting time-limited school links before the calendar blocks them.`,
+        "After school: Kenji (Magician), Kazushi (Chariot), Yuko (Strength), Chihiro (Justice), Hidetoshi (Emperor) when they’re free.",
+        "Evenings: Mutatsu (Tower) and President Tanaka (Devil) so they don’t steal daytime slots.",
+        "Bring a matching-Arcana Persona when a hangout awards points.",
+        "If you share Charm / Academics / Courage ranks (even roughly), I’ll rank the next few targets for you.",
+      ].join(" ");
+    }
+
+    if (month && statsKnown) {
+      return [
+        `With you in ${month}, keep school-day links moving whenever they’re free, and park night links in the evening so they don’t compete.`,
+        "School-limited: Kenji, Kazushi, Yuko, Chihiro, Hidetoshi (plus anyone else already unlocked who only appears after school).",
+        "Nights: Mutatsu and Tanaka when open.",
+        "Use a matching-Arcana Persona on rank-ups for free affinity.",
+        "If a required social stat is low for a link you care about, spend a day or two on that stat before forcing ranks.",
+      ].join(" ");
+    }
+
     return [
-      "There is no single best Social Link order without knowing your current date and Social Stats.",
-      "As a general rule, protect after-school time for school-limited links such as Kenji (Magician), Kazushi (Chariot), Yuko (Strength), Chihiro (Justice), and Hidetoshi (Emperor), because school breaks and exam periods can block them.",
-      "Use evenings for night links such as Mutatsu (Tower) and President Tanaka (Devil) so they do not compete with daytime links.",
-      "Bring a Persona of the matching Arcana when the link awards affinity points; Social Link ranks increase fusion EXP for that Arcana.",
-      "Tell me your in-game date and Social Stats and I can give you a specific priority order.",
+      "There isn’t one perfect Social Link order for every save — it depends on your date and social stats.",
+      "As a baseline: protect after-school school links (Kenji, Kazushi, Yuko, Chihiro, Hidetoshi) before breaks and exams lock them, and use evenings for night-only people like Mutatsu and Tanaka.",
+      "Matching-Arcana Personas help on rank-ups.",
+      "Tell me your month (or date) and rough Charm / Academics / Courage and I’ll prioritize for your file.",
     ].join(" ");
   }
 
   if (/\bclassmate social links?\b/i.test(question)) {
-    return "Which classmate do you mean? The school-based Social Links include Kenji Tomochika (Magician), Kazushi Miyamoto (Chariot), Yuko Nishiwaki (Strength), Chihiro Fushimi (Justice), Hidetoshi Odagiri (Emperor), Keisuke Hiraga (Fortune), and Bebe (Temperance).";
+    return "Which classmate do you mean? School Social Links include Kenji Tomochika (Magician), Kazushi Miyamoto (Chariot), Yuko Nishiwaki (Strength), Chihiro Fushimi (Justice), Hidetoshi Odagiri (Emperor), Keisuke Hiraga (Fortune), and Bebe (Temperance).";
   }
 
   return null;
