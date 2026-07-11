@@ -25,7 +25,7 @@
     "eval:grounding": "tsx src/eval/testGroundingSafeguards.ts && tsx --test src/quality/conversationContext.test.ts src/quality/personaRouting.test.ts src/quality/recommendationMode.test.ts src/quality/relationships.test.ts src/quality/socialLinkStarts.test.ts src/quality/exactFacts.test.ts src/quality/progressTimeline.test.ts src/quality/partyRoles.test.ts src/quality/dailyPlanner.test.ts src/retrieval/liveGuideVerification.test.ts",
     "eval:spoilers": "tsx src/eval/testSpoilerControls.ts",
     "test:security": "tsx --test src/security/chatSecurity.test.ts src/security/rateLimit.test.ts",
-    "test:cache": "tsx --test src/cache/ttlCache.test.ts",
+    "test:cache": "tsx --test src/cache/ttlCache.test.ts src/chat/responseCache.test.ts",
     "smoke:production": "node scripts/smoke-production.mjs",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
