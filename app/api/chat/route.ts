@@ -338,17 +338,43 @@ function socialLinkStartResponse(
   question: string,
   profileUpdates: PlayerProfile,
   debug: boolean,
+  profile?: PlayerProfile,
 ): ChatResponse | null {
   const asksForAll = asksForAllSocialLinkStarts(question);
   const link = socialLinkStartForQuestion(question);
   if (!asksForAll && !link) return null;
 
+  const month =
+    profile?.currentMonth ||
+    profileUpdates.currentMonth ||
+    question.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+    )?.[1];
+  const monthLabel = month
+    ? `${month[0]!.toUpperCase()}${month.slice(1).toLowerCase()}`
+    : undefined;
+  const summerish = monthLabel && /july|august/i.test(monthLabel);
+  const schoolLinked =
+    link &&
+    !link.automatic &&
+    /school|classroom|faculty|student council|track|swim|kendo|club/i.test(
+      `${link.location} ${link.availability}`,
+    );
+
+  let answer = asksForAll
+    ? "Persona 3 Reload has 22 Arcana Social Links: 19 are started and managed by the player, while Fool, Death, and Judgement advance automatically through the story."
+    : link!.earliestStart === "No fixed date"
+      ? `${link!.character}'s ${link!.arcana} Social Link has no fixed calendar start date. ${link!.requirement} Once unlocked, find them at ${link!.location} on ${link!.availability.toLowerCase()}.`
+      : `${link!.character}'s ${link!.arcana} Social Link can first start on ${link!.earliestStart}. ${link!.requirement} ${link!.automatic ? link!.availability : `Find them at ${link!.location} on ${link!.availability.toLowerCase()}.`}`;
+
+  if (!asksForAll && link && monthLabel && summerish && schoolLinked) {
+    answer += ` In ${monthLabel}, if you’re still on summer break, school hangouts stay locked — you won’t rank ${link.character.split(" ")[0]} until classes are back. Once school resumes (and you’ve hit the Charm/other reqs), she’s free on ${link.availability.toLowerCase()}.`;
+  } else if (!asksForAll && link && monthLabel && !summerish) {
+    answer += ` By ${monthLabel} that start date is already past, so if the requirements are met you can hang out on ${link.availability.toLowerCase()}.`;
+  }
+
   const response = withMode({
-    answer: asksForAll
-      ? "Persona 3 Reload has 22 Arcana Social Links: 19 are started and managed by the player, while Fool, Death, and Judgement advance automatically through the story."
-      : link!.earliestStart === "No fixed date"
-        ? `${link!.character}'s ${link!.arcana} Social Link has no fixed calendar start date. ${link!.requirement} Once unlocked, find them at ${link!.location} on ${link!.availability.toLowerCase()}.`
-        : `${link!.character}'s ${link!.arcana} Social Link can first start on ${link!.earliestStart}. ${link!.requirement} ${link!.automatic ? link!.availability : `Find them at ${link!.location} on ${link!.availability.toLowerCase()}.`}`,
+    answer,
     sections: [],
     tables: asksForAll
       ? [
@@ -369,8 +395,16 @@ function socialLinkStartResponse(
     missingInfo: "No additional detail is needed.",
     companion: {
       intent: "Social Links",
-      profileUpdates,
+      profileUpdates: {
+        ...profileUpdates,
+        ...(monthLabel ? { currentMonth: monthLabel } : {}),
+      },
       followUpQuestions: [],
+      suggestedPrompts: [
+        "What's her schedule?",
+        "How do I raise Charm?",
+        "Which other links should I prioritize?",
+      ],
     },
   }, "rag");
   if (debug) {
@@ -1788,13 +1822,15 @@ function normalizeRagResponse(
       : undefined;
 
   return {
-    answer: answer ?? "I found related material, but I need one more detail to give a useful answer instead of guessing.",
+    answer:
+      answer ??
+      "I almost had that — can you rephrase with the exact name or one more detail so I don’t guess?",
     sections,
     tables,
     recommendation,
     sources: fallbackSources,
     confidence,
-    missingInfo: asString(value.missingInfo) ?? "No additional missing information was reported.",
+    missingInfo: asString(value.missingInfo) ?? "No additional detail is needed.",
     companion,
   };
 }
@@ -3224,8 +3260,34 @@ function unsupportedNamedClaims(
     const normalized = candidate.toLowerCase();
     if (answerEntityIgnoreList.has(normalized)) return false;
     if (/^(assign|members|may)$/i.test(candidate)) return false;
+    // Months are almost always player progress context, not invented lore claims.
+    if (
+      /^(january|february|march|april|may|june|july|august|september|october|november|december)$/i.test(
+        candidate,
+      )
+    ) {
+      return false;
+    }
     if (normalized === "electric" && /\b(elec|electric|electricity)\b/i.test(evidenceText)) return false;
     if (/^(if|when|while|keep|bring|avoid|share|tell|use|focus|open|clear|safe|quick|boss|party|strategy)$/i.test(candidate)) {
+      return false;
+    }
+    // Abbreviated month in the question (e.g. "aug") should cover "August" in the answer.
+    const monthAbbrev: Record<string, string> = {
+      january: "jan",
+      february: "feb",
+      march: "mar",
+      april: "apr",
+      may: "may",
+      june: "jun",
+      july: "jul",
+      august: "aug",
+      september: "sep",
+      october: "oct",
+      november: "nov",
+      december: "dec",
+    };
+    if (monthAbbrev[normalized] && normalizedQuestion.includes(monthAbbrev[normalized])) {
       return false;
     }
     return !normalizedQuestion.includes(normalized) && !normalizedEvidence.includes(normalized);
@@ -3309,12 +3371,10 @@ function applyGroundingGuardrails(
   const unsupportedNames = unsupportedNamedClaims(question, response, context);
   if (unsupportedNames.length && intent !== "General Discussion") {
     const prompt = exactDetailPrompt(intent);
-    const target = subject ? `"${subject}"` : "that exact subject";
+    const friendlyTarget = subject ? subject : "that";
     return {
       ...response,
-      answer: `The current ${
-        intent === "Fusion Advice" ? "Megaten Fusion Tool data" : "IGN and Game8 evidence"
-      } for ${target} does not support the draft's ${unsupportedNames.join(", ")} claim, so I stopped it rather than inventing a detail. ${prompt}`,
+      answer: `I don’t want to invent a ${unsupportedNames.join(" / ")} detail for ${friendlyTarget}. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -3322,7 +3382,14 @@ function applyGroundingGuardrails(
       missingInfo: prompt,
       companion: {
         ...response.companion,
+        intent: response.companion?.intent ?? intent,
+        profileUpdates: response.companion?.profileUpdates ?? {},
         followUpQuestions: [prompt],
+        suggestedPrompts: expertSuggestedPrompts({
+          intent,
+          missing: prompt,
+          needsDetail: true,
+        }),
       },
       diagnostics: {
         ...diagnostics,
@@ -3337,12 +3404,10 @@ function applyGroundingGuardrails(
 
   if (requiresExactEvidence && !hasExactEvidence) {
     const prompt = exactDetailPrompt(intent);
-    const target = subject ? `"${subject}"` : "that exact detail";
+    const friendlyTarget = subject ? subject : "that";
     return {
       ...response,
-      answer: `I checked the current ${
-        intent === "Fusion Advice" ? "Megaten Fusion Tool data" : "IGN and Game8 material"
-      } for ${target}, but it does not contain a confirmed match for this wording. ${prompt}`,
+      answer: `I’m not solid enough on ${friendlyTarget} to lock an exact answer yet. ${prompt}`,
       sections: [],
       tables: [],
       sources: [],
@@ -3350,7 +3415,14 @@ function applyGroundingGuardrails(
       missingInfo: prompt,
       companion: {
         ...response.companion,
+        intent: response.companion?.intent ?? intent,
+        profileUpdates: response.companion?.profileUpdates ?? {},
         followUpQuestions: [prompt],
+        suggestedPrompts: expertSuggestedPrompts({
+          intent,
+          missing: prompt,
+          needsDetail: true,
+        }),
       },
       diagnostics,
     };
@@ -3411,16 +3483,23 @@ function extractiveRagResponse(
   const topChunks = context.chunks.slice(0, 3);
   return withMode({
     answer:
-      "I found related guide pages, but I could not turn them into a clean answer this time. Give me the exact enemy, boss, floor, or date again and I’ll try a narrower lookup instead of guessing.",
+      "I found some related notes, but not a clean answer yet. Give me the exact enemy, boss, floor, Persona, or date and I’ll narrow it down.",
     sections: [],
     sources: context.sources,
     confidence: topChunks[0]?.similarity ? Math.max(0.35, Math.min(0.8, topChunks[0].similarity)) : 0.55,
-    missingInfo: analysis?.followUpQuestions.join(" ") || `Tell me one more detail about "${question}" and I can tighten the recommendation.`,
+    missingInfo:
+      analysis?.followUpQuestions.join(" ") ||
+      "One more concrete name or date and I can be specific.",
     companion: analysis
       ? {
           intent: analysis.intent,
           profileUpdates: analysis.profileUpdates,
           followUpQuestions: analysis.followUpQuestions,
+          suggestedPrompts: expertSuggestedPrompts({
+            intent: analysis.intent,
+            needsDetail: true,
+            missing: analysis.followUpQuestions.join(" "),
+          }),
         }
       : undefined,
   }, "rag");
@@ -4625,6 +4704,7 @@ async function directRagResponse(
     conversation.analysisQuestion,
     analysis.profileUpdates,
     debug,
+    mergeProfile(playerProfile, analysis.profileUpdates),
   );
   if (socialLinkStart) return socialLinkStart;
   const relationshipProfile = mergeProfile(playerProfile, analysis.profileUpdates);
@@ -5187,6 +5267,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           conversation.analysisQuestion,
           controller.profileUpdates,
           debug,
+          controllerProfile,
         );
         if (verifiedStart) {
           normalized = verifiedStart;
