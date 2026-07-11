@@ -4250,14 +4250,47 @@ function deterministicControllerDecision(
     };
   }
 
-  if (exactWeaknessQuestion(question, analysis.intent)) {
+  if (exactWeaknessQuestion(question, analysis.intent) || analysis.intent === "Enemy Weakness") {
     const queries = buildFocusedQueries(question);
     const query = queries[0];
     return {
       ...base,
       action: "search_structured_facts",
       retrievalQuery: query,
-      retrievalQueries: queries,
+      // Keep fanout low for exact affinity lookups (embedding cost + latency).
+      retrievalQueries: queries.slice(0, 2),
+      followUpQuestions: [],
+    };
+  }
+
+  if (
+    isFusionRecipeRequest(question) ||
+    (analysis.intent === "Fusion Advice" &&
+      /\b(?:fuse|fusion|recipe|how (?:do|can) i (?:make|get)|how to (?:make|get|fuse))\b/i.test(question) &&
+      !analysis.isAmbiguous)
+  ) {
+    const queries = buildFocusedQueries(question);
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: queries[0],
+      retrievalQueries: queries.slice(0, 2),
+      followUpQuestions: [],
+    };
+  }
+
+  if (
+    analysis.intent === "Social Links" &&
+    socialLinkEntityAliasesForQuestion(question).length > 0 &&
+    !analysis.isAmbiguous
+  ) {
+    const aliases = socialLinkEntityAliasesForQuestion(question);
+    const primary = `${aliases.join(" ")} Persona 3 Reload Social Link start unlock schedule answers rewards`;
+    return {
+      ...base,
+      action: "search_structured_facts",
+      retrievalQuery: primary,
+      retrievalQueries: uniqueStrings([primary, ...buildFocusedQueries(question)]).slice(0, 2),
       followUpQuestions: [],
     };
   }
@@ -4433,6 +4466,7 @@ function deterministicControllerDecision(
   }
 
   const routeByIntent: Partial<Record<CompanionIntent, ControllerAction>> = {
+    "Enemy Weakness": "search_structured_facts",
     "Boss Help": "search_both",
     "Fusion Advice": "search_both",
     "Social Links": "search_both",
@@ -4487,6 +4521,8 @@ function deterministicControllerDecision(
   ].filter((value): value is string => Boolean(value));
   const focusedQueries = buildFocusedQueries(question, profileHints);
   const query = focusedQueries[0] ?? compactText(question, 240);
+  // Prefer fewer retrieval queries on structured-fact paths to cut embed + RPC latency.
+  const maxQueries = action === "search_structured_facts" ? 2 : 3;
   return {
     ...base,
     action,
@@ -4494,7 +4530,7 @@ function deterministicControllerDecision(
     retrievalQueries: uniqueStrings([
       ...(intentQueries[analysis.intent] ?? []),
       ...focusedQueries,
-    ]).slice(0, 4),
+    ]).slice(0, maxQueries),
     followUpQuestions: analysis.followUpQuestions,
   };
 }
@@ -4616,6 +4652,7 @@ async function directRagResponse(
     }, "rag");
   }
 
+  // Dynamic so mock/local mode can load without Supabase/chat credentials at module init.
   const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
