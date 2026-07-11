@@ -5194,11 +5194,11 @@ async function resolveChatRequest(
   const cacheKey = responseCacheKey(body);
   const cached = cacheKey ? getCachedChatResponse(cacheKey) : undefined;
   if (cached) {
-    onProgress?.("Loading a recent verified answer...");
+    onProgress?.("Pulling that up...");
     return cached;
   }
 
-  onProgress?.("Reading your question...");
+  onProgress?.("On it...");
   const direct = await directRagResponse(
     question,
     body.playerProfile,
@@ -5228,18 +5228,30 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
       };
 
       try {
+        // Immediate feedback so the UI never sits on a blank spinner.
+        emit({ type: "status", message: "Reading your question..." });
         const response = await resolveChatRequest(
           body,
           (message) => emit({ type: "status", message }),
           request.signal,
         );
-        // Stream in larger word groups without artificial delays — the full
-        // answer is already ready, so fake typing only adds perceived latency.
-        const tokens = response.answer.match(/\S+\s*/g) ?? [response.answer];
-        const groupSize = tokens.length > 80 ? 4 : tokens.length > 30 ? 3 : 2;
-        for (let index = 0; index < tokens.length; index += groupSize) {
-          request.signal.throwIfAborted();
-          emit({ type: "token", delta: tokens.slice(index, index + groupSize).join("") });
+
+        const answer = response.answer ?? "";
+        const tokens = answer.match(/\S+\s*/g) ?? (answer ? [answer] : []);
+        // Short exact answers appear in one beat; longer ones paint in bursts so
+        // the bubble feels live without fake typing lag.
+        if (tokens.length <= 18 || answer.length <= 160) {
+          if (answer) emit({ type: "token", delta: answer });
+        } else {
+          const groupSize = tokens.length > 90 ? 6 : tokens.length > 40 ? 4 : 3;
+          for (let index = 0; index < tokens.length; index += groupSize) {
+            request.signal.throwIfAborted();
+            emit({ type: "token", delta: tokens.slice(index, index + groupSize).join("") });
+            // Yield occasionally so the browser can paint mid-stream.
+            if (index > 0 && index % (groupSize * 4) === 0) {
+              await new Promise((resolve) => setTimeout(resolve, 0));
+            }
+          }
         }
         emit({ type: "response", data: response });
       } catch (error) {
