@@ -22,6 +22,11 @@ test("returns Yukari's actual start date and prerequisite", () => {
   assert.match(link?.requirement ?? "", /Charm Rank 6/);
 });
 
+test("matches availability-style Yukari social link questions", () => {
+  assert.equal(socialLinkStartForQuestion("is yukari social link open")?.character, "Yukari Takeba");
+  assert.equal(socialLinkStartForQuestion("yukari social link in august")?.character, "Yukari Takeba");
+});
+
 test("maps April 23 to Kazushi rather than Yukari", () => {
   const link = socialLinkStarts.find((entry) => entry.earliestStart === "April 23");
   assert.equal(link?.character, "Kazushi Miyamoto");

@@ -77,19 +77,19 @@ export function assessGrounding(input: GroundingInput): GroundingAssessment {
 
 export function exactDetailPrompt(intent: string): string {
   if (intent === "Enemy Weakness") {
-    return "Tell me the exact Shadow name and its Tartarus block or floor.";
+    return "What’s the exact Shadow name, and which block or floor are you on?";
   }
   if (intent === "Fusion Advice") {
-    return "Tell me the exact Persona name or the ingredients you are trying to fuse.";
+    return "Which Persona are you trying to fuse, or which two ingredients do you have?";
   }
   if (intent === "Boss Help") {
-    return "Tell me the exact boss or Full Moon operation and your current level.";
+    return "Which boss or Full Moon fight is it, and roughly what level are you?";
   }
   if (intent === "Social Links") {
-    return "Tell me the Social Link name, rank, and in-game date.";
+    return "Which Social Link, and what’s your in-game month (or date)?";
   }
   if (intent === "Quest Help") {
-    return "Tell me the request number or exact request name.";
+    return "Which Elizabeth request — number or name is perfect.";
   }
-  return "Give me the exact enemy, Persona, floor, date, item, or mechanic you want confirmed.";
+  return "Give me the exact name (enemy, Persona, floor, date, or item) and I’ll lock it in.";
 }

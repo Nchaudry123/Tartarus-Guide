@@ -267,8 +267,20 @@ export function socialLinkStartForQuestion(question: string): SocialLinkStart | 
   const explicitSocialLink = /\b(?:social links?|s-?links?|arcana)\b/i.test(question);
   const startLanguage = question.replace(/\bstart\s+(?:with|by)\b/gi, "");
   const asksForStartAction =
-    /\b(?:start|unlock|available|availability|begin|earliest)\b/i.test(startLanguage);
-  if (!asksForStartAction && !(explicitSocialLink && /\bwhen\b/i.test(question))) {
+    /\b(?:start|unlock|available|availability|begin|earliest|open|when can|can i)\b/i.test(
+      startLanguage,
+    );
+  // "is yukari social link open?" / "yukari social link in august"
+  const characterLinkQuestion =
+    explicitSocialLink &&
+    /\b(?:is|can|open|available|about|rank|start|when|yukari|junpei|mitsuru|fuuka|aigis|kenji|chihiro)\b/i.test(
+      question,
+    );
+  if (
+    !asksForStartAction &&
+    !(explicitSocialLink && /\bwhen\b/i.test(question)) &&
+    !characterLinkQuestion
+  ) {
     return null;
   }
   if (asksForAllSocialLinkStarts(question)) return null;
