@@ -293,7 +293,7 @@ function taskFromQuestion(question, status = "On it") {
   if (/\bwhat should i do today|what do i do today|today|schedule\b/i.test(text)) {
     return {
       type: "dashboard",
-      title: "Today’s plan",
+      title: "Planning today",
       status,
       meta: [playerProfile.currentDate || playerProfile.currentMonth || ""].filter(Boolean),
     };
@@ -353,7 +353,7 @@ function taskFromResponse(question, response) {
     const urgent = (response.dailyDashboard.items || []).filter((item) => item.priority === "urgent").length;
     return {
       type: "dashboard",
-      title: "Today’s plan",
+      title: "Planning today",
       status: urgent ? `${urgent} urgent` : "Priorities set",
       meta: [response.dailyDashboard.date].filter(Boolean),
     };
