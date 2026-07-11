@@ -33,11 +33,18 @@ const rejectedTerms = [
 
 const categoryRules: Array<{ category: string; pattern: RegExp }> = [
   { category: "bosses", pattern: /\b(boss|full moon|guardian|monad)\b/i },
-  { category: "social_links", pattern: /\b(social link|linked episode|romance|arcana)\b/i },
+  { category: "social_links", pattern: /\b(social link|linked episode|romance)\b/i },
   { category: "requests", pattern: /\b(elizabeth|request|missing person)\b/i },
   { category: "fusion", pattern: /\b(fusion|fuse|special fusion|fusion spell)\b/i },
-  { category: "enemies", pattern: /\b(enemy|enemies|shadow|weakness|affinit|greedy|rare hand)\b/i },
-  { category: "tartarus", pattern: /\b(tartarus|floor|block|thebel|arqa|yabbashah|tziah|harabah|adamash)\b/i },
+  // Shadow affinity lists are enemy knowledge even when the title names a Tartarus block.
+  {
+    category: "enemies",
+    pattern:
+      /\b(list of regular shadows|enemy guides?|rare and greedy shadows|greedy shadows|shadow hunting|enemy|enemies|weakness(?:es)? and (?:how to beat|location|resistances)|affinit)\b/i,
+  },
+  { category: "tartarus", pattern: /\b(tartarus|floor|block|thebel|arqa|yabbashah|tziah|harabah|adamash|adamah)\b/i },
+  // Generic shadow/weakness fallback after block-specific tartarus rules.
+  { category: "enemies", pattern: /\b(shadow|weakness|greedy|rare hand)\b/i },
   { category: "walkthrough", pattern: /\b(walkthrough|calendar|month|daily schedule|ending)\b/i },
   { category: "classroom", pattern: /\b(classroom|exam|school question|answer)\b/i },
   { category: "beginner_strategy", pattern: /\b(beginner|tips|combat|battle|party|team)\b/i },
