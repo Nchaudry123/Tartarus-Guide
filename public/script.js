@@ -254,82 +254,140 @@ function dlcTaskLabel(dlcMode = playerProfile.dlcOwnership) {
   return "DLC not set";
 }
 
-function taskFromQuestion(question, status = "Working") {
+function wordCount(value) {
+  return String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function taskFromQuestion(question, status = "On it") {
   const text = String(question || "").toLowerCase();
   const target = taskTargetFromQuestion(question);
-  if (/\b(fuse|fusion|recipe|recipes|routes?|make|create)\b/.test(text)) {
+  // Don't let tiny follow-ups like "why" replace a real thread goal.
+  if (wordCount(question) <= 3 && currentTask?.title && !/\b(fuse|weak|boss|link)\b/i.test(text)) {
+    return {
+      ...currentTask,
+      status: status || currentTask.status || "On it",
+    };
+  }
+  if (/\b(fuse|fusion|recipe|recipes|routes?)\b/.test(text) || /\bhow (?:do|can) i (?:make|craft)\b/.test(text)) {
     return {
       type: "fusion",
-      title: target ? `Fusing ${target}` : "Fusion route",
+      title: target ? `Fusing ${target}` : "Fusion help",
       status,
-      meta: [dlcTaskLabel(), "Checking recipes"].filter(Boolean),
+      meta: [dlcTaskLabel()].filter(Boolean),
     };
   }
-  if (/\bwhat should i do today|what do i do today|today|schedule|priorit/i.test(text)) {
+  if (/\bsocial links?|s-?links?|prioriti[sz]e.*link|which links?\b/i.test(text)) {
+    const month = playerProfile.currentMonth || text.match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+    )?.[1];
+    return {
+      type: "social",
+      title: month ? `Social Links · ${month[0].toUpperCase()}${month.slice(1).toLowerCase()}` : "Social Link priorities",
+      status,
+      meta: [month ? `${month[0].toUpperCase()}${month.slice(1).toLowerCase()}` : ""].filter(Boolean),
+    };
+  }
+  if (/\bwhat should i do today|what do i do today|today|schedule\b/i.test(text)) {
     return {
       type: "dashboard",
-      title: "Planning today",
+      title: "Today’s plan",
       status,
-      meta: [playerProfile.currentDate || playerProfile.currentMonth || "Player Memory", "Priorities"].filter(Boolean),
+      meta: [playerProfile.currentDate || playerProfile.currentMonth || ""].filter(Boolean),
     };
   }
-  if (/\b(best|recommend|should i use|which)\b/.test(text)) {
+  if (/\b(best|recommend|should i use|which)\b/.test(text) && !/\bsocial links?\b/i.test(text)) {
     return {
       type: "recommendation",
-      title: target ? `Choosing ${target}` : "Choosing a recommendation",
+      title: target ? `Picking ${target}` : "Recommendation",
       status,
-      meta: [playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : "", playerProfile.playstyle].filter(Boolean),
+      meta: [playerProfile.currentLevel ? `Lv ${playerProfile.currentLevel}` : ""].filter(Boolean),
     };
   }
   if (/\b(weak|weakness|resist|null|drain|repel)\b/.test(text)) {
     return {
       type: "exact",
-      title: target ? `Checking ${target}` : "Checking exact facts",
+      title: target ? `${target} affinities` : "Combat affinities",
       status,
-      meta: ["Guide-backed", "Exact answer"].filter(Boolean),
+      meta: [],
+    };
+  }
+  if (/\bboss|gatekeeper|full moon\b/i.test(text)) {
+    return {
+      type: "boss",
+      title: target ? `Boss: ${target}` : "Boss prep",
+      status,
+      meta: [],
     };
   }
   return {
     type: "general",
-    title: compactTitle(question, 42) || "Guide conversation",
+    title: compactTitle(question, 48) || "Chat",
     status,
-    meta: ["Conversation"].filter(Boolean),
+    meta: [],
   };
 }
 
 function taskFromResponse(question, response) {
+  const intent = response?.companion?.intent || "";
+  const missing = response?.missing && !/no additional detail/i.test(response.missing);
+  const month =
+    response?.companion?.profileUpdates?.currentMonth ||
+    playerProfile.currentMonth ||
+    String(question || "").match(
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
+    )?.[1];
+
   if (response?.fusionWorkshop?.target) {
     const needsIngredients = (response.fusionWorkshop.recipes || []).some((recipe) => !recipe.ready);
     return {
       type: "fusion",
       title: `Fusing ${response.fusionWorkshop.target}`,
-      status: needsIngredients ? "Need ingredients" : "Ready route found",
-      meta: [dlcTaskLabel(response.fusionWorkshop.dlcMode), `${response.fusionWorkshop.recipes.length} route${response.fusionWorkshop.recipes.length === 1 ? "" : "s"}`],
+      status: needsIngredients ? "Need ingredients" : "Route ready",
+      meta: [dlcTaskLabel(response.fusionWorkshop.dlcMode)].filter(Boolean),
     };
   }
   if (response?.dailyDashboard?.date) {
     const urgent = (response.dailyDashboard.items || []).filter((item) => item.priority === "urgent").length;
     return {
       type: "dashboard",
-      title: "Planning today",
-      status: urgent ? `${urgent} urgent` : "Priorities ready",
-      meta: [response.dailyDashboard.date, response.dailyDashboard.weekday].filter(Boolean),
+      title: "Today’s plan",
+      status: urgent ? `${urgent} urgent` : "Priorities set",
+      meta: [response.dailyDashboard.date].filter(Boolean),
     };
   }
   if (response?.recommendation?.primary?.name) {
     return {
       type: "recommendation",
-      title: response.recommendation.title || "Choosing a recommendation",
+      title: response.recommendation.title || "Recommendation",
       status: response.recommendation.primary.name,
-      meta: ["Navigator pick", response.recommendation.nextStep ? "Next move ready" : ""].filter(Boolean),
+      meta: [],
     };
   }
-  const missing = response?.missing && !/no additional detail/i.test(response.missing);
-  const fallback = taskFromQuestion(question, missing ? "Needs detail" : "Answered");
+  if (/social links?/i.test(intent) || /\bsocial links?\b/i.test(question || "")) {
+    const monthLabel = month
+      ? `${String(month)[0].toUpperCase()}${String(month).slice(1).toLowerCase()}`
+      : "";
+    return {
+      type: "social",
+      title: monthLabel ? `Social Links · ${monthLabel}` : "Social Link priorities",
+      status: missing ? "Need your ranks" : "Priorities set",
+      meta: [monthLabel].filter(Boolean),
+    };
+  }
+  // Keep sticky title when the user sent a tiny follow-up.
+  if (wordCount(question) <= 3 && currentTask?.title) {
+    return {
+      ...currentTask,
+      status: missing ? "Almost there" : "Answered",
+    };
+  }
+  const fallback = taskFromQuestion(question, missing ? "Almost there" : "Answered");
   return {
     ...fallback,
-    status: missing ? "Needs detail" : "Answered",
-    meta: missing ? [...fallback.meta.slice(0, 1), "One more detail"] : fallback.meta,
+    status: missing ? "Almost there" : "Answered",
   };
 }
 
@@ -621,11 +679,10 @@ function escapeHtml(value) {
 }
 
 function promptLabel(prompt) {
+  // Keep natural phrasing (ChatGPT-style). Only soft-truncate long chips.
   const text = String(prompt || "").trim();
-  const normalized = text.toLowerCase();
-
-  const compact = text.replace(/[?!.]+$/g, "").replace(/^(what|which|where|when|who|how|do you|are you|is it)\s+/i, "");
-  return compact.length > 42 ? `${compact.slice(0, 39).trim()}...` : compact;
+  if (text.length <= 52) return text;
+  return `${text.slice(0, 49).trim()}…`;
 }
 
 function renderText(value) {
@@ -815,28 +872,30 @@ function renderAnswerStatus(response) {
   const hasSources = Array.isArray(response.sources) && response.sources.length > 0;
   const needsDetail = needsMoreDetail(response);
   const mode = response.retrievalMode || "mock";
-  // Expert coach tone: lighter labels, skip chrome on plain chat notes.
+  const intent = response.companion?.intent || "";
+  // ChatGPT-style: no "needs detail" badge — the answer already asks.
+  // Only light chrome for exact sourced combat/fusion facts.
   let status = null;
   if (needsDetail) {
-    status = {
-      tone: "needs-detail",
-      label: "Quick check",
-      detail: response.missing,
-    };
-  } else if (hasSources && mode === "rag") {
+    status = null;
+  } else if (
+    hasSources &&
+    mode === "rag" &&
+    /Enemy Weakness|Boss Help|Fusion Advice/i.test(intent)
+  ) {
     status = {
       tone: "verified",
-      label: "Cross-checked",
+      label: "From the notes",
       detail:
         response.sources.length === 1
-          ? "Pulled from a trusted guide note."
-          : `Pulled from ${response.sources.length} trusted notes.`,
+          ? "Checked against a trusted guide."
+          : `Checked against ${response.sources.length} trusted notes.`,
     };
   } else if (mode === "error") {
     status = {
       tone: "offline",
       label: "Connection blip",
-      detail: "Conversation is saved — try sending that once more.",
+      detail: "Your chat is saved — try that again.",
     };
   }
   if (!status) return "";
@@ -863,9 +922,11 @@ function uniquePrompts(prompts) {
 }
 
 function contextualSuggestedPrompts(response) {
+  // Prefer server intent-first chips; only fill gaps by intent (never scan answer for "Persona").
   const prompts = [...(response.companion?.suggestedPrompts || [])];
   const intent = response.companion?.intent || "";
-  const missing = `${response.missing || ""} ${response.answer || ""} ${intent}`;
+  const missing = String(response.missing || "").toLowerCase();
+  const needs = needsMoreDetail(response);
 
   if (response.fusionWorkshop?.target) {
     const missingIngredients = (response.fusionWorkshop.recipes || [])
@@ -874,38 +935,37 @@ function contextualSuggestedPrompts(response) {
       .map((ingredient) => ingredient.name);
     if (missingIngredients[0]) prompts.push(`How do I fuse ${missingIngredients[0]}?`);
     prompts.push("Show another route", "What skills should I keep?");
-  } else if (/persona dlc/i.test(response.answer || "") || /persona dlc/i.test(response.missing || "")) {
+  } else if (/persona dlc/i.test(response.answer || "") || /persona dlc/i.test(missing)) {
     prompts.push("No Persona DLC", "I have all Persona DLC");
   } else if (response.recommendation?.primary?.name) {
     prompts.push("Why this pick?", "Show a safer option", "What level do I need?");
   } else if (response.dailyDashboard?.date) {
-    prompts.push("Refresh today’s plan", "What should I do next?", "I'm free after school");
-  } else if (needsMoreDetail(response)) {
-    // In-world player replies only — never meta UI language.
-    if (/fuse|fusion|craft|persona|recipe/i.test(missing)) {
-      prompts.push("How do I fuse Jack Frost?", "How do I fuse Loki?", "I mean equipment / heart items");
-    } else if (/boss|gatekeeper|full moon/i.test(missing)) {
-      prompts.push("I'm fighting Priestess", "It's a Tartarus gatekeeper", "Next full moon prep");
-    } else if (/social link|s-link|romance/i.test(missing)) {
-      prompts.push("When does Yukari's Social Link start?", "Best early Social Links", "I'm in June");
-    } else if (/weak|enemy|shadow|affinity/i.test(missing)) {
-      prompts.push("What is Dancing Hand weak to?", "I'm on Thebel Block", "Floor 20 shadows");
-    } else if (/month|date|calendar|schedule|today/i.test(missing)) {
-      prompts.push("I'm in July", "What should I do before the full moon?", "Classroom answers this month");
-    } else {
-      prompts.push("I'm stuck on a boss", "Help me fuse a Persona", "What should I do before the full moon?");
-    }
+    prompts.push("What should I do next?", "I'm free after school", "Any exams coming?");
+  } else if (needs && /social links?/i.test(intent)) {
+    prompts.push(
+      "Charm is around rank 3",
+      "Academics and Courage are both fine",
+      "I haven't started many links yet",
+    );
+  } else if (needs && /fusion advice/i.test(intent)) {
+    prompts.push("How do I fuse Jack Frost?", "How do I fuse Loki?", "I mean heart items or equipment");
+  } else if (needs && /boss help/i.test(intent)) {
+    prompts.push("I'm fighting Priestess", "It's a Tartarus gatekeeper", "I'm underleveled");
+  } else if (needs && /enemy weakness/i.test(intent)) {
+    prompts.push("What is Dancing Hand weak to?", "I'm on Thebel Block", "Any resists to avoid?");
+  } else if (needs) {
+    prompts.push("I'm stuck on a boss", "Help me fuse a Persona", "Which Social Links should I prioritize?");
+  } else if (/enemy weakness|boss help/i.test(intent) && Array.isArray(response.sources) && response.sources.length) {
+    prompts.push("Safe opener for this fight", "What should I do next?");
+  } else if (/fusion advice/i.test(intent)) {
+    prompts.push("What skills should I keep?", "Show another route");
+  } else if (/social links?/i.test(intent)) {
+    prompts.push("What about romance links?", "Which ones are missable?", "What about evenings?");
   } else if (Array.isArray(response.sources) && response.sources.length) {
-    if (/weak|resist|nullif|drain|repel/i.test(response.answer || "")) {
-      prompts.push("Safe opener for this fight", "What resists should I avoid?");
-    } else if (/fuse|fusion|route|recipe/i.test(`${response.answer || ""} ${intent}`)) {
-      prompts.push("What skills should I keep?", "Show another route");
-    } else {
-      prompts.push("What should I do next?", "Any risks I should watch?");
-    }
+    prompts.push("What should I do next?", "Any risks I should watch?");
   }
   return uniquePrompts(
-    prompts.filter((prompt) => !/player memory|rephrase|focused question/i.test(prompt)),
+    prompts.filter((prompt) => !/player memory|rephrase|focused question|needs detail|one more detail/i.test(prompt)),
   );
 }
 

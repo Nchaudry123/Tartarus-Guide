@@ -86,9 +86,20 @@ test("gives a cautious early Social Link priority rule without inventing party l
   const answer = canonicalRelationshipAnswer(
     "Which Social Links should I prioritize early?",
   ) ?? "";
-  assert.match(answer, /school-limited links/i);
-  assert.match(answer, /current date and Social Stats/i);
+  assert.match(answer, /school|after-school|Kenji|Kazushi/i);
+  assert.match(answer, /month|date|Charm|Academics|Courage|stats/i);
   assert.doesNotMatch(answer, /Junpei|Akihiko/);
+});
+
+test("uses stated month for Social Link priority coaching", () => {
+  const answer =
+    canonicalRelationshipAnswer("im in august now, which social links should i prioritize?", {
+      currentMonth: "August",
+    }) ?? "";
+  assert.match(answer, /August/i);
+  assert.match(answer, /summer|school/i);
+  assert.doesNotMatch(answer, /no single best Social Link order without knowing your current date/i);
+  assert.match(answer, /Charm|Academics|Courage/i);
 });
 
 test("detects invalid Social Link and Arcana claims", () => {
