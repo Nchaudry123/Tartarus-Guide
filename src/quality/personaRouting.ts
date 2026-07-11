@@ -60,6 +60,7 @@ export function isPersonaKnowledgeRequest(question: string): boolean {
     /\b(?:worth (?:getting|fusing|using)|good to (?:get|fuse|use)|should i (?:get|fuse|use)|is .{1,45} (?:good|worth it|viable))\b/.test(
       text,
     ) ||
+    /\bskills?\s+should\s+i\s+keep\b/i.test(question) ||
     /\b(?:stats?|skills?|build|affinities|weaknesses|resistances)\s+(?:for|of)\s+[a-z][a-z0-9' -]{2,45}(?:[?.!,]|$)/i.test(
       question,
     )

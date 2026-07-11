@@ -111,12 +111,14 @@ export async function searchFacts(
   const exactRequestNumber = query.match(
     /\b(?:elizabeth\s+)?request\s*#?\s*(\d{1,3})\b/i,
   )?.[1];
+  // Prefer compact entity tokens (e.g. "loki") over long phrase candidates so
+  // follow-ups like "skills should I keep for Loki after fusing" still resolve.
   const likelyTerms = [...new Set([
     exactRequestNumber ? `request ${exactRequestNumber}` : undefined,
     analysis.primarySubject,
-    ...analysis.entityCandidates,
     ...likelyEntityTerms(query),
-  ].filter(Boolean))].slice(0, 10) as string[];
+    ...analysis.entityCandidates,
+  ].filter(Boolean))].slice(0, 12) as string[];
   const factTypes = detectFactTypes(query);
   const normalizedQuery = normalizeName(query);
   const entityTypes = entityTypesForCategory(analysis.category);
@@ -304,6 +306,11 @@ export async function searchFacts(
   const entityRelevance = (fact: FactMatch): number => {
     const entityName = fact.entity.normalized_name || normalizeName(fact.entity.name);
     if (!entityName) return 0;
+    const queryTokens = new Set(normalizedQuery.split(" ").filter(Boolean));
+    const entityTokens = entityName.split(" ").filter(Boolean);
+    // Token match avoids false positives like entity "loki a" matching "...loki after...".
+    const tokenMatch =
+      entityTokens.length > 0 && entityTokens.every((token) => queryTokens.has(token));
     if (exactRequestNumber) {
       if (new RegExp(`^request ${exactRequestNumber}\\b`).test(entityName)) return 180;
       if (/^request \d+\b/.test(entityName)) return -120;
@@ -317,20 +324,30 @@ export async function searchFacts(
       return 125 + classroomBonus;
     }
     if (normalizedQuery === entityName) return 120;
-    if (normalizedQuery.includes(entityName)) return 100 + entityName.split(" ").length * 5;
+    if (tokenMatch) {
+      // Prefer exact short names (Loki) over longer variants (Loki A / Loki DLC)
+      // when every token is present.
+      return 100 + Math.min(20, entityTokens.length * 5) - Math.max(0, entityTokens.length - 1) * 8;
+    }
     if (analysis.phrases.some((phrase) => phrase === entityName)) return 115;
 
     const aliasMatch = fact.entity.aliases
       ?.map(normalizeName)
-      .some((alias) => alias.length >= 3 && normalizedQuery.includes(alias));
+      .some((alias) => {
+        const aliasTokens = alias.split(" ").filter(Boolean);
+        return (
+          alias.length >= 3 &&
+          aliasTokens.length > 0 &&
+          aliasTokens.every((token) => queryTokens.has(token))
+        );
+      });
     if (aliasMatch) return 90;
 
     const fuzzyScore = entityCandidateScore(analysis, fact.entity.name, fact.entity.aliases);
     if (fuzzyScore >= 0.72) return fuzzyScore * 90;
 
-    const entityTerms = entityName.split(" ").filter(Boolean);
-    const matchedTerms = entityTerms.filter((term) => normalizedQuery.split(" ").includes(term));
-    return matchedTerms.length * 10 - Math.max(0, entityTerms.length - matchedTerms.length) * 4;
+    const matchedTerms = entityTokens.filter((term) => queryTokens.has(term));
+    return matchedTerms.length * 10 - Math.max(0, entityTokens.length - matchedTerms.length) * 4;
   };
 
   return [...new Map(rows.map((row) => [row.id, row])).values()]
