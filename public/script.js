@@ -815,29 +815,31 @@ function renderAnswerStatus(response) {
   const hasSources = Array.isArray(response.sources) && response.sources.length > 0;
   const needsDetail = needsMoreDetail(response);
   const mode = response.retrievalMode || "mock";
-  const status = needsDetail
-    ? {
-        tone: "needs-detail",
-        label: "Needs One Detail",
-        detail: response.missing,
-      }
-    : hasSources && mode === "rag"
-      ? {
-          tone: "verified",
-          label: "Guide-Checked",
-          detail: `${response.sources.length} trusted source${response.sources.length === 1 ? "" : "s"} used.`,
-        }
-      : mode === "error"
-        ? {
-            tone: "offline",
-            label: "Connection Check",
-            detail: "The guide connection dropped, but the conversation is still saved.",
-          }
-        : {
-            tone: "draft",
-            label: "Companion Note",
-            detail: "Helpful guidance, with exact details checked when source support is available.",
-          };
+  // Expert coach tone: lighter labels, skip chrome on plain chat notes.
+  let status = null;
+  if (needsDetail) {
+    status = {
+      tone: "needs-detail",
+      label: "Quick check",
+      detail: response.missing,
+    };
+  } else if (hasSources && mode === "rag") {
+    status = {
+      tone: "verified",
+      label: "Cross-checked",
+      detail:
+        response.sources.length === 1
+          ? "Pulled from a trusted guide note."
+          : `Pulled from ${response.sources.length} trusted notes.`,
+    };
+  } else if (mode === "error") {
+    status = {
+      tone: "offline",
+      label: "Connection blip",
+      detail: "Conversation is saved — try sending that once more.",
+    };
+  }
+  if (!status) return "";
   return `
     <aside class="answer-status answer-status-${escapeHtml(status.tone)}" aria-label="${escapeHtml(status.label)}">
       <span>${escapeHtml(status.label)}</span>
@@ -862,6 +864,9 @@ function uniquePrompts(prompts) {
 
 function contextualSuggestedPrompts(response) {
   const prompts = [...(response.companion?.suggestedPrompts || [])];
+  const intent = response.companion?.intent || "";
+  const missing = `${response.missing || ""} ${response.answer || ""} ${intent}`;
+
   if (response.fusionWorkshop?.target) {
     const missingIngredients = (response.fusionWorkshop.recipes || [])
       .flatMap((recipe) => recipe.ingredients || [])
@@ -874,13 +879,34 @@ function contextualSuggestedPrompts(response) {
   } else if (response.recommendation?.primary?.name) {
     prompts.push("Why this pick?", "Show a safer option", "What level do I need?");
   } else if (response.dailyDashboard?.date) {
-    prompts.push("Refresh today’s plan", "What should I do next?", "Update Player Memory");
+    prompts.push("Refresh today’s plan", "What should I do next?", "I'm free after school");
   } else if (needsMoreDetail(response)) {
-    prompts.push("Use my Player Memory", "Let me rephrase", "Ask one focused question");
+    // In-world player replies only — never meta UI language.
+    if (/fuse|fusion|craft|persona|recipe/i.test(missing)) {
+      prompts.push("How do I fuse Jack Frost?", "How do I fuse Loki?", "I mean equipment / heart items");
+    } else if (/boss|gatekeeper|full moon/i.test(missing)) {
+      prompts.push("I'm fighting Priestess", "It's a Tartarus gatekeeper", "Next full moon prep");
+    } else if (/social link|s-link|romance/i.test(missing)) {
+      prompts.push("When does Yukari's Social Link start?", "Best early Social Links", "I'm in June");
+    } else if (/weak|enemy|shadow|affinity/i.test(missing)) {
+      prompts.push("What is Dancing Hand weak to?", "I'm on Thebel Block", "Floor 20 shadows");
+    } else if (/month|date|calendar|schedule|today/i.test(missing)) {
+      prompts.push("I'm in July", "What should I do before the full moon?", "Classroom answers this month");
+    } else {
+      prompts.push("I'm stuck on a boss", "Help me fuse a Persona", "What should I do before the full moon?");
+    }
   } else if (Array.isArray(response.sources) && response.sources.length) {
-    prompts.push("How should I use this?", "What should I do next?");
+    if (/weak|resist|nullif|drain|repel/i.test(response.answer || "")) {
+      prompts.push("Safe opener for this fight", "What resists should I avoid?");
+    } else if (/fuse|fusion|route|recipe/i.test(`${response.answer || ""} ${intent}`)) {
+      prompts.push("What skills should I keep?", "Show another route");
+    } else {
+      prompts.push("What should I do next?", "Any risks I should watch?");
+    }
   }
-  return uniquePrompts(prompts);
+  return uniquePrompts(
+    prompts.filter((prompt) => !/player memory|rephrase|focused question/i.test(prompt)),
+  );
 }
 
 function renderResponseExtras(response) {

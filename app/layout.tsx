@@ -30,7 +30,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <link rel="stylesheet" href="/styles.css?v=fluid-chat-ux" />
+        <link rel="stylesheet" href="/styles.css?v=expert-conversation" />
       </head>
       <body>{children}</body>
     </html>

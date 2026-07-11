@@ -102,7 +102,11 @@ export function isContextualConversationReply(
   if (isRecommendationFollowUp(question, previousAssistant)) return true;
   if (isShortContextReply(question)) return true;
   const normalized = question.trim();
-  if (referentialReplyPattern.test(normalized)) return true;
+  // Pronouns like "these/this/that" only attach to a prior assistant turn.
+  // Without one, "how do i craft these" is a vague new ask — not a follow-up.
+  if (referentialReplyPattern.test(normalized)) {
+    return Boolean(previousAssistant?.trim());
+  }
   if (isExplicitStandaloneQuestion(normalized)) return false;
   return assistantInvitesReply(previousAssistant) && wordCount(normalized) <= 90;
 }
