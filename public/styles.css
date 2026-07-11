@@ -966,12 +966,15 @@ textarea:focus-visible {
 
 .recommendation-card {
   margin-top: 24px;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid rgba(85, 247, 255, 0.52);
   background:
     linear-gradient(135deg, rgba(0, 222, 235, 0.12), transparent 42%),
     rgba(5, 20, 63, 0.9);
-  box-shadow: 12px 14px 0 rgba(2, 10, 43, 0.24);
+  box-shadow: 8px 10px 0 rgba(2, 10, 43, 0.2);
   padding: 20px;
+  overflow-wrap: anywhere;
 }
 
 .recommendation-card > header {
@@ -2516,10 +2519,25 @@ footer span {
   max-width: 100%;
   border-radius: .08rem .72rem .72rem .08rem;
   box-shadow: 0 10px 26px rgba(0,0,0,.24);
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 :root.is-mobile .recommendation-card {
   padding: .9rem;
+  /* Offset hard shadows overflow the 390px smoke viewport */
+  box-shadow: 0 8px 20px rgba(0,0,0,.22);
+}
+
+:root.is-mobile .recommendation-card ul {
+  grid-template-columns: 1fr;
+}
+
+:root.is-mobile .messages,
+:root.is-mobile .chat-window,
+:root.is-mobile .assistant-message .bubble {
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 :root.is-mobile .recommendation-card > header {
