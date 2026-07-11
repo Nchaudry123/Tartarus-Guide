@@ -1690,33 +1690,24 @@ function setMenu(open) {
 
 menuToggle.addEventListener("click", () => setMenu(!sidePanel.classList.contains("is-open")));
 
-const entranceSeenKey = "tartarusEntranceSeenV1";
-
 function skipEntranceIfReturning() {
+  // Only skip the splash when there's an existing conversation to resume.
+  // Fresh visits (and smoke tests) still get the entrance, which keeps
+  // first-run storytelling intact without blocking reloads mid-chat.
   try {
-    if (window.localStorage.getItem(entranceSeenKey) === "1" && entranceScreen) {
-      entranceScreen.classList.add("is-hidden");
-      appShell?.classList.add("is-entering");
-      return true;
-    }
+    if (!entranceScreen) return false;
+    if (!Array.isArray(chatHistory) || chatHistory.length === 0) return false;
+    entranceScreen.classList.add("is-hidden");
+    appShell?.classList.add("is-entering");
+    return true;
   } catch {
-    /* ignore storage failures */
-  }
-  return false;
-}
-
-function markEntranceSeen() {
-  try {
-    window.localStorage.setItem(entranceSeenKey, "1");
-  } catch {
-    /* ignore */
+    return false;
   }
 }
 
 enterApp?.addEventListener("click", () => {
   if (entranceScreen.classList.contains("is-exiting")) return;
   enterApp.disabled = true;
-  markEntranceSeen();
   entranceScreen.classList.add("is-exiting");
   appShell?.classList.add("is-entering");
   window.setTimeout(() => {
@@ -1725,7 +1716,7 @@ enterApp?.addEventListener("click", () => {
   }, 480);
 });
 
-// Returning users skip the splash so chat feels instant.
+// Resume straight into chat when history already exists on this device.
 if (skipEntranceIfReturning()) {
   window.setTimeout(() => input?.focus({ preventScroll: true }), 40);
 }
