@@ -207,6 +207,31 @@ textarea:focus-visible {
 .app-shell.is-entering {
   animation: appSnapIn 780ms cubic-bezier(.16,1,.3,1) both;
 }
+.app-shell.is-settled,
+html.ui-settled .app-shell {
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+html.ui-settled .message,
+html.ui-settled .message.user-message,
+html.ui-settled .loading {
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+}
+html.ui-settled .message-extra:not(.is-pending) > * {
+  animation: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+.message.is-settled {
+  animation: none !important;
+  transform: none !important;
+  filter: none !important;
+}
 
 .persona-bg {
   position: fixed;
@@ -3539,5 +3564,188 @@ button.text-link {
   .empty-quick button:hover,
   .ghost-btn:hover {
     transform: none;
+  }
+}
+
+/* Mobile safety net: media queries apply on viewport resize without waiting for JS .is-mobile */
+@media (max-width: 760px) {
+  html,
+  body {
+    max-width: 100vw;
+    overflow-x: clip;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: 100vw;
+    min-height: var(--app-height, 100dvh);
+    overflow-x: clip;
+  }
+
+  .chat-stage {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+    height: var(--app-height, 100dvh);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .hero-compact,
+  .hero-actions {
+    max-width: 100%;
+  }
+
+  .hero-actions {
+    flex-wrap: wrap;
+  }
+
+  .chat-window {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .messages {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: clip;
+    overflow-y: auto;
+  }
+
+  .composer-dock {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 100%;
+    padding-inline: max(.72rem, env(safe-area-inset-left)) max(.72rem, env(safe-area-inset-right));
+    overflow-x: clip;
+  }
+
+  .message,
+  .assistant-message,
+  .assistant-message .bubble,
+  .recommendation-card,
+  .daily-dashboard,
+  .loading {
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .assistant-message {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .assistant-message .bubble {
+    min-width: 0;
+    max-width: calc(100% - 2.85rem);
+    overflow-x: clip;
+  }
+
+  .recommendation-card {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding: .9rem;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .recommendation-card ul {
+    grid-template-columns: 1fr;
+  }
+
+  /* Free vertical reading space while chatting */
+  :root.has-conversation .quick-actions,
+  .has-conversation .quick-actions {
+    display: none !important;
+  }
+
+  :root.has-conversation .profile-context-bar,
+  .has-conversation .profile-context-bar {
+    display: none !important;
+  }
+
+  :root.has-conversation .sticky-suggestions,
+  .has-conversation .sticky-suggestions {
+    display: none !important;
+  }
+
+  :root.has-conversation .hero-compact .subtitle,
+  .has-conversation .hero-compact .subtitle {
+    display: none;
+  }
+
+  :root.has-conversation .hero-compact h1,
+  .has-conversation .hero-compact h1 {
+    font-size: clamp(1.55rem, 7.5vw, 2.1rem);
+    line-height: .9;
+  }
+
+  :root.has-conversation .hero,
+  .has-conversation .hero {
+    padding-block: max(.45rem, env(safe-area-inset-top)) .3rem;
+  }
+
+  :root.has-conversation .current-task-card,
+  .has-conversation .current-task-card {
+    margin-top: .4rem;
+    padding: .5rem .65rem;
+  }
+
+  .composer-dock {
+    padding-bottom: max(.45rem, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, transparent, rgba(2, 7, 32, 0.95) 18%);
+  }
+
+  .composer-shell {
+    padding: .45rem .5rem .45rem .65rem;
+  }
+
+  .composer-meta {
+    gap: .4rem;
+  }
+
+  .composer-tools .composer-hint {
+    display: none;
+  }
+
+  .chat-form textarea,
+  .composer-shell textarea {
+    min-height: 3.1rem !important;
+    max-height: 6.5rem;
+    font-size: 16px;
+    padding-top: .4rem;
+    padding-bottom: .2rem;
+  }
+
+  .chat-form button[type="submit"] {
+    width: 3rem !important;
+    height: 3rem !important;
+    min-width: 3rem !important;
+    min-height: 3rem !important;
+  }
+
+  .assistant-message .message-actions,
+  .user-message .message-actions {
+    max-height: 6rem;
+  }
+
+  /* Prevent flex children from expanding past the viewport */
+  .assistant-message .bubble {
+    max-width: calc(100% - 2.85rem) !important;
+  }
+
+  .message {
+    margin-inline: 0;
   }
 }
