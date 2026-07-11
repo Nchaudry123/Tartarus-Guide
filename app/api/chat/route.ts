@@ -2521,12 +2521,28 @@ function structuredPersonaProfileResponse(
     });
   }
 
+  const asksAboutSkills = /\bskills?\b/i.test(question);
+  const skillLead =
+    asksAboutSkills && (initialSkills || learnedSkills)
+      ? [
+          initialSkills ? `${persona} starts with ${initialSkills}` : null,
+          learnedSkills ? `and later learns ${learnedSkills}` : null,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim() + "."
+      : null;
+
   const response = withMode({
-    answer: `${persona} is ${identity}.`,
+    answer: skillLead || `${persona} is ${identity}.`,
     sections: sections.slice(0, 4),
     sources: [fusionToolSource],
     confidence: Math.max(...matches.map((fact) => fact.confidence)),
-    missingInfo: "No additional detail is needed.",
+    missingInfo:
+      asksAboutSkills && !initialSkills && !learnedSkills
+        ? "Skill list support is thin for this Persona; share the exact build goal if you want prioritization advice."
+        : "No additional detail is needed.",
     companion,
   }, "rag");
   if (debug) {
@@ -4703,13 +4719,17 @@ async function directRagResponse(
   ]).slice(0, maxRetrievalQueries);
   const factOnly = controller.action === "search_structured_facts";
   const guidesOnly = controller.action === "search_guides";
+  const skillProfileQuestion =
+    /\bskills?\s+should\s+i\s+keep\b/i.test(conversation.analysisQuestion) ||
+    isPersonaKnowledgeRequest(conversation.analysisQuestion);
   const context = await buildPlannedContext(
     {
       queries: retrievalQueries,
       includeFacts: !guidesOnly,
       includeChunks: !factOnly,
       // Leaner contexts cut prompt tokens and embed/RPC work on hot paths.
-      factLimit: factOnly ? 10 : 14,
+      // Persona skill/profile answers need more tip rows than exact affinity lookups.
+      factLimit: skillProfileQuestion ? 20 : factOnly ? 10 : 14,
       chunkLimit: guidesOnly ? 8 : 10,
     },
     signal,
