@@ -29,8 +29,18 @@ const creationPronouns = new Set([
   "anything",
 ]);
 
+/** Prefer the latest user utterance when analysis wraps a full thread. */
+export function focusUserUtterance(question: string): string {
+  const latest = question.match(/The user's latest follow-up is:\s*(.+)$/im)?.[1]?.trim();
+  if (latest) return latest;
+  const goal = question.match(/The user's active conversation goal is:\s*(.+)$/im)?.[1]?.trim();
+  if (goal && !question.includes("latest follow-up")) return goal.split("\n")[0]!.trim();
+  return question.trim();
+}
+
 export function isVagueCreationQuestion(question: string): boolean {
-  const text = question.toLowerCase().trim();
+  // Never judge vagueness on the whole packed analysis thread — only the latest ask.
+  const text = focusUserUtterance(question).toLowerCase().trim();
   if (
     !/\b(?:craft|make|create|fuse|fusion|recipe|how (?:do|can|should|would) i (?:get|obtain|summon))\b/i.test(
       text,
