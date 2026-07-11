@@ -51,14 +51,17 @@
         <div class="panel-head">
           <p>Quick Menu</p>
           <h2>Records</h2>
+          <button type="button" id="sideNewChat" class="side-new-chat">+ New chat</button>
         </div>
-        <nav class="category-list" id="categoryList">
+        <nav class="category-list" id="categoryList" aria-label="Guide topics">
           <button type="button" data-prompt="What is Dancing Hand weak to?">Shadow weaknesses</button>
           <button type="button" data-prompt="How do I prepare for the next full moon boss?">Full moon bosses</button>
           <button type="button" data-prompt="How do I fuse Jack Frost?">Fusion routes</button>
           <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">Social Links</button>
           <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Elizabeth requests</button>
           <button type="button" data-prompt="What should I do today?">Plan my day</button>
+          <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus prep</button>
+          <button type="button" data-prompt="How do I raise Academics, Charm, and Courage efficiently?">Social stats</button>
         </nav>
         <section class="memory-panel" aria-labelledby="memoryPanelTitle">
           <div>
@@ -67,15 +70,29 @@
           </div>
           <button type="button" id="openMemory" aria-haspopup="dialog">Edit</button>
         </section>
+        <section class="tools-panel" aria-label="Chat tools">
+          <h3>Tools</h3>
+          <div class="tools-grid">
+            <button type="button" id="exportChatBtn" title="Copy this conversation">Export chat</button>
+            <button type="button" id="focusComposerBtn" title="Jump to the message box">Focus input</button>
+            <button type="button" id="openMemoryTool" title="Edit your player profile">Profile</button>
+            <button type="button" id="planTodayBtn" data-prompt="What should I do today?">Today’s plan</button>
+          </div>
+        </section>
         <section class="recent-panel">
           <div class="recent-head">
             <h3>Recent</h3>
             <button type="button" id="clearChat">Clear</button>
           </div>
+          <label class="recent-search-wrap" for="recentSearch">
+            <span class="sr-only">Search recent chats</span>
+            <input type="search" id="recentSearch" placeholder="Search recent…" autocomplete="off" />
+          </label>
           <div class="recent-list" id="recentList">
             <p>Recent chats stay saved on this device.</p>
           </div>
         </section>
+        <p class="side-shortcuts" id="sideShortcutsHint">⌘K new chat · ⌘/ focus · Esc menu</p>
       </aside>
 
       <section class="chat-stage">
@@ -86,7 +103,9 @@
             <p class="subtitle">Your Persona 3 Reload coach — ask anything, follow up naturally.</p>
           </div>
           <div class="hero-actions">
-            <button type="button" id="newChatBtn" class="ghost-btn" title="Start a new conversation">New chat</button>
+            <button type="button" id="memoryQuickBtn" class="ghost-btn" title="Edit player memory">Memory</button>
+            <button type="button" id="exportChatHeaderBtn" class="ghost-btn" title="Export conversation">Export</button>
+            <button type="button" id="newChatBtn" class="ghost-btn ghost-btn-primary" title="Start a new conversation (⌘K)">New chat</button>
           </div>
         </header>
 
@@ -96,39 +115,61 @@
               <div class="seal"><img src="./assets/sees-portrait-seal.png" alt="" /></div>
               <h2>What are we tackling?</h2>
               <p>Talk like you would to a friend who finished the game — weaknesses, bosses, fusion, Social Links, requests, or your day plan.</p>
+              <div class="empty-quick" aria-label="Quick starts">
+                <button type="button" data-prompt="What should I do today?">Plan my day</button>
+                <button type="button" data-prompt="What is Dancing Hand weak to?">Check a weakness</button>
+                <button type="button" data-prompt="How do I fuse Jack Frost?">Plan a fusion</button>
+                <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">Social Links</button>
+              </div>
               <div class="empty-categories" aria-label="Starter topics">
                 <div class="empty-cat">
                   <span>Combat</span>
                   <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
                   <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
+                  <button type="button" data-prompt="How do I prepare for the next full moon boss?">Next full moon</button>
                 </div>
                 <div class="empty-cat">
                   <span>Progress</span>
                   <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
                   <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">August Social Links</button>
+                  <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Elizabeth requests</button>
                 </div>
                 <div class="empty-cat">
                   <span>Build</span>
                   <button type="button" data-prompt="How do I fuse Jack Frost?">Fuse Jack Frost</button>
                   <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus loadout</button>
+                  <button type="button" data-prompt="How do I raise Academics, Charm, and Courage efficiently?">Social stats grind</button>
                 </div>
               </div>
               <div class="empty-examples">
                 <button type="button" data-prompt="What is Dancing Hand weak to?">Dancing Hand weakness</button>
                 <button type="button" data-prompt="How do I beat Priestess?">Priestess boss plan</button>
                 <button type="button" data-prompt="What should I do before the full moon?">Full moon prep</button>
+                <button type="button" data-prompt="What should I do today?">Plan my day</button>
               </div>
             </div>
           </div>
 
           <div class="composer-dock">
+            <div class="profile-context-bar" id="profileContextBar" hidden aria-label="Active player context"></div>
             <div class="sticky-suggestions" id="stickySuggestions" hidden aria-label="Suggested follow-ups"></div>
+            <div class="quick-actions" id="quickActions" aria-label="Quick actions">
+              <button type="button" data-prompt="What should I do today?">Today</button>
+              <button type="button" data-prompt="What is Dancing Hand weak to?">Weakness</button>
+              <button type="button" data-prompt="How do I fuse Jack Frost?">Fusion</button>
+              <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">Links</button>
+              <button type="button" data-prompt="How do I prepare for the next full moon boss?">Boss</button>
+              <button type="button" data-action-tool="memory">Memory</button>
+            </div>
             <form class="chat-form" id="chatForm">
               <label class="sr-only" for="questionInput">Ask a Persona 3 Reload question</label>
               <div class="composer-shell">
                 <textarea id="questionInput" rows="1" autocomplete="off" placeholder="Message SEES Navigator…"></textarea>
                 <div class="composer-meta">
-                  <span class="composer-hint">Enter to send · Shift+Enter for newline</span>
+                  <div class="composer-tools">
+                    <button type="button" id="voiceInputBtn" class="composer-tool-btn" aria-label="Voice input" title="Voice input" hidden>🎙</button>
+                    <span class="composer-hint">Enter to send · Shift+Enter newline · ⌘K new chat</span>
+                  </div>
                   <button type="submit" aria-label="Send question">➜</button>
                 </div>
               </div>
