@@ -64,6 +64,7 @@ let dashboardRefreshController = null;
 let lastAskedQuestion = "";
 let isListeningVoice = false;
 let speechRecognition = null;
+let voiceFinalTranscript = "";
 
 let apiAvailable = true;
 let autoStickToBottom = true;
@@ -1889,51 +1890,124 @@ function regenerateLastAnswer(messageNode) {
   queueQuestion(question);
 }
 
+function setVoiceListeningUi(listening) {
+  if (!voiceInputBtn) return;
+  voiceInputBtn.classList.toggle("is-listening", listening);
+  voiceInputBtn.setAttribute("aria-pressed", String(listening));
+  voiceInputBtn.title = listening ? "Stop voice input" : "Voice input";
+  voiceInputBtn.setAttribute("aria-label", listening ? "Stop voice input" : "Voice input");
+}
+
 function setupVoiceInput() {
+  if (!voiceInputBtn) return;
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition || !voiceInputBtn) return;
+
+  if (!SpeechRecognition) {
+    voiceInputBtn.hidden = false;
+    voiceInputBtn.disabled = true;
+    voiceInputBtn.title = "Voice input isn’t supported in this browser (try Chrome or Edge).";
+    voiceInputBtn.setAttribute("aria-label", "Voice input unavailable");
+    return;
+  }
+
   voiceInputBtn.hidden = false;
   speechRecognition = new SpeechRecognition();
   speechRecognition.lang = "en-US";
   speechRecognition.interimResults = true;
-  speechRecognition.continuous = false;
+  speechRecognition.continuous = true;
+  speechRecognition.maxAlternatives = 1;
+
+  speechRecognition.addEventListener("start", () => {
+    isListeningVoice = true;
+    setVoiceListeningUi(true);
+    showInputHint("Listening… tap again to stop");
+  });
 
   speechRecognition.addEventListener("result", (event) => {
-    let transcript = "";
+    let interim = "";
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
-      transcript += event.results[i][0]?.transcript || "";
+      const piece = event.results[i][0]?.transcript || "";
+      if (event.results[i].isFinal) voiceFinalTranscript += `${piece} `;
+      else interim += piece;
     }
-    if (!input || !transcript.trim()) return;
-    input.value = transcript.trim();
+    if (!input) return;
+    input.value = `${voiceFinalTranscript}${interim}`.replace(/\s+/g, " ").trim();
     input.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  speechRecognition.addEventListener("end", () => {
-    isListeningVoice = false;
-    voiceInputBtn?.classList.remove("is-listening");
-    voiceInputBtn?.setAttribute("aria-pressed", "false");
-  });
-  speechRecognition.addEventListener("error", () => {
-    isListeningVoice = false;
-    voiceInputBtn?.classList.remove("is-listening");
-    showInputHint("Voice input unavailable right now.");
-  });
 
-  voiceInputBtn.addEventListener("click", () => {
-    if (!speechRecognition) return;
-    if (isListeningVoice) {
-      speechRecognition.stop();
+  speechRecognition.addEventListener("error", (event) => {
+    const code = event?.error || "";
+    // `aborted` / `no-speech` while still listening is often recoverable.
+    if (code === "aborted") return;
+    if (code === "no-speech" && isListeningVoice) {
+      showInputHint("Still listening… speak a little louder.");
       return;
     }
-    try {
-      isListeningVoice = true;
-      voiceInputBtn.classList.add("is-listening");
-      voiceInputBtn.setAttribute("aria-pressed", "true");
-      speechRecognition.start();
-      showInputHint("Listening…");
-    } catch {
+    isListeningVoice = false;
+    setVoiceListeningUi(false);
+    const messagesByError = {
+      "not-allowed": "Mic permission blocked — allow microphone for this site.",
+      "audio-capture": "No microphone found on this device.",
+      network: "Speech service network error — try again.",
+      "service-not-allowed": "Speech service blocked by the browser.",
+      "language-not-supported": "This language isn’t supported for voice input.",
+    };
+    showInputHint(messagesByError[code] || "Voice input hit a snag. Try again.");
+  });
+
+  speechRecognition.addEventListener("end", () => {
+    // Chrome often ends after a pause; restart while the user still wants listening.
+    if (isListeningVoice) {
+      try {
+        speechRecognition.start();
+        return;
+      } catch {
+        // Fall through and reset UI if restart fails.
+      }
+    }
+    isListeningVoice = false;
+    setVoiceListeningUi(false);
+  });
+
+  voiceInputBtn.addEventListener("click", async () => {
+    if (!speechRecognition) return;
+    if (isListeningVoice) {
       isListeningVoice = false;
-      voiceInputBtn.classList.remove("is-listening");
-      showInputHint("Could not start voice input.");
+      setVoiceListeningUi(false);
+      try {
+        speechRecognition.stop();
+      } catch {
+        // Ignore stop failures when already idle.
+      }
+      if (input) {
+        input.placeholder = defaultInputPlaceholder;
+        input.classList.remove("has-input-hint");
+      }
+      return;
+    }
+
+    voiceFinalTranscript = input?.value?.trim() ? `${input.value.trim()} ` : "";
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((track) => track.stop());
+      }
+      isListeningVoice = true;
+      setVoiceListeningUi(true);
+      speechRecognition.start();
+      showInputHint("Listening… tap again to stop");
+    } catch (error) {
+      isListeningVoice = false;
+      setVoiceListeningUi(false);
+      const denied =
+        error?.name === "NotAllowedError" ||
+        error?.name === "PermissionDeniedError" ||
+        /permission|denied|not allowed/i.test(String(error?.message || error || ""));
+      showInputHint(
+        denied
+          ? "Mic permission blocked — allow microphone for this site."
+          : "Could not access the microphone.",
+      );
     }
   });
 }
