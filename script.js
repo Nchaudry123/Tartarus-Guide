@@ -11,6 +11,12 @@ const stickySuggestions = document.getElementById("stickySuggestions");
 const profileContextBar = document.getElementById("profileContextBar");
 const quickActions = document.getElementById("quickActions");
 const voiceInputBtn = document.getElementById("voiceInputBtn");
+const micPermissionDialog = document.getElementById("micPermissionDialog");
+const micDialogAllow = document.getElementById("micDialogAllow");
+const micDialogCancel = document.getElementById("micDialogCancel");
+const micDialogStatus = document.getElementById("micDialogStatus");
+const voiceListeningChip = document.getElementById("voiceListeningChip");
+const voiceListeningStop = document.getElementById("voiceListeningStop");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -65,6 +71,8 @@ let lastAskedQuestion = "";
 let isListeningVoice = false;
 let speechRecognition = null;
 let voiceFinalTranscript = "";
+let voiceMediaStream = null;
+let micPermissionGranted = false;
 
 let apiAvailable = true;
 let autoStickToBottom = true;
@@ -1891,11 +1899,119 @@ function regenerateLastAnswer(messageNode) {
 }
 
 function setVoiceListeningUi(listening) {
-  if (!voiceInputBtn) return;
-  voiceInputBtn.classList.toggle("is-listening", listening);
-  voiceInputBtn.setAttribute("aria-pressed", String(listening));
-  voiceInputBtn.title = listening ? "Stop voice input" : "Voice input";
-  voiceInputBtn.setAttribute("aria-label", listening ? "Stop voice input" : "Voice input");
+  if (voiceInputBtn) {
+    voiceInputBtn.classList.toggle("is-listening", listening);
+    voiceInputBtn.setAttribute("aria-pressed", String(listening));
+    voiceInputBtn.title = listening ? "Stop voice input" : "Voice input";
+    voiceInputBtn.setAttribute("aria-label", listening ? "Stop voice input" : "Voice input");
+  }
+  if (voiceListeningChip) {
+    voiceListeningChip.hidden = !listening;
+  }
+}
+
+function setMicDialogStatus(message) {
+  if (!micDialogStatus) return;
+  if (!message) {
+    micDialogStatus.hidden = true;
+    micDialogStatus.textContent = "";
+    return;
+  }
+  micDialogStatus.hidden = false;
+  micDialogStatus.textContent = message;
+}
+
+function openMicPermissionDialog() {
+  if (!micPermissionDialog) return;
+  setMicDialogStatus("");
+  if (micDialogAllow) {
+    micDialogAllow.disabled = false;
+    micDialogAllow.textContent = "Allow microphone";
+  }
+  if (typeof micPermissionDialog.showModal === "function") {
+    if (!micPermissionDialog.open) micPermissionDialog.showModal();
+  } else {
+    micPermissionDialog.setAttribute("open", "");
+  }
+}
+
+function closeMicPermissionDialog() {
+  if (!micPermissionDialog) return;
+  if (typeof micPermissionDialog.close === "function") {
+    if (micPermissionDialog.open) micPermissionDialog.close();
+  } else {
+    micPermissionDialog.removeAttribute("open");
+  }
+  if (micDialogAllow) {
+    micDialogAllow.disabled = false;
+    micDialogAllow.textContent = "Allow microphone";
+  }
+}
+
+function stopVoiceMediaStream() {
+  if (!voiceMediaStream) return;
+  voiceMediaStream.getTracks().forEach((track) => {
+    try {
+      track.stop();
+    } catch {
+      // Ignore track stop failures.
+    }
+  });
+  voiceMediaStream = null;
+}
+
+function stopVoiceInput({ restorePlaceholder = true } = {}) {
+  isListeningVoice = false;
+  setVoiceListeningUi(false);
+  try {
+    speechRecognition?.stop();
+  } catch {
+    // Already idle.
+  }
+  stopVoiceMediaStream();
+  if (restorePlaceholder && input) {
+    input.placeholder = defaultInputPlaceholder;
+    input.classList.remove("has-input-hint");
+  }
+}
+
+async function ensureMicrophoneStream() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw Object.assign(new Error("getUserMedia unavailable"), { name: "NotSupportedError" });
+  }
+  // Keep the stream open so the browser shows the active mic indicator
+  // and SpeechRecognition has a live audio source.
+  if (voiceMediaStream) {
+    const live = voiceMediaStream.getAudioTracks().some((track) => track.readyState === "live");
+    if (live) return voiceMediaStream;
+    stopVoiceMediaStream();
+  }
+  voiceMediaStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
+  });
+  micPermissionGranted = true;
+  return voiceMediaStream;
+}
+
+async function beginVoiceListening() {
+  if (!speechRecognition) return;
+  voiceFinalTranscript = input?.value?.trim() ? `${input.value.trim()} ` : "";
+  await ensureMicrophoneStream();
+  isListeningVoice = true;
+  setVoiceListeningUi(true);
+  showInputHint("Listening… tap the mic or Stop when you’re done");
+  try {
+    speechRecognition.start();
+  } catch (error) {
+    // InvalidStateError usually means already started — treat as success.
+    if (!/already started|InvalidStateError/i.test(String(error?.message || error?.name || ""))) {
+      throw error;
+    }
+  }
 }
 
 function setupVoiceInput() {
@@ -1910,6 +2026,13 @@ function setupVoiceInput() {
     return;
   }
 
+  if (!window.isSecureContext && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    voiceInputBtn.hidden = false;
+    voiceInputBtn.disabled = true;
+    voiceInputBtn.title = "Microphone needs a secure (HTTPS) connection.";
+    return;
+  }
+
   voiceInputBtn.hidden = false;
   speechRecognition = new SpeechRecognition();
   speechRecognition.lang = "en-US";
@@ -1920,7 +2043,7 @@ function setupVoiceInput() {
   speechRecognition.addEventListener("start", () => {
     isListeningVoice = true;
     setVoiceListeningUi(true);
-    showInputHint("Listening… tap again to stop");
+    showInputHint("Listening… tap the mic or Stop when you’re done");
   });
 
   speechRecognition.addEventListener("result", (event) => {
@@ -1937,79 +2060,113 @@ function setupVoiceInput() {
 
   speechRecognition.addEventListener("error", (event) => {
     const code = event?.error || "";
-    // `aborted` / `no-speech` while still listening is often recoverable.
     if (code === "aborted") return;
     if (code === "no-speech" && isListeningVoice) {
       showInputHint("Still listening… speak a little louder.");
       return;
     }
-    isListeningVoice = false;
-    setVoiceListeningUi(false);
     const messagesByError = {
-      "not-allowed": "Mic permission blocked — allow microphone for this site.",
+      "not-allowed": "Mic permission blocked — use Allow in the popup, or check site settings.",
       "audio-capture": "No microphone found on this device.",
       network: "Speech service network error — try again.",
       "service-not-allowed": "Speech service blocked by the browser.",
       "language-not-supported": "This language isn’t supported for voice input.",
     };
+    stopVoiceInput({ restorePlaceholder: false });
     showInputHint(messagesByError[code] || "Voice input hit a snag. Try again.");
   });
 
   speechRecognition.addEventListener("end", () => {
-    // Chrome often ends after a pause; restart while the user still wants listening.
     if (isListeningVoice) {
       try {
         speechRecognition.start();
         return;
       } catch {
-        // Fall through and reset UI if restart fails.
+        // Restart failed — fall through.
       }
     }
-    isListeningVoice = false;
-    setVoiceListeningUi(false);
+    if (!isListeningVoice) {
+      setVoiceListeningUi(false);
+      stopVoiceMediaStream();
+    }
   });
 
   voiceInputBtn.addEventListener("click", async () => {
     if (!speechRecognition) return;
     if (isListeningVoice) {
-      isListeningVoice = false;
-      setVoiceListeningUi(false);
-      try {
-        speechRecognition.stop();
-      } catch {
-        // Ignore stop failures when already idle.
-      }
-      if (input) {
-        input.placeholder = defaultInputPlaceholder;
-        input.classList.remove("has-input-hint");
-      }
+      stopVoiceInput();
       return;
     }
-
-    voiceFinalTranscript = input?.value?.trim() ? `${input.value.trim()} ` : "";
-    try {
-      if (navigator.mediaDevices?.getUserMedia) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((track) => track.stop());
+    // After the first successful allow, skip straight to listening.
+    // First time (or if denied before), show our popup so the user
+    // always sees a clear permission step before the browser prompt.
+    if (micPermissionGranted) {
+      try {
+        await beginVoiceListening();
+        return;
+      } catch {
+        micPermissionGranted = false;
       }
-      isListeningVoice = true;
-      setVoiceListeningUi(true);
-      speechRecognition.start();
-      showInputHint("Listening… tap again to stop");
+    }
+    openMicPermissionDialog();
+  });
+
+  micDialogCancel?.addEventListener("click", () => {
+    closeMicPermissionDialog();
+    showInputHint("Microphone left off.");
+  });
+
+  micDialogAllow?.addEventListener("click", async () => {
+    if (!speechRecognition || micDialogAllow.disabled) return;
+    micDialogAllow.disabled = true;
+    micDialogAllow.textContent = "Waiting for browser…";
+    setMicDialogStatus("A browser permission prompt should appear — choose Allow.");
+    try {
+      await beginVoiceListening();
+      closeMicPermissionDialog();
+      micPermissionGranted = true;
     } catch (error) {
-      isListeningVoice = false;
-      setVoiceListeningUi(false);
+      stopVoiceInput({ restorePlaceholder: false });
       const denied =
         error?.name === "NotAllowedError" ||
         error?.name === "PermissionDeniedError" ||
         /permission|denied|not allowed/i.test(String(error?.message || error || ""));
-      showInputHint(
-        denied
-          ? "Mic permission blocked — allow microphone for this site."
-          : "Could not access the microphone.",
-      );
+      const unsupported = error?.name === "NotSupportedError" || error?.name === "NotFoundError";
+      const message = denied
+        ? "Permission denied. Click the lock/mic icon in the address bar and allow the microphone, then try again."
+        : unsupported
+          ? "No microphone available, or this browser can’t use it."
+          : "Could not start the microphone. Try again or check browser settings.";
+      setMicDialogStatus(message);
+      showInputHint(message);
+      micDialogAllow.disabled = false;
+      micDialogAllow.textContent = "Allow microphone";
     }
   });
+
+  voiceListeningStop?.addEventListener("click", () => stopVoiceInput());
+
+  micPermissionDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeMicPermissionDialog();
+  });
+
+  // If permission was already granted, skip the dialog next time is nicer —
+  // but still use it once so the popup is always discoverable on first click.
+  if (navigator.permissions?.query) {
+    navigator.permissions
+      .query({ name: "microphone" })
+      .then((status) => {
+        micPermissionGranted = status.state === "granted";
+        status.addEventListener("change", () => {
+          micPermissionGranted = status.state === "granted";
+          if (status.state === "denied" && isListeningVoice) stopVoiceInput();
+        });
+      })
+      .catch(() => {
+        // Permissions API not available for microphone in some browsers.
+      });
+  }
 }
 
 function updateShortcutHints() {
