@@ -7,18 +7,10 @@ const menuToggle = document.getElementById("menuToggle");
 const sidePanel = document.getElementById("sidePanel");
 const clearChat = document.getElementById("clearChat");
 const newChatBtn = document.getElementById("newChatBtn");
-const sideNewChat = document.getElementById("sideNewChat");
 const stickySuggestions = document.getElementById("stickySuggestions");
 const profileContextBar = document.getElementById("profileContextBar");
 const quickActions = document.getElementById("quickActions");
-const recentSearch = document.getElementById("recentSearch");
 const voiceInputBtn = document.getElementById("voiceInputBtn");
-const exportChatBtn = document.getElementById("exportChatBtn");
-const exportChatHeaderBtn = document.getElementById("exportChatHeaderBtn");
-const focusComposerBtn = document.getElementById("focusComposerBtn");
-const openMemoryTool = document.getElementById("openMemoryTool");
-const planTodayBtn = document.getElementById("planTodayBtn");
-const memoryQuickBtn = document.getElementById("memoryQuickBtn");
 const entranceScreen = document.getElementById("entranceScreen");
 const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
@@ -492,26 +484,14 @@ function normalizeResponseForSave(response) {
   };
 }
 
-function renderRecentAnswers(filterText = recentSearch?.value || "") {
+function renderRecentAnswers() {
   if (!recentList) return;
   if (!savedAnswers.length) {
     recentList.innerHTML = "<p>Recent chats stay saved on this device.</p>";
     return;
   }
-  const needle = String(filterText || "").trim().toLowerCase();
-  const filtered = needle
-    ? savedAnswers.filter(
-        (item) =>
-          item.question.toLowerCase().includes(needle) ||
-          item.answer.toLowerCase().includes(needle),
-      )
-    : savedAnswers;
-  if (!filtered.length) {
-    recentList.innerHTML = `<p>No recent chats match “${escapeHtml(filterText)}”.</p>`;
-    return;
-  }
-  recentList.innerHTML = filtered
-    .slice(0, 8)
+  recentList.innerHTML = savedAnswers
+    .slice(0, 6)
     .map(
       (item) => `
         <article class="recent-item">
@@ -1959,10 +1939,6 @@ function setupVoiceInput() {
 }
 
 function updateShortcutHints() {
-  const sideHint = document.getElementById("sideShortcutsHint");
-  if (sideHint) {
-    sideHint.textContent = `${modKeyLabel}K new chat · ${modKeyLabel}/ focus · Esc menu`;
-  }
   const composerHint = document.querySelector(".composer-hint");
   if (composerHint) {
     composerHint.textContent = `Enter to send · Shift+Enter newline · ${modKeyLabel}K new chat`;
@@ -2296,10 +2272,6 @@ recentList?.addEventListener("click", (event) => {
   }
 });
 
-recentSearch?.addEventListener("input", () => {
-  renderRecentAnswers(recentSearch.value);
-});
-
 clearChat?.addEventListener("click", () => {
   recent.splice(0);
   chatHistory.splice(0);
@@ -2312,16 +2284,6 @@ clearChat?.addEventListener("click", () => {
 });
 
 newChatBtn?.addEventListener("click", () => startNewChat());
-sideNewChat?.addEventListener("click", () => startNewChat());
-exportChatBtn?.addEventListener("click", () => void exportConversation());
-exportChatHeaderBtn?.addEventListener("click", () => void exportConversation());
-focusComposerBtn?.addEventListener("click", () => focusComposer());
-openMemoryTool?.addEventListener("click", () => openMemoryDialog());
-memoryQuickBtn?.addEventListener("click", () => openMemoryDialog());
-planTodayBtn?.addEventListener("click", () => {
-  const prompt = planTodayBtn.dataset.prompt || "What should I do today?";
-  queueQuestion(prompt);
-});
 
 document.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();

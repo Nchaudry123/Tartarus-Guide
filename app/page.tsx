@@ -17,7 +17,7 @@ export default async function Home() {
   return (
     <>
       <div dangerouslySetInnerHTML={{ __html: staticShell }} />
-      <Script src="/script.js?v=ultimate-chat-remodel-5" strategy="afterInteractive" />
+      <Script src="/script.js?v=restore-menu-ui" strategy="afterInteractive" />
     </>
   );
 }
