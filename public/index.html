@@ -51,17 +51,14 @@
         <div class="panel-head">
           <p>Quick Menu</p>
           <h2>Records</h2>
-          <button type="button" id="sideNewChat" class="side-new-chat">+ New chat</button>
         </div>
-        <nav class="category-list" id="categoryList" aria-label="Guide topics">
+        <nav class="category-list" id="categoryList">
           <button type="button" data-prompt="What is Dancing Hand weak to?">Shadow weaknesses</button>
           <button type="button" data-prompt="How do I prepare for the next full moon boss?">Full moon bosses</button>
           <button type="button" data-prompt="How do I fuse Jack Frost?">Fusion routes</button>
           <button type="button" data-prompt="I'm in August — which Social Links should I prioritize?">Social Links</button>
           <button type="button" data-prompt="What Elizabeth requests are worth doing early?">Elizabeth requests</button>
           <button type="button" data-prompt="What should I do today?">Plan my day</button>
-          <button type="button" data-prompt="What should I bring before a Tartarus run?">Tartarus prep</button>
-          <button type="button" data-prompt="How do I raise Academics, Charm, and Courage efficiently?">Social stats</button>
         </nav>
         <section class="memory-panel" aria-labelledby="memoryPanelTitle">
           <div>
@@ -70,29 +67,15 @@
           </div>
           <button type="button" id="openMemory" aria-haspopup="dialog">Edit</button>
         </section>
-        <section class="tools-panel" aria-label="Chat tools">
-          <h3>Tools</h3>
-          <div class="tools-grid">
-            <button type="button" id="exportChatBtn" title="Copy this conversation">Export chat</button>
-            <button type="button" id="focusComposerBtn" title="Jump to the message box">Focus input</button>
-            <button type="button" id="openMemoryTool" title="Edit your player profile">Profile</button>
-            <button type="button" id="planTodayBtn" data-prompt="What should I do today?">Today’s plan</button>
-          </div>
-        </section>
         <section class="recent-panel">
           <div class="recent-head">
             <h3>Recent</h3>
             <button type="button" id="clearChat">Clear</button>
           </div>
-          <label class="recent-search-wrap" for="recentSearch">
-            <span class="sr-only">Search recent chats</span>
-            <input type="search" id="recentSearch" placeholder="Search recent…" autocomplete="off" />
-          </label>
           <div class="recent-list" id="recentList">
             <p>Recent chats stay saved on this device.</p>
           </div>
         </section>
-        <p class="side-shortcuts" id="sideShortcutsHint">⌘K new chat · ⌘/ focus · Esc menu</p>
       </aside>
 
       <section class="chat-stage">
@@ -103,9 +86,7 @@
             <p class="subtitle">Your Persona 3 Reload coach — ask anything, follow up naturally.</p>
           </div>
           <div class="hero-actions">
-            <button type="button" id="memoryQuickBtn" class="ghost-btn" title="Edit player memory">Memory</button>
-            <button type="button" id="exportChatHeaderBtn" class="ghost-btn" title="Export conversation">Export</button>
-            <button type="button" id="newChatBtn" class="ghost-btn ghost-btn-primary" title="Start a new conversation (⌘K)">New chat</button>
+            <button type="button" id="newChatBtn" class="ghost-btn" title="Start a new conversation">New chat</button>
           </div>
         </header>
 
