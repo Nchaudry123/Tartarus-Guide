@@ -3569,9 +3569,9 @@ button.text-link {
 }
 .composer-tool-btn.is-listening {
   color: #fff;
-  border-color: rgba(255, 255, 255, 0.35);
-  background: linear-gradient(145deg, #075cff, #ff4ebe);
-  box-shadow: 0 0 0 3px rgba(85, 247, 255, 0.35), 0 0 24px rgba(255, 78, 190, 0.4);
+  border-color: rgba(85, 247, 255, 0.55);
+  background: linear-gradient(145deg, #075cff, #2ad4ff);
+  box-shadow: 0 0 0 3px rgba(85, 247, 255, 0.35), 0 0 22px rgba(7, 92, 255, 0.4);
   animation: voicePulse 1.2s ease-in-out infinite;
 }
 .composer-tool-btn.is-listening .voice-bar {
