@@ -154,7 +154,7 @@
                 <textarea id="questionInput" rows="1" autocomplete="off" placeholder="Message SEES Navigator…"></textarea>
                 <div class="composer-meta">
                   <div class="composer-tools">
-                    <button type="button" id="voiceInputBtn" class="composer-tool-btn" aria-label="Voice input" title="Voice input" hidden aria-pressed="false">
+                    <button type="button" id="voiceInputBtn" class="composer-tool-btn" aria-label="Voice input" title="Voice input" aria-pressed="false" aria-haspopup="dialog">
                       <svg class="voice-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
                         <path class="voice-mic" fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/>
                         <g class="voice-waves" fill="currentColor">
@@ -175,26 +175,31 @@
       </section>
     </main>
 
-    <dialog class="mic-dialog" id="micPermissionDialog" aria-labelledby="micDialogTitle">
-      <form method="dialog" id="micPermissionForm">
+    <div class="mic-modal" id="micPermissionDialog" role="dialog" aria-modal="true" aria-labelledby="micDialogTitle" hidden>
+      <div class="mic-modal-backdrop" id="micDialogBackdrop"></div>
+      <div class="mic-modal-card">
         <div class="mic-dialog-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="36" height="36" focusable="false">
             <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/>
+            <g fill="currentColor">
+              <rect x="2" y="9" width="2" height="6" rx="1"/>
+              <rect x="20" y="8" width="2" height="8" rx="1"/>
+            </g>
           </svg>
         </div>
         <p class="mic-dialog-kicker">Voice channel</p>
         <h2 id="micDialogTitle">Enable microphone?</h2>
         <p class="mic-dialog-copy">
-          SEES Navigator needs mic access to hear you. Your browser will ask for permission next —
-          choose <strong>Allow</strong> so speech can fill the message box.
+          SEES Navigator needs mic access to hear you. After you press <strong>Allow microphone</strong>,
+          your browser will show its own permission prompt — choose <strong>Allow</strong> there too.
         </p>
         <p class="mic-dialog-status" id="micDialogStatus" hidden></p>
-        <footer>
-          <button type="button" class="mic-dialog-cancel" id="micDialogCancel" value="cancel">Not now</button>
-          <button type="button" class="mic-dialog-allow" id="micDialogAllow" value="allow">Allow microphone</button>
-        </footer>
-      </form>
-    </dialog>
+        <div class="mic-modal-actions">
+          <button type="button" class="mic-dialog-cancel" id="micDialogCancel">Not now</button>
+          <button type="button" class="mic-dialog-allow" id="micDialogAllow">Allow microphone</button>
+        </div>
+      </div>
+    </div>
 
     <div class="voice-listening-chip" id="voiceListeningChip" hidden>
       <span class="voice-listening-bars" aria-hidden="true"><i></i><i></i><i></i></span>
