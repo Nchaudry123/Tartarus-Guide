@@ -7,7 +7,10 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "media-src 'self' blob:",
-  `connect-src 'self'${development ? " ws: wss:" : ""}`,
+  // Chromium Web Speech API calls Google endpoints; allow them so recognition works.
+  `connect-src 'self' https://www.google.com https://www.gstatic.com https://*.google.com https://*.googleapis.com${
+    development ? " ws: wss:" : ""
+  }`,
   "font-src 'self' data:",
   "object-src 'none'",
   "base-uri 'self'",
@@ -31,8 +34,9 @@ const nextConfig: NextConfig = {
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
           { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
           {
+            // microphone=(self) is required — previous "microphone=()" blocked getUserMedia entirely.
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+            value: "camera=(), microphone=(self), geolocation=(), payment=(), usb=()",
           },
           ...(development
             ? []
