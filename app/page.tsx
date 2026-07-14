@@ -17,7 +17,7 @@ export default async function Home() {
   return (
     <>
       <div dangerouslySetInnerHTML={{ __html: staticShell }} />
-      <Script src="/script.js?v=mic-no-purple" strategy="afterInteractive" />
+      <Script src="/script.js?v=sea-of-souls-theme" strategy="afterInteractive" />
     </>
   );
 }
