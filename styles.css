@@ -249,32 +249,50 @@ html.ui-settled .message-extra:not(.is-pending) > * {
   inset: 0;
   z-index: -1;
   overflow: hidden;
+  /* P3R "sea of souls" underwater blue — bright like the intro terminal */
   background:
-    radial-gradient(circle at 18% 16%, rgba(85, 247, 255, 0.2), transparent 40%),
-    radial-gradient(circle at 78% 72%, rgba(255, 78, 190, 0.16), transparent 44%),
-    linear-gradient(160deg, #0a1f6e 0%, #040b28 55%, #120628 100%);
+    radial-gradient(circle at 72% 36%, rgba(85, 247, 255, 0.42), transparent 36%),
+    radial-gradient(circle at 18% 70%, rgba(7, 92, 255, 0.45), transparent 42%),
+    radial-gradient(circle at 88% 82%, rgba(255, 78, 190, 0.22), transparent 40%),
+    linear-gradient(155deg, #1a4fd4 0%, #0a2a8a 38%, #06124a 72%, #120628 100%);
+}
+.bg-video {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: .88;
+  filter: saturate(1.28) contrast(1.12) brightness(1.12);
+  transform: scale(1.04);
+  animation: entranceDrift 14s ease-in-out infinite;
+  pointer-events: none;
 }
 .bg-art {
   position: absolute;
   inset: 0;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: .55;
-  filter: saturate(1.35) contrast(1.12) brightness(1.05);
-  transform: scale(1.015);
-  animation: slowPan 12s ease-in-out infinite;
+  opacity: .42;
+  filter: saturate(1.45) contrast(1.14) brightness(1.12);
+  transform: scale(1.02);
+  animation: slowPan 14s ease-in-out infinite;
   backface-visibility: hidden;
   will-change: transform, opacity;
+  mix-blend-mode: lighten;
 }
 .bg-art-secondary {
-  opacity: .28;
+  opacity: .34;
   mix-blend-mode: screen;
   transform: scale(1.08) translateX(6vw);
-  animation-duration: 15s;
+  animation-duration: 16s;
 }
 .bg-art-config {
-  opacity: .22;
+  opacity: .26;
   mix-blend-mode: color-dodge;
   object-position: 78% center;
   transform: scale(1.14) translateX(10vw);
@@ -284,72 +302,103 @@ html.ui-settled .message-extra:not(.is-pending) > * {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 2;
+  /* Lighter wash so video/art stay vivid; cyan scanlines like intro */
   background:
-    linear-gradient(105deg, rgba(6, 18, 74, 0.72) 0 22%, rgba(6, 18, 74, 0.18) 48%, rgba(6, 18, 74, 0.55)),
-    repeating-linear-gradient(180deg, rgba(85, 247, 255, 0.045) 0 1px, transparent 1px 6px);
+    linear-gradient(105deg, rgba(6, 24, 90, 0.42) 0 16%, rgba(6, 24, 90, 0.08) 46%, rgba(6, 24, 90, 0.34)),
+    repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 5px),
+    radial-gradient(circle at 70% 40%, rgba(85, 247, 255, 0.2), transparent 36%);
   pointer-events: none;
+  mix-blend-mode: soft-light;
 }
 .persona-bg::after {
   content: "";
   position: absolute;
-  left: 34vw;
-  top: 0;
-  width: 42vw;
-  height: 100%;
-  transform: skewX(-24deg);
+  left: 30vw;
+  top: -8%;
+  z-index: 3;
+  width: 48vw;
+  height: 116%;
+  transform: skewX(-18deg);
   background: linear-gradient(
     180deg,
-    rgba(85, 247, 255, 0.1),
-    rgba(255, 78, 190, 0.07) 50%,
+    rgba(255, 255, 255, 0.16),
+    rgba(85, 247, 255, 0.14) 42%,
+    rgba(255, 78, 190, 0.08) 70%,
     transparent
   );
   mix-blend-mode: screen;
   pointer-events: none;
+  animation: introSlashSweep 9s ease-in-out infinite;
+  opacity: .55;
+}
+.bg-beam {
+  position: absolute;
+  z-index: 3;
+  inset: -10% auto -10% 18%;
+  width: 7vw;
+  background: linear-gradient(90deg, transparent, rgba(85, 247, 255, 0.45) 45%, rgba(255, 255, 255, 0.7) 50%, rgba(85, 247, 255, 0.4) 55%, transparent);
+  transform: skewX(-18deg);
+  mix-blend-mode: screen;
+  opacity: .55;
+  pointer-events: none;
+  animation: introScanCut 7.5s cubic-bezier(.78,0,.12,1) infinite;
+}
+.bg-beam-2 {
+  left: auto;
+  right: 22%;
+  width: 4vw;
+  opacity: .35;
+  animation-delay: -2.8s;
+  animation-duration: 9s;
 }
 .signal-slab {
   position: absolute;
+  z-index: 2;
   right: -8vw;
   bottom: -14vh;
   width: 52vw;
   height: 62vh;
   transform: rotate(-12deg);
-  background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(85,247,255,.55));
+  background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(85,247,255,.72));
   clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%);
-  opacity: .9;
-  box-shadow: 0 0 60px rgba(85, 247, 255, 0.25);
+  opacity: .88;
+  box-shadow: 0 0 80px rgba(85, 247, 255, 0.4);
 }
 .word {
   position: absolute;
-  z-index: 0;
+  z-index: 2;
   font-weight: 950;
   letter-spacing: .04em;
   line-height: .85;
   pointer-events: none;
   user-select: none;
   text-transform: uppercase;
-  opacity: .14;
+  opacity: .22;
   mix-blend-mode: screen;
 }
 .word-guide {
   right: 4vw;
   top: 5vh;
   font-size: clamp(4rem, 14vw, 18vw);
-  color: rgba(85, 247, 255, .55);
+  color: rgba(223, 252, 255, .7);
+  text-shadow: 0 0 40px rgba(85, 247, 255, 0.45);
   animation: drift 8s ease-in-out infinite;
 }
 .word-tartarus {
   left: -2vw;
   bottom: 3vh;
   font-size: clamp(3rem, 11vw, 14vw);
-  color: rgba(255, 78, 190, .35);
+  color: rgba(85, 247, 255, .4);
   animation: drift 9s ease-in-out infinite reverse;
 }
 .persona-bg i {
   position: absolute;
+  z-index: 4;
   width: 3rem;
   height: 1.3rem;
   background: var(--cyan);
-  opacity: .85;
+  opacity: .9;
   clip-path: polygon(14% 0, 100% 10%, 76% 100%, 0 78%);
   animation: shard 4s ease-in-out infinite;
   will-change: transform, opacity;
@@ -366,10 +415,10 @@ html.ui-settled .message-extra:not(.is-pending) > * {
   min-height: 0;
   overflow: auto;
   padding: 1.25rem;
-  border: 1px solid rgba(85, 247, 255, 0.28);
-  background: linear-gradient(180deg, rgba(10, 32, 110, 0.74), rgba(4, 12, 40, 0.8));
-  backdrop-filter: blur(18px);
-  box-shadow: 0 0 0 1px rgba(85, 247, 255, 0.08), 12px 0 40px rgba(0, 0, 0, 0.25), var(--glow);
+  border: 1px solid rgba(85, 247, 255, 0.35);
+  background: linear-gradient(180deg, rgba(12, 48, 140, 0.62), rgba(6, 20, 70, 0.68));
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 0 0 1px rgba(85, 247, 255, 0.1), 12px 0 40px rgba(0, 0, 0, 0.22), var(--glow);
   scroll-behavior: smooth;
 }
 .panel-head p, .eyebrow, .guide-head p, .side-panel h3, footer h3 {
@@ -490,12 +539,12 @@ html.ui-settled .message-extra:not(.is-pending) > * {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(85, 247, 255, 0.28);
+  border: 1px solid rgba(85, 247, 255, 0.35);
   background:
-    radial-gradient(circle at 12% 0, rgba(85, 247, 255, 0.14), transparent 42%),
-    linear-gradient(180deg, rgba(8, 28, 90, 0.52), rgba(4, 12, 40, 0.68));
-  backdrop-filter: blur(18px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--glow), 0 26px 80px rgba(0, 0, 0, 0.24);
+    radial-gradient(circle at 12% 0, rgba(85, 247, 255, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(8, 36, 110, 0.4), rgba(4, 16, 55, 0.55));
+  backdrop-filter: blur(12px) saturate(1.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), var(--glow), 0 26px 80px rgba(0, 0, 0, 0.22);
   contain: layout paint;
 }
 .chat-window::before {
@@ -3021,12 +3070,13 @@ footer span {
 
 .chat-window {
   border-radius: 1.1rem 1.1rem 0 0;
-  border-color: rgba(85, 247, 255, 0.3);
+  border-color: rgba(85, 247, 255, 0.38);
   background:
-    radial-gradient(circle at 14% 0, rgba(85, 247, 255, 0.14), transparent 40%),
-    radial-gradient(circle at 88% 100%, rgba(255, 78, 190, 0.08), transparent 42%),
-    linear-gradient(180deg, rgba(8, 28, 90, 0.55), rgba(4, 12, 40, 0.72));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), var(--glow);
+    radial-gradient(circle at 14% 0, rgba(85, 247, 255, 0.18), transparent 40%),
+    radial-gradient(circle at 88% 100%, rgba(255, 78, 190, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(8, 36, 110, 0.42), rgba(4, 16, 55, 0.58));
+  backdrop-filter: blur(10px) saturate(1.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), var(--glow);
 }
 .messages {
   padding: 1rem max(1rem, calc((100% - 48rem) / 2)) 1.25rem;
@@ -3545,6 +3595,165 @@ button.text-link {
 @keyframes talkBars {
   from { transform: scaleY(0.45); }
   to { transform: scaleY(1.2); }
+}
+
+/* Mic permission popup + listening chip */
+.mic-dialog {
+  width: min(92vw, 26rem);
+  margin: auto;
+  border: 1px solid rgba(85, 247, 255, 0.45);
+  border-radius: 1.1rem;
+  padding: 0;
+  background:
+    radial-gradient(circle at 20% 0, rgba(85, 247, 255, 0.22), transparent 50%),
+    linear-gradient(165deg, rgba(10, 36, 120, 0.98), rgba(4, 12, 40, 0.98));
+  color: #fff;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(85, 247, 255, 0.12), var(--glow);
+}
+.mic-dialog::backdrop {
+  background: rgba(2, 8, 32, 0.72);
+  backdrop-filter: blur(6px);
+}
+.mic-dialog form {
+  display: grid;
+  gap: .75rem;
+  padding: 1.35rem 1.4rem 1.25rem;
+  text-align: center;
+}
+.mic-dialog-icon {
+  width: 3.6rem;
+  height: 3.6rem;
+  margin: 0 auto .15rem;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #075cff;
+  background: linear-gradient(145deg, #e8f7ff, #b8dcff);
+  box-shadow: 0 0 0 4px rgba(85, 247, 255, 0.22), 0 10px 28px rgba(7, 92, 255, 0.28);
+}
+.mic-dialog-kicker {
+  margin: 0;
+  color: var(--cyan);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.mic-dialog h2 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 950;
+  letter-spacing: .02em;
+}
+.mic-dialog-copy {
+  margin: 0;
+  color: rgba(223, 252, 255, 0.86);
+  font-size: .92rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+.mic-dialog-copy strong {
+  color: #fff;
+  font-weight: 850;
+}
+.mic-dialog-status {
+  margin: 0;
+  padding: .55rem .7rem;
+  border-radius: .65rem;
+  border: 1px solid rgba(255, 120, 140, 0.4);
+  background: rgba(80, 10, 30, 0.45);
+  color: #ffd0d8;
+  font-size: .82rem;
+  font-weight: 750;
+}
+.mic-dialog-status[hidden] {
+  display: none !important;
+}
+.mic-dialog footer {
+  display: flex;
+  gap: .55rem;
+  justify-content: stretch;
+  margin-top: .35rem;
+}
+.mic-dialog footer button {
+  flex: 1;
+  border-radius: .75rem;
+  padding: .75rem .9rem;
+  font-size: .88rem;
+  font-weight: 850;
+}
+.mic-dialog-cancel {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(2, 7, 32, 0.45);
+  color: rgba(223, 252, 255, 0.9);
+}
+.mic-dialog-cancel:hover {
+  border-color: rgba(85, 247, 255, 0.4);
+  background: rgba(85, 247, 255, 0.1);
+}
+.mic-dialog-allow {
+  border: 0;
+  background: linear-gradient(135deg, #075cff, #2ad4ff);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(7, 92, 255, 0.35);
+}
+.mic-dialog-allow:hover {
+  filter: brightness(1.08);
+}
+.mic-dialog-allow:disabled {
+  opacity: .65;
+  cursor: wait;
+}
+
+.voice-listening-chip {
+  position: fixed;
+  z-index: 20;
+  left: 50%;
+  bottom: max(6.5rem, calc(env(safe-area-inset-bottom) + 5.5rem));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  padding: .55rem .7rem .55rem .85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(85, 247, 255, 0.5);
+  background: linear-gradient(135deg, rgba(7, 92, 255, 0.95), rgba(255, 78, 190, 0.88));
+  color: #fff;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), 0 0 0 3px rgba(85, 247, 255, 0.2);
+  font-size: .86rem;
+  font-weight: 850;
+}
+.voice-listening-chip[hidden] {
+  display: none !important;
+}
+.voice-listening-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 1rem;
+}
+.voice-listening-bars i {
+  display: block;
+  width: 3px;
+  height: 100%;
+  border-radius: 99px;
+  background: #fff;
+  animation: talkBars 0.55s ease-in-out infinite alternate;
+  transform-origin: center bottom;
+}
+.voice-listening-bars i:nth-child(2) { animation-delay: .12s; height: 70%; }
+.voice-listening-bars i:nth-child(3) { animation-delay: .24s; height: 90%; }
+.voice-listening-chip button {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.22);
+  color: #fff;
+  border-radius: 999px;
+  padding: .35rem .7rem;
+  font-size: .78rem;
+  font-weight: 850;
+}
+.voice-listening-chip button:hover {
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .message.user-message .bubble {

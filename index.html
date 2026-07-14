@@ -36,9 +36,15 @@
 
     <main class="app-shell">
       <div class="persona-bg" aria-hidden="true">
+        <video class="bg-video" autoplay muted loop playsinline preload="auto">
+          <source src="./assets/hero_loop%202.mp4" type="video/mp4" />
+          <source src="./assets/hero_loop.mp4" type="video/mp4" />
+        </video>
         <img class="bg-art bg-art-main" src="./assets/chat-blue-wide.jpeg" alt="" />
         <img class="bg-art bg-art-secondary" src="./assets/chat-equip.jpeg" alt="" />
         <img class="bg-art bg-art-config" src="./assets/chat-config.jpeg" alt="" />
+        <span class="bg-beam"></span>
+        <span class="bg-beam bg-beam-2"></span>
         <span class="signal-slab"></span>
         <span class="word word-guide">GUIDE</span>
         <span class="word word-tartarus">TARTARUS</span>
@@ -168,6 +174,33 @@
         </section>
       </section>
     </main>
+
+    <dialog class="mic-dialog" id="micPermissionDialog" aria-labelledby="micDialogTitle">
+      <form method="dialog" id="micPermissionForm">
+        <div class="mic-dialog-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="36" height="36" focusable="false">
+            <path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/>
+          </svg>
+        </div>
+        <p class="mic-dialog-kicker">Voice channel</p>
+        <h2 id="micDialogTitle">Enable microphone?</h2>
+        <p class="mic-dialog-copy">
+          SEES Navigator needs mic access to hear you. Your browser will ask for permission next —
+          choose <strong>Allow</strong> so speech can fill the message box.
+        </p>
+        <p class="mic-dialog-status" id="micDialogStatus" hidden></p>
+        <footer>
+          <button type="button" class="mic-dialog-cancel" id="micDialogCancel" value="cancel">Not now</button>
+          <button type="button" class="mic-dialog-allow" id="micDialogAllow" value="allow">Allow microphone</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="voice-listening-chip" id="voiceListeningChip" hidden>
+      <span class="voice-listening-bars" aria-hidden="true"><i></i><i></i><i></i></span>
+      <strong>Listening…</strong>
+      <button type="button" id="voiceListeningStop">Stop</button>
+    </div>
 
     <dialog class="memory-dialog" id="memoryDialog" aria-labelledby="memoryDialogTitle">
       <form method="dialog" id="memoryForm">
