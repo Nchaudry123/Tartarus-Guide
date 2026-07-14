@@ -7,7 +7,7 @@
       name="description"
       content="Tartarus Guide is a Persona 3 Reload inspired guide chatbot interface."
     />
-    <meta name="theme-color" content="#071440" />
+    <meta name="theme-color" content="#0a1f6e" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Tartarus" />
@@ -148,7 +148,16 @@
                 <textarea id="questionInput" rows="1" autocomplete="off" placeholder="Message SEES Navigator…"></textarea>
                 <div class="composer-meta">
                   <div class="composer-tools">
-                    <button type="button" id="voiceInputBtn" class="composer-tool-btn" aria-label="Voice input" title="Voice input" hidden>🎙</button>
+                    <button type="button" id="voiceInputBtn" class="composer-tool-btn" aria-label="Voice input" title="Voice input" hidden aria-pressed="false">
+                      <svg class="voice-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+                        <path class="voice-mic" fill="currentColor" d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/>
+                        <g class="voice-waves" fill="currentColor">
+                          <rect class="voice-bar voice-bar-1" x="1.5" y="8" width="2.2" height="8" rx="1.1"/>
+                          <rect class="voice-bar voice-bar-2" x="20.3" y="7" width="2.2" height="10" rx="1.1"/>
+                        </g>
+                      </svg>
+                      <span class="sr-only">Voice input</span>
+                    </button>
                     <span class="composer-hint">Enter to send · Shift+Enter newline · ⌘K new chat</span>
                   </div>
                   <button type="submit" aria-label="Send question">➜</button>
