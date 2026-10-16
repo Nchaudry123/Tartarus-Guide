@@ -2385,6 +2385,48 @@ function setMenu(open) {
 
 menuToggle.addEventListener("click", () => setMenu(!sidePanel.classList.contains("is-open")));
 
+// Focus mode (desktop): collapse the sidebar so the chat gets the full width.
+// Phones keep the slide-out menu above. Remembered per browser as a convenience only.
+const sidebarToggle = document.getElementById("sidebarToggle");
+const sidebarCollapsedKey = "tartarusSidebarCollapsedV1";
+
+function setSidebarCollapsed(collapsed, { persist = true } = {}) {
+  if (!appShell || !sidebarToggle) return;
+  appShell.classList.toggle("is-sidebar-collapsed", collapsed);
+  const label = collapsed ? "Show sidebar" : "Hide sidebar";
+  sidebarToggle.setAttribute("aria-expanded", String(!collapsed));
+  sidebarToggle.setAttribute("aria-label", label);
+  sidebarToggle.title = `${label} (${modKeyLabel}\\)`;
+  // Keep the hidden panel out of the tab order and away from screen readers.
+  if (!document.documentElement.classList.contains("is-mobile")) {
+    sidePanel.inert = collapsed;
+    sidePanel.setAttribute("aria-hidden", String(collapsed));
+  }
+  if (!persist) return;
+  try {
+    window.localStorage.setItem(sidebarCollapsedKey, collapsed ? "1" : "0");
+  } catch {
+    // Storage can be unavailable (private mode); the toggle still works for this visit.
+  }
+}
+
+function toggleSidebar() {
+  if (document.documentElement.classList.contains("is-mobile")) {
+    setMenu(!sidePanel.classList.contains("is-open"));
+    return;
+  }
+  setSidebarCollapsed(!appShell.classList.contains("is-sidebar-collapsed"));
+}
+
+sidebarToggle?.addEventListener("click", toggleSidebar);
+try {
+  if (window.localStorage.getItem(sidebarCollapsedKey) === "1" && !document.documentElement.classList.contains("is-mobile")) {
+    setSidebarCollapsed(true, { persist: false });
+  }
+} catch {
+  // Ignore unavailable storage; the sidebar simply starts open.
+}
+
 function skipEntranceIfReturning() {
   // Only skip the splash when there's an existing conversation to resume.
   // Fresh visits (and smoke tests) still get the entrance, which keeps
@@ -2566,6 +2608,11 @@ document.addEventListener("keydown", (event) => {
   if (mod && key === "/") {
     event.preventDefault();
     focusComposer();
+    return;
+  }
+  if (mod && key === "\\") {
+    event.preventDefault();
+    toggleSidebar();
     return;
   }
   if (mod && key === "e" && !event.shiftKey) {
