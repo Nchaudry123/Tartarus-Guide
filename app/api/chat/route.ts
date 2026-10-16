@@ -1345,7 +1345,13 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     "confused",
   ];
   const isShort = text.split(/\s+/).filter(Boolean).length <= 6;
-  const isAmbiguous = vagueSignals.some((signal) => text.includes(signal)) || (intent === "General Discussion" && isShort);
+  // A short message that names something concrete ("lol junpei keeps dying") is not vague.
+  const namesGameSubject =
+    partyMembers.some((member) => new RegExp(`\\b${member}\\b`, "i").test(question)) ||
+    /\b(?:tartarus|floor|block|boss|shadow|persona|fuse|fusion|social link|s-?link|level|theurgy|request)\b/i.test(question);
+  const isAmbiguous =
+    vagueSignals.some((signal) => text.includes(signal)) ||
+    (intent === "General Discussion" && isShort && !namesGameSubject);
   const followUpQuestions: string[] = [];
   const namedPartyMembers = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
   const isNamedPartyComparison =
@@ -1404,7 +1410,7 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
       mergedProfile.playstyle,
   );
   if (isAmbiguous && followUpQuestions.length === 0 && !hasKnownSituation) {
-    followUpQuestions.push("Are you stuck on a boss, party setup, Social Link, request, or Tartarus route?");
+    followUpQuestions.push("What's giving you trouble right now?");
   }
 
   const profileHints = [

@@ -78,7 +78,7 @@ function responseText(value: {
 
 // "Give Junpei a Persona..." / "give him a better Persona": party members can't switch Personas.
 const personaForMemberPattern =
-  /\b(?:give|equip|swap|switch|change|fuse)\b.{0,25}\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|him|her)(?:'s)?\b.{0,30}\bPersona\b/i;
+  /\b(?:give|giving|gave|equip|equipping|swap|swapping|switch|switching|change|changing|fuse|fusing)\b.{0,25}\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|him|her)(?:'s)?\b.{0,30}\bPersona\b/i;
 const battleRowPattern =
   /\b(?:back|front)\s+(?:row|line)\b|\b(?:in|to|into|at)\s+(?:the\s+)?back\b(?!\s+(?:of|to|on|up|home))|\b(?:put|putting|move|moving|keep|keeping|swap|swapping)\b.{0,25}\bin back\b/i;
 
