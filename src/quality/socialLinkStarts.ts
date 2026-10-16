@@ -250,6 +250,28 @@ function normalize(value: string): string {
     .trim();
 }
 
+const fullMoonBossArcana = "priestess|emperor|empress|hierophant|lovers?|chariot|justice|hermit|fortune|strength|hanged\\s+man";
+const bossArcanaPair = `(?:the\\s+)?(?:${fullMoonBossArcana})(?:\\s*(?:and|&|\\/)\\s*(?:the\\s+)?(?:${fullMoonBossArcana}))?`;
+
+/**
+ * Removes mentions that share a word with a Social Link alias but are not about the link:
+ * moon phases ("the June full moon" is not Nozomi's Moon link), full-moon bosses named after
+ * arcana ("the Emperor and Empress fight"), and "the tower" as a name for Tartarus.
+ */
+export function withoutNonLinkArcanaMentions(text: string): string {
+  return text
+    .replace(/\b(?:full|new)[\s-]+moons?\b/gi, " ")
+    .replace(
+      new RegExp(`\\b(?:beat|beating|fight|fighting|against|defeat|defeating|face|facing)\\s+${bossArcanaPair}\\b`, "gi"),
+      " ",
+    )
+    .replace(
+      new RegExp(`\\b${bossArcanaPair}\\s+(?:boss(?:es)?|fights?|battles?|operations?|shadows?)\\b`, "gi"),
+      " ",
+    )
+    .replace(/\bthe\s+tower\b(?!\s+(?:social\s+links?|s-?links?|links?|arcana))/gi, " ");
+}
+
 function includesAlias(question: string, alias: string): boolean {
   const normalizedQuestion = ` ${normalize(question)} `;
   return normalizedQuestion.includes(` ${normalize(alias)} `);
@@ -295,8 +317,9 @@ export function socialLinkStartForQuestion(question: string): SocialLinkStart | 
     if (dateMatches.length === 1) return dateMatches[0];
   }
 
+  const linkText = withoutNonLinkArcanaMentions(question);
   for (const record of socialLinkStarts) {
-    const matchedAlias = record.aliases.find((alias) => includesAlias(question, alias));
+    const matchedAlias = record.aliases.find((alias) => includesAlias(linkText, alias));
     if (!matchedAlias) continue;
 
     const characterAlias =
@@ -345,8 +368,9 @@ export function socialLinkStartContradictions(response: {
   tables?: Array<{ title: string; columns: string[]; rows: string[][] }>;
 }): string[] {
   const text = responseText(response);
+  const linkText = withoutNonLinkArcanaMentions(text);
   const matchedRecords = socialLinkStarts.filter((record) =>
-    record.aliases.some((alias) => includesAlias(text, alias)),
+    record.aliases.some((alias) => includesAlias(linkText, alias)),
   );
   if (matchedRecords.length !== 1) return [];
 
