@@ -4887,7 +4887,7 @@ async function directRagResponse(
   }
 
   // Dynamic so mock/local mode can load without Supabase/chat credentials at module init.
-  const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
+  const [{ buildPlannedContext }, { createChatCompletion, config: chatConfig }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
   ]);
@@ -5372,7 +5372,7 @@ Your previous draft contained an affinity element that is not present in the str
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "affinity-correction" },
+        { jsonObject: true, timingLabel: "affinity-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5393,7 +5393,7 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "named-claim-correction" },
+        { jsonObject: true, timingLabel: "named-claim-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5413,7 +5413,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "relationship-correction" },
+        { jsonObject: true, timingLabel: "relationship-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5460,7 +5460,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "party-correction" },
+        { jsonObject: true, timingLabel: "party-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),

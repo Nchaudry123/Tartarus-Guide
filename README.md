@@ -86,6 +86,9 @@ Fill in:
 - `RAW_CACHE_DIR`
 - `RAG_CHAT_ENDPOINT` optional, for a deployed RAG chat API that accepts `POST { question, conversationId }`
 - `USE_MOCK_CHAT=true` optional, to force mock responses in the Next API route
+- `CORRECTION_CHAT_MODEL` optional, a faster model for the guardrail "correction" regeneration calls (defaults to `CHAT_MODEL`)
+- `CHAT_TIMING=true` optional, logs one `[chat-timing]` line per request with stage durations (labels and timings only)
+- `CRON_SECRET` optional locally, required in production: bearer token for `/api/health`
 
 Use a real contact in `INGEST_USER_AGENT` if this will run outside local development.
 
@@ -416,6 +419,25 @@ Good answers should:
 - Include source URLs.
 - Avoid unsupported exact weaknesses, deadlines, fusions, and boss advice.
 - Clearly say when the database does not have enough information.
+
+## Latency
+
+Set `CHAT_TIMING=true` (for example in Vercel's Production environment for a few days)
+to log one line per chat request:
+
+```text
+[chat-timing] {"intent":"Boss Help","totalMs":15897,"llmCalls":2,"llmMs":14869,"embeddingCalls":3,"spans":[...]}
+```
+
+Spans cover each LLM call (labelled `controller`, `answer`, `*-correction`, with prompt
+size), embeddings, fact and chunk searches, live-guide fetches, and 429 retries. Debug
+requests also return the same summary under `diagnostics.latency`.
+
+LLM calls dominate (6-13 s each; retrieval is about 0.5 s and already parallel). The
+named-claim, affinity, relationship and party guardrails regenerate a flagged draft with a
+second full-size call. To try a faster model for those calls only, set
+`CORRECTION_CHAT_MODEL` and run `npm run eval:gate` before and after to confirm accuracy
+holds.
 
 ## Typecheck
 
