@@ -50,10 +50,10 @@ test("casual replies drop sentences that break party rules", async () => {
 
 test("catches battle-row advice in its common phrasings", async () => {
   const { breaksPartyRules } = await import("./partyRoles");
-  for (const text of ["Try swapping him to the back for a floor.", "I'll try putting Junpei in back", "Keep Yukari in the back row", "Move Akihiko to the front line"]) {
+  for (const text of ["What Persona should Akihiko use?", "Try swapping him to the back for a floor.", "I'll try putting Junpei in back", "Keep Yukari in the back row", "Move Akihiko to the front line"]) {
     assert.equal(breaksPartyRules(text), true, text);
   }
-  for (const text of ["Head back to the dorm to recover SP.", "Come back to Tartarus tomorrow.", "Watch your back on floor 18.", "Get back to me when you've fused it."]) {
+  for (const text of ["Head back to the dorm to recover SP.", "Come back to Tartarus tomorrow.", "Watch your back on floor 18.", "Get back to me when you've fused it.", "What Persona should I fuse next?"]) {
     assert.equal(breaksPartyRules(text), false, text);
   }
 });

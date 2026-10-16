@@ -83,8 +83,11 @@ const battleRowPattern =
   /\b(?:back|front)\s+(?:row|line)\b|\b(?:in|to|into|at)\s+(?:the\s+)?back\b(?!\s+(?:of|to|on|up|home))|\b(?:put|putting|move|moving|keep|keeping|swap|swapping)\b.{0,25}\bin back\b/i;
 
 /** True when a short chip or sentence breaks party rules (Persona swaps, battle rows). */
+// "What Persona should Akihiko use?" — same rule, phrased as a question.
+const personaQuestionPattern = /\b(?:which|what)\s+Persona\s+should\s+(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|he|she)\s+(?:use|equip|have|run)\b/i;
+
 export function breaksPartyRules(text: string): boolean {
-  return personaForMemberPattern.test(text) || battleRowPattern.test(text);
+  return personaForMemberPattern.test(text) || personaQuestionPattern.test(text) || battleRowPattern.test(text);
 }
 
 /**
