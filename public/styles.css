@@ -4095,6 +4095,15 @@ footer span {
   z-index: -1;
   border-radius: 1rem;
   background: linear-gradient(90deg, rgba(4, 26, 92, 0.5), rgba(4, 26, 92, 0.28) 60%, transparent);
+  /* Feather the edges so the scrim reads as shade, not a box. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0, #000 1rem),
+    linear-gradient(180deg, transparent 0, #000 0.4rem, #000 calc(100% - 0.4rem), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 0, #000 1rem),
+    linear-gradient(180deg, transparent 0, #000 0.4rem, #000 calc(100% - 0.4rem), transparent 100%);
+  mask-composite: intersect;
   pointer-events: none;
 }
 .subtitle,
