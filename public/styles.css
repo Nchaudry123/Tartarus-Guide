@@ -242,139 +242,133 @@ html.ui-settled .message-extra:not(.is-pending) > * {
   filter: none !important;
 }
 
-/* ===== Intro-matched Sea of Souls field (CSS only — no hero_loop) ===== */
+/* ===== Velvet Room field =====
+   The intro's Sea of Souls art (chat-blue-wide) seen from inside the Velvet Room: deep velvet
+   indigo vignette, drapes at the edges, an ascending-elevator light sweep, and the room's clock
+   dial turning slowly. Everything sits behind the UI and stays dark enough for AA text. */
 .persona-bg {
   position: fixed;
   inset: 0;
   z-index: -1;
   overflow: hidden;
-  background: #075cff;
+  background: #050b2e;
 }
-.water-field {
+.velvet-room {
   position: absolute;
   inset: 0;
   overflow: hidden;
 }
-.water-base {
+.velvet-room > span {
   position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 90% 70% at 18% 22%, rgba(223, 252, 255, 0.55), transparent 52%),
-    radial-gradient(ellipse 70% 60% at 78% 18%, rgba(85, 247, 255, 0.45), transparent 48%),
-    radial-gradient(ellipse 80% 50% at 50% 100%, rgba(4, 26, 92, 0.55), transparent 55%),
-    linear-gradient(155deg, #4db8ff 0%, #1a6bff 28%, #075cff 58%, #041a5c 100%);
-}
-.water-caustic {
-  position: absolute;
-  inset: -20%;
-  opacity: .55;
-  mix-blend-mode: screen;
-  pointer-events: none;
-  will-change: transform, opacity;
-}
-.water-caustic-1 {
-  background:
-    radial-gradient(ellipse 28% 18% at 20% 30%, rgba(255, 255, 255, 0.55), transparent 60%),
-    radial-gradient(ellipse 22% 16% at 55% 45%, rgba(85, 247, 255, 0.5), transparent 62%),
-    radial-gradient(ellipse 30% 20% at 78% 28%, rgba(255, 255, 255, 0.4), transparent 60%),
-    radial-gradient(ellipse 24% 14% at 40% 70%, rgba(85, 247, 255, 0.42), transparent 62%),
-    radial-gradient(ellipse 26% 18% at 70% 75%, rgba(223, 252, 255, 0.35), transparent 60%);
-  animation: waterCausticA 11s ease-in-out infinite;
-}
-.water-caustic-2 {
-  opacity: .4;
-  background:
-    radial-gradient(ellipse 20% 14% at 30% 55%, rgba(85, 247, 255, 0.55), transparent 60%),
-    radial-gradient(ellipse 26% 16% at 62% 22%, rgba(255, 255, 255, 0.38), transparent 58%),
-    radial-gradient(ellipse 22% 18% at 85% 60%, rgba(85, 247, 255, 0.4), transparent 60%),
-    radial-gradient(ellipse 28% 12% at 12% 80%, rgba(223, 252, 255, 0.32), transparent 58%);
-  animation: waterCausticB 14s ease-in-out infinite;
-}
-.water-rays {
-  position: absolute;
-  inset: -10% 0 auto;
-  height: 75%;
-  background:
-    linear-gradient(105deg, transparent 0 32%, rgba(255, 255, 255, 0.14) 36%, transparent 40%),
-    linear-gradient(118deg, transparent 0 48%, rgba(85, 247, 255, 0.18) 52%, transparent 56%),
-    linear-gradient(95deg, transparent 0 62%, rgba(255, 255, 255, 0.1) 66%, transparent 72%);
-  mix-blend-mode: screen;
-  opacity: .7;
-  animation: waterRays 9s ease-in-out infinite;
   pointer-events: none;
 }
-.water-scan {
-  position: absolute;
+.velvet-art {
+  inset: -3%;
+  background: url("./assets/chat-blue-wide.jpeg") 82% 30% / cover no-repeat;
+  filter: saturate(1.1) brightness(.95);
+  animation: velvetBreath 18s ease-in-out infinite;
+  will-change: transform;
+}
+.velvet-tint {
   inset: 0;
+  background:
+    radial-gradient(ellipse 75% 70% at 66% 30%, transparent 0, rgba(5, 11, 46, 0.18) 55%, rgba(3, 6, 30, 0.78) 100%),
+    linear-gradient(180deg, rgba(11, 22, 92, 0.04) 0, rgba(8, 18, 80, 0.32) 45%, rgba(3, 6, 30, 0.8) 100%);
+}
+.velvet-lift {
+  inset: -40% 0 0;
   background: repeating-linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.055) 0 1px,
-    transparent 1px 5px
+    transparent 0 14vh,
+    rgba(85, 247, 255, 0.07) 14vh calc(14vh + 2px),
+    transparent calc(14vh + 2px) 22vh,
+    rgba(223, 252, 255, 0.05) 22vh calc(22vh + 1px),
+    transparent calc(22vh + 1px) 30vh
   );
-  mix-blend-mode: soft-light;
+  mix-blend-mode: screen;
+  animation: velvetAscend 14s linear infinite;
+  will-change: transform;
+}
+.velvet-curtain {
+  top: 0;
+  bottom: 0;
+  width: 11vw;
+  min-width: 4rem;
+  /* Soft velvet folds: wide, low-contrast bands that fade toward the room. */
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(4, 9, 42, 0.9) 0,
+    rgba(16, 32, 112, 0.7) 1.6rem,
+    rgba(4, 9, 42, 0.9) 3.4rem
+  );
+  filter: blur(2px);
+  -webkit-mask-image: linear-gradient(90deg, #000 15%, transparent);
+  mask-image: linear-gradient(90deg, #000 15%, transparent);
+  opacity: .6;
+}
+.velvet-curtain-left { left: 0; }
+.velvet-curtain-right {
+  right: 0;
+  transform: scaleX(-1);
+}
+.velvet-dial {
+  left: -14vmin;
+  bottom: -22vmin;
+  width: 62vmin;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid rgba(85, 247, 255, 0.22);
+  background: radial-gradient(
+    circle,
+    rgba(85, 247, 255, 0.18) 0 1.2%,
+    transparent 1.6% 46%,
+    rgba(85, 247, 255, 0.16) 46.4% 47%,
+    transparent 47.4% 62%,
+    rgba(223, 252, 255, 0.12) 62.3% 62.8%,
+    transparent 63.2%
+  );
   opacity: .55;
-  pointer-events: none;
-  animation: scanlineFade 6s ease-in-out infinite alternate;
+  animation: velvetDial 120s linear infinite;
+  will-change: transform;
 }
-.water-slash {
+/* Clock ticks on the outer ring only. */
+.velvet-dial::before {
+  content: "";
   position: absolute;
-  left: 28vw;
-  top: -12%;
-  width: 42vw;
-  height: 124%;
-  transform: skewX(-16deg);
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.22),
-    rgba(85, 247, 255, 0.16) 45%,
-    transparent 78%
-  );
-  mix-blend-mode: screen;
-  opacity: .45;
-  pointer-events: none;
-  animation: introSlashSweep 10s ease-in-out infinite;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(223, 252, 255, 0.4) 0 0.6deg, transparent 0.6deg 6deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 0 64%, #000 64.5% 70%, transparent 70.5%);
+  mask-image: radial-gradient(circle, transparent 0 64%, #000 64.5% 70%, transparent 70.5%);
 }
-.water-surface {
+/* A single hand, like the Velvet Room clock. */
+.velvet-dial::after {
+  content: "";
   position: absolute;
-  left: -8%;
-  top: -5%;
-  width: 46%;
-  height: 70%;
-  background:
-    radial-gradient(ellipse 80% 70% at 30% 30%, rgba(255, 255, 255, 0.42), transparent 68%),
-    linear-gradient(120deg, rgba(255, 255, 255, 0.18), transparent 55%);
-  mix-blend-mode: screen;
-  opacity: .85;
-  pointer-events: none;
-  filter: blur(0.5px);
+  left: 50%;
+  top: 14%;
+  width: 2px;
+  height: 36%;
+  background: linear-gradient(180deg, rgba(223, 252, 255, 0.5), rgba(85, 247, 255, 0.1));
+  transform: translateX(-50%);
 }
-@keyframes waterCausticA {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .5; }
-  50% { transform: translate3d(3%, -2%, 0) scale(1.06); opacity: .7; }
+.velvet-scan {
+  inset: 0;
+  background: repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0 1px, transparent 1px 4px);
+  mix-blend-mode: soft-light;
 }
-@keyframes waterCausticB {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1.04); opacity: .35; }
-  50% { transform: translate3d(-4%, 3%, 0) scale(1); opacity: .55; }
+@keyframes velvetBreath {
+  0%, 100% { transform: scale(1) translate3d(0, 0, 0); }
+  50% { transform: scale(1.03) translate3d(-0.6%, -0.8%, 0); }
 }
-@keyframes waterRays {
-  0%, 100% { transform: translateX(0) skewX(-2deg); opacity: .55; }
-  50% { transform: translateX(2%) skewX(1deg); opacity: .8; }
+@keyframes velvetAscend {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 30vh, 0); }
+}
+@keyframes velvetDial {
+  to { transform: rotate(360deg); }
 }
 
-.signal-slab {
-  position: absolute;
-  z-index: 2;
-  right: -8vw;
-  bottom: -14vh;
-  width: 52vw;
-  height: 62vh;
-  transform: rotate(-12deg);
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.95), rgba(85, 247, 255, 0.75));
-  clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%);
-  opacity: .72;
-  box-shadow: 0 0 80px rgba(85, 247, 255, 0.45);
-  mix-blend-mode: screen;
-}
 .word {
   position: absolute;
   z-index: 2;
@@ -2405,13 +2399,6 @@ footer span {
   opacity: .75;
 }
 
-:root.is-mobile .signal-slab {
-  right: -22vw;
-  bottom: -10vh;
-  width: 78vw;
-  height: 48vh;
-  opacity: .72;
-}
 
 :root.is-mobile .menu-toggle {
   top: max(.65rem, env(safe-area-inset-top));
@@ -3820,11 +3807,9 @@ button.text-link {
 @media (prefers-reduced-motion: reduce) {
   .composer-tool-btn.is-listening,
   .composer-tool-btn.is-listening .voice-bar,
-  .water-caustic-1,
-  .water-caustic-2,
-  .water-rays,
-  .water-slash,
-  .water-scan {
+  .velvet-art,
+  .velvet-lift,
+  .velvet-dial {
     animation: none !important;
   }
   .empty-quick button:hover,
@@ -4169,4 +4154,35 @@ footer span {
 /* Fusion ingredients not saved in Player Memory: neutral mark, not a warning. */
 .fusion-recipe-card li.is-ingredient .fusion-owned-mark {
   color: rgba(223, 252, 255, 0.78);
+}
+
+/* Velvet Room butterflies (the floating shards, reshaped). */
+.persona-bg i {
+  width: 1.7rem;
+  height: 1.3rem;
+  opacity: .7;
+  clip-path: polygon(50% 34%, 60% 6%, 90% 0, 100% 22%, 84% 48%, 96% 72%, 78% 98%, 56% 80%, 50% 62%, 44% 80%, 22% 98%, 4% 72%, 16% 48%, 0 22%, 10% 0, 40% 6%);
+  animation: shard 7s ease-in-out infinite, velvetFlutter .9s ease-in-out infinite alternate;
+}
+@keyframes velvetFlutter {
+  from { scale: 1 1; }
+  to { scale: .45 1; }
+}
+
+/* The body's own gradient painted above the fixed z-index:-1 .persona-bg (block backgrounds
+   paint after negative stacking layers), hiding the whole background scene. The html
+   gradient remains as the fallback colour. */
+body {
+  background: transparent;
+}
+
+/* Background words: a faint echo of the intro type, kept off the protagonist art. */
+.persona-bg .word { opacity: .07; }
+.persona-bg .word-guide { right: auto; left: 18vw; top: 4vh; }
+.persona-bg .word-guide,
+.persona-bg .word-tartarus {
+  animation-name: velvetWordDrift;
+}
+@keyframes velvetWordDrift {
+  50% { transform: translateX(18px); }
 }
