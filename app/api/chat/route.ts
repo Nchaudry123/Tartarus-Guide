@@ -1345,7 +1345,13 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
     "confused",
   ];
   const isShort = text.split(/\s+/).filter(Boolean).length <= 6;
-  const isAmbiguous = vagueSignals.some((signal) => text.includes(signal)) || (intent === "General Discussion" && isShort);
+  // A short message that names something concrete ("lol junpei keeps dying") is not vague.
+  const namesGameSubject =
+    partyMembers.some((member) => new RegExp(`\\b${member}\\b`, "i").test(question)) ||
+    /\b(?:tartarus|floor|block|boss|shadow|persona|fuse|fusion|social link|s-?link|level|theurgy|request)\b/i.test(question);
+  const isAmbiguous =
+    vagueSignals.some((signal) => text.includes(signal)) ||
+    (intent === "General Discussion" && isShort && !namesGameSubject);
   const followUpQuestions: string[] = [];
   const namedPartyMembers = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
   const isNamedPartyComparison =
@@ -1404,7 +1410,7 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
       mergedProfile.playstyle,
   );
   if (isAmbiguous && followUpQuestions.length === 0 && !hasKnownSituation) {
-    followUpQuestions.push("Are you stuck on a boss, party setup, Social Link, request, or Tartarus route?");
+    followUpQuestions.push("What's giving you trouble right now?");
   }
 
   const profileHints = [
@@ -4351,7 +4357,10 @@ Routing rules:
 - Do not search for generic words alone. Preserve exact enemy, boss, Persona, Social Link, request, floor, item, and date names from the user.
 - For exact affinities, include one query with the exact entity plus "weakness resistance affinity".
 - For bosses, include the exact boss plus "mechanics strategy recommended party", and a second query for any named phase or attack.
-- suggestedPrompts must be optional first-person user replies, never assistant questions. Good: "I'm stuck on Priestess", "My party is Yukari and Junpei", "I'm level 18". Bad: "Which boss are you fighting?", "Name the blocker".`;
+- suggestedPrompts must be optional first-person user replies, never assistant questions. Good: "I'm stuck on Priestess", "My party is Yukari and Junpei", "I'm level 18". Bad: "Which boss are you fighting?", "Name the blocker".
+- Any tip you put in "answer" must follow the party facts below.
+
+${partyRoleFactsForPrompt()}`;
 
   const userPrompt = `User message: ${question}
 
@@ -4359,6 +4368,7 @@ Heuristic intent hint: ${analysis.intent}
 Heuristic ambiguity hint: ${analysis.isAmbiguous}
 Known player profile: ${JSON.stringify(profile)}
 Already known (never ask for these again): ${knownFactsSummary(profile) || "Nothing yet."}
+${progressFactsForPrompt(profile, question)}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 
@@ -5704,8 +5714,20 @@ async function resolveChatRequestUntimed(
 }
 
 function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
-  // One question per turn at most; later stacked questions or option menus are dropped.
-  const response = draft.answer ? { ...draft, answer: limitQuestions(draft.answer) } : draft;
+  // Final pass for every reply path: one question at most, no sentences or chips that break
+  // party rules (Persona swaps for party members, battle rows).
+  const response = draft.answer
+    ? {
+        ...draft,
+        answer: withoutPartyRuleViolations(limitQuestions(draft.answer)),
+        companion: draft.companion
+          ? {
+              ...draft.companion,
+              suggestedPrompts: draft.companion.suggestedPrompts?.filter((prompt) => !breaksPartyRules(prompt)),
+            }
+          : draft.companion,
+      }
+    : draft;
   const companion = response.companion;
   const needsDetail = Boolean(
     response.missingInfo &&
