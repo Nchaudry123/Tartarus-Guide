@@ -1034,6 +1034,11 @@ function uniquePrompts(prompts) {
 function contextualSuggestedPrompts(response) {
   // Prefer server intent-first chips; only fill gaps by intent (never scan answer for "Persona").
   const prompts = [...(response.companion?.suggestedPrompts || [])];
+  const serverPrompts = uniquePrompts(
+    prompts.filter((prompt) => !/player memory|rephrase|focused question|needs detail|one more detail/i.test(prompt)),
+  );
+  // Chips written for this exact reply beat the canned per-topic lists below.
+  if (serverPrompts.length >= 2) return serverPrompts;
   const intent = response.companion?.intent || "";
   const missing = String(response.missing || "").toLowerCase();
   const needs = needsMoreDetail(response);

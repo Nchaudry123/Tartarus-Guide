@@ -154,6 +154,8 @@ export function expertSuggestedPrompts(options: {
   });
 
   const prompts: string[] = [...server];
+  // Chips written for this exact reply (or by the controller) beat canned topic chips.
+  if (uniquePrompts(server).length >= 2) return uniquePrompts(server);
 
   if (topic === "fusion" || options.fusionTarget) {
     if (options.fusionTarget) {
@@ -203,7 +205,7 @@ export function expertSuggestedPrompts(options: {
       "Any exams coming up?",
     );
   } else if (topic === "team") {
-    prompts.push("I'm level 24 with Yukari and Junpei", "We're running out of SP", "Who should I replace?");
+    prompts.push("My party keeps getting wiped", "We're running out of SP", "Who should I replace?");
   } else if (options.needsDetail) {
     prompts.push("I'm stuck on a boss", "Help me fuse a Persona", "Which Social Links should I prioritize?");
   } else if (options.hasSources) {
