@@ -32,6 +32,8 @@ export const config = {
   chatBaseUrl: process.env.CHAT_BASE_URL ?? "https://api.groq.com/openai/v1",
   chatApiKey: required("CHAT_API_KEY"),
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
+  // Optional faster model for regenerate-after-guardrail "correction" calls. Unset = chatModel.
+  correctionChatModel: process.env.CORRECTION_CHAT_MODEL?.trim() || undefined,
   chatAppUrl: process.env.CHAT_APP_URL,
   chatAppName: process.env.CHAT_APP_NAME ?? "Tartarus Guide",
   factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "qwen/qwen3-32b",
