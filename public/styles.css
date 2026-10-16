@@ -4156,3 +4156,8 @@ footer span {
   color: #4f5d7a;
   opacity: 1;
 }
+
+/* Fusion ingredients not saved in Player Memory: neutral mark, not a warning. */
+.fusion-recipe-card li.is-ingredient .fusion-owned-mark {
+  color: rgba(223, 252, 255, 0.78);
+}

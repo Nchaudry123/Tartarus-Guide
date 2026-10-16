@@ -27,7 +27,10 @@ export type BossPrepCard = {
 
 export type FusionIngredient = {
   name: string;
+  /** Saved in Player Memory or explicitly stated by the player in this conversation. */
   owned: boolean;
+  /** Saved in the player's own Player Memory (request ownedPersonas). Drives the "In Player Memory" label. */
+  inPlayerMemory?: boolean;
 };
 
 export type FusionRecipeCard = {
