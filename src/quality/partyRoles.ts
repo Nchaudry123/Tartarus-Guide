@@ -54,6 +54,9 @@ export function partyRoleFactsForPrompt(): string {
     "- Fuuka is not a selectable frontline combatant and does not consume one of the three combat-party slots beside the protagonist.",
     "- Never frame party building as choosing Fuuka or a combat member. Aigis and every other selectable fighter compete only for frontline slots.",
     "- Describe a battle team as the protagonist plus three selectable combat members, with Fuuka supporting the team separately as navigator.",
+    "- Only the protagonist (the Wild Card) can switch, fuse or equip different Personas. Every party member has one fixed Persona that evolves through the story; never suggest giving a party member a different Persona or fusing one for them.",
+    "- To help a struggling party member, use their level, weapons, armor and accessories, healing and buffs (Dia, Rakukaja), Guard, tactics commands, or swapping them out for another joined member.",
+    "- Battles have no front or back row and no formation; never suggest positioning a character.",
   ].join("\n");
 }
 
@@ -73,6 +76,22 @@ function responseText(value: {
   ].join(" ");
 }
 
+// "Give Junpei a Persona..." / "give him a better Persona": party members can't switch Personas.
+const personaForMemberPattern =
+  /\b(?:give|equip|swap|switch|change|fuse)\b.{0,25}\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|him|her)(?:'s)?\b.{0,30}\bPersona\b/i;
+const battleRowPattern = /\b(?:back|front)\s+row\b|\bin the back\b(?!\s+of)/i;
+
+/**
+ * Removes sentences that break party rules (giving a party member a Persona, battle rows).
+ * For reply paths without a regenerate step, such as casual chat.
+ */
+export function withoutPartyRuleViolations(text: string): string {
+  const kept = text
+    .split(/(?<=[.!?])\s+/)
+    .filter((sentence) => !personaForMemberPattern.test(sentence) && !battleRowPattern.test(sentence));
+  return kept.length ? kept.join(" ") : text;
+}
+
 export function partyRoleContradictions(response: {
   answer: string;
   sections?: Array<{ title: string; content: string }>;
@@ -89,6 +108,14 @@ export function partyRoleContradictions(response: {
   }
   if (/\bFuuka\b.{0,60}\b(?:frontline|active party|combat slot|fighter|physical attacker|magic attacker|healer slot)\b/i.test(text)) {
     contradictions.push("Fuuka is not a selectable frontline combatant.");
+  }
+
+  if (personaForMemberPattern.test(text) ||
+      /\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro)(?:'s)?\s+(?:new |different )?Persona\s+(?:to|for|with)\b.{0,40}\b(?:resist|null|block)/i.test(text)) {
+    contradictions.push("Party members have one fixed Persona; only the protagonist can switch or fuse Personas.");
+  }
+  if (battleRowPattern.test(text)) {
+    contradictions.push("Persona 3 Reload battles have no front or back row.");
   }
 
   return [...new Set(contradictions)];

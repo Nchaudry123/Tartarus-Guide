@@ -64,6 +64,7 @@ import {
   getProgressSnapshot,
 } from "../../../src/quality/progressTimeline";
 import {
+  withoutPartyRuleViolations,
   statedCombatParty,
   combatPartyMembers,
   normalizeCombatParty,
@@ -1502,7 +1503,9 @@ Rules:
 - Ask at most one question in the whole reply, only when it genuinely helps, and never offer a menu of options ("Tartarus, bosses, Social Links, or something else?").
 - If the player is venting or joking, react like a friend first (empathy or a light joke), then offer one concrete, encouraging tip if it fits.
 - Leave "sections" empty. Small talk is one chat message.
-- Only mention party members the player has already met at their point in the game; when unsure, stick to Yukari and Junpei or the player's own party.`;
+- Only mention party members the player has already met at their point in the game; when unsure, stick to Yukari and Junpei or the player's own party.
+
+${partyRoleFactsForPrompt()}`;
 
   const userPrompt = `User message: ${question}
 Known player profile: ${JSON.stringify(profile)}
@@ -1536,7 +1539,11 @@ Answer naturally like a chat assistant, not a report.`;
       followUpQuestions: [],
       suggestedPrompts: [],
     });
-    return withMode({ ...normalized, sources: [] }, "rag");
+    // Casual chat has no regenerate step, so drop sentences that break party rules.
+    return withMode(
+      { ...normalized, answer: withoutPartyRuleViolations(normalized.answer), sources: [] },
+      "rag",
+    );
   } catch (error) {
     console.error("Casual chat completion failed.");
     return casualFallbackResponse(question, profileUpdates);

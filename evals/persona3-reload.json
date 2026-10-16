@@ -1983,7 +1983,7 @@
     "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "14", "activeParty": ["Yukari", "Junpei"], "tartarusFloor": "18F"},
     "mustIncludeAll": ["Junpei"],
     "mustIncludeAny": ["heal", "Dia", "guard", "resist", "weak", "level", "item", "Persona", "protect"],
-    "mustNotInclude": ["Aigis", "I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"],
+    "mustNotInclude": ["Aigis", "I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "give him a Persona", "give Junpei a Persona", "in the back", "back row"],
     "maxQuestions": 1,
     "maxSections": 1,
     "maxOverlapWithPrevious": 0.35
@@ -1996,7 +1996,7 @@
     "history": [{"role": "user", "content": "hey"}, {"role": "assistant", "content": "Hey there! Welcome back to Tartarus Guide. How's your team feeling? Ready to talk about what's next?"}, {"role": "user", "content": "im kinda stuck in tartarus rn"}, {"role": "assistant", "content": "Stuck in Tartarus? Focus on clearing one full block each night, then rest to recover SP and keep your party ready for the next Full Moon Shadow. What floor are you currently on, and which party members do you have available right now?"}, {"role": "user", "content": "floor 18, im level 14 with yukari and junpei"}, {"role": "assistant", "content": "At floor 18 with Yukari and Junpei, focus on clearing one full block each night, then rest to recover SP. This steady pace keeps you ready for the next Full Moon Shadow without burning out."}, {"role": "user", "content": "lol junpei keeps dying tho"}, {"role": "assistant", "content": "Junpei's taking hits because he's your frontliner. Guard with him when an enemy is charging, keep Yukari's Dia ready, and give him a Persona that resists what's hitting him."}],
     "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "14", "activeParty": ["Yukari", "Junpei"], "tartarusFloor": "18F"},
     "mustIncludeAny": ["June 8", "full moon", "Emperor", "floor", "block", "Social Link", "level"],
-    "mustNotInclude": ["Aigis", "I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"],
+    "mustNotInclude": ["Aigis", "I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "give him a Persona", "give Junpei a Persona", "in the back", "back row"],
     "maxQuestions": 1,
     "maxSections": 1,
     "maxOverlapWithPrevious": 0.35
@@ -2009,7 +2009,7 @@
     "history": [{"role": "user", "content": "hey"}, {"role": "assistant", "content": "Hey there! Welcome back to Tartarus Guide. How's your team feeling? Ready to talk about what's next?"}, {"role": "user", "content": "im kinda stuck in tartarus rn"}, {"role": "assistant", "content": "Stuck in Tartarus? Focus on clearing one full block each night, then rest to recover SP and keep your party ready for the next Full Moon Shadow. What floor are you currently on, and which party members do you have available right now?"}, {"role": "user", "content": "floor 18, im level 14 with yukari and junpei"}, {"role": "assistant", "content": "At floor 18 with Yukari and Junpei, focus on clearing one full block each night, then rest to recover SP. This steady pace keeps you ready for the next Full Moon Shadow without burning out."}, {"role": "user", "content": "lol junpei keeps dying tho"}, {"role": "assistant", "content": "Junpei's taking hits because he's your frontliner. Guard with him when an enemy is charging, keep Yukari's Dia ready, and give him a Persona that resists what's hitting him."}],
     "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "14", "activeParty": ["Yukari", "Junpei"], "tartarusFloor": "18F"},
     "shouldUseSources": false,
-    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "give him a Persona", "give Junpei a Persona", "in the back", "back row"],
     "maxQuestions": 1,
     "maxSections": 0,
     "maxAnswerCharacters": 300
