@@ -808,6 +808,11 @@ function renderBossPrepCard(card) {
   `;
 }
 
+function personaInPlayerMemory(name) {
+  const key = String(name || "").trim().toLowerCase();
+  return (playerProfile.ownedPersonas || []).some((owned) => String(owned).trim().toLowerCase() === key);
+}
+
 function renderFusionWorkshop(workshop) {
   if (!workshop?.target || !Array.isArray(workshop.recipes) || !workshop.recipes.length) {
     return "";
@@ -817,22 +822,24 @@ function renderFusionWorkshop(workshop) {
     .slice(0, 2)
     .map((recipe, index) => {
       const ingredients = (recipe.ingredients || [])
-        .map(
-          (ingredient) => `
-            <li class="${ingredient.owned ? "is-owned" : "is-missing"}">
-              <span class="fusion-owned-mark" aria-hidden="true">${ingredient.owned ? "✓" : "!"}</span>
+        .map((ingredient) => {
+          // Only claim "In Player Memory" when the Persona really is saved there.
+          const inMemory = Boolean(ingredient.inPlayerMemory) && personaInPlayerMemory(ingredient.name);
+          return `
+            <li class="${inMemory ? "is-owned" : "is-ingredient"}">
+              <span class="fusion-owned-mark" aria-hidden="true">${inMemory ? "✓" : "•"}</span>
               <div>
                 <strong>${escapeHtml(ingredient.name)}</strong>
-                <small>${ingredient.owned ? "In Player Memory" : "Missing ingredient"}</small>
+                <small>${inMemory ? "In Player Memory" : "Ingredient"}</small>
               </div>
               ${
-                ingredient.owned
+                inMemory || ingredient.owned
                   ? ""
                   : `<button type="button" data-prompt="How do I fuse ${escapeHtml(ingredient.name)}?">Build this first</button>`
               }
             </li>
-          `,
-        )
+          `;
+        })
         .join("");
       const pair = (recipe.ingredients || []).map((ingredient) => ingredient.name).join(" and ");
       return `

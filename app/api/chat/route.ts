@@ -82,6 +82,27 @@ import {
   isPersonaKnowledgeRequest,
 } from "../../../src/quality/personaRouting";
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
+import { canonicalArcanaEvidenceFor } from "../../../src/quality/relationships";
+import { blockedChatResponse } from "../../../src/quality/blockedResponse";
+import {
+  currentRequestTiming,
+  requestTimingEnabled,
+  runWithRequestTiming,
+  summarizeRequestTiming,
+} from "../../../src/chat/requestTiming";
+import { fusionOwnershipChecker } from "../../../src/quality/fusionOwnership";
+import {
+  dropOtherMonthSources,
+  playerTartarusBlock,
+  questionCalendarMonth,
+  rankSourcesForPlayer,
+  sourceTartarusBlock,
+} from "../../../src/retrieval/sourceRelevance";
+import {
+  isOffTopicQuestion,
+  offTopicAnswer,
+  offTopicSuggestedPrompts,
+} from "../../../src/quality/offTopic";
 import {
   expertSuggestedPrompts,
   expertVagueCreationClarify,
@@ -541,6 +562,7 @@ function isCasualMessage(question: string): boolean {
   if (/^(hi|hello|hey|yo)\b(?:\s+(there|again|tartarus|guide|buddy|man|friend))?$/.test(text)) return true;
   if (/^(thanks|thank you|ty|appreciate it|cool|nice|ok|okay|got it)$/.test(text)) return true;
   if (/\b(who are you|what can you do|how do you work|how are you)\b/.test(text)) return true;
+  if (/^(?:(?:hi|hello|hey|yo)[,!]?\s+)?(?:how(?:['’]s| is) it going|how have you been|how(?:['’]s| is) your day|what['’]s good|wyd)$/.test(text)) return true;
   if (/\b(do you like|what do you think (?:of|about)|your opinion|favorite)\b/.test(text)) return true;
   return false;
 }
@@ -552,6 +574,21 @@ function isSillyQuestion(question: string): boolean {
     /\b(can|could|would)\s+(?:she|he|they|elizabeth|mitsuru|yukari|aigis|fuuka)\b.{0,80}\b(jiggle|rizz|twerk|throw it back)\b/.test(text) ||
     /\b(?:is|are)\b.{0,60}\b(?:caked up|dummy thick|breedable)\b/.test(text)
   );
+}
+
+function offTopicResponse(profileUpdates: PlayerProfile = {}): ChatResponse {
+  return withMode({
+    answer: offTopicAnswer(),
+    sections: [],
+    sources: [],
+    confidence: 0.9,
+    companion: {
+      intent: "General Discussion",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: offTopicSuggestedPrompts,
+    },
+  }, "rag");
 }
 
 function sillyQuestionResponse(question: string, profileUpdates: PlayerProfile = {}): ChatResponse {
@@ -1382,12 +1419,15 @@ Answer naturally like a chat assistant, not a report.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { jsonObject: true },
+      { jsonObject: true, timingLabel: "casual" },
     ).catch(() =>
-      createChatCompletion([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]),
+      createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        { timingLabel: "casual-retry" },
+      ),
     );
 
     const normalized = normalizeRagResponse(extractJson(rawAnswer), [], {
@@ -2219,6 +2259,7 @@ function structuredAffinityResponse(
   companion: NonNullable<ChatResponse["companion"]>,
   debug: boolean,
   queries: string[],
+  profileBlock?: string,
 ): ChatResponse | null {
   const matches = exactAffinityFacts(question, facts);
   if (!matches.length) return null;
@@ -2248,15 +2289,24 @@ function structuredAffinityResponse(
 
   const weaknesses = byType.get("weakness") ?? [];
   const requestedBlock = tartarusBlocks.find((block) => new RegExp(`\\b${block}\\b`, "i").test(question));
-  const sourceBlock = tartarusBlocks.find((block) =>
-    matches.some((fact) => new RegExp(`\\b${block}\\b`, "i").test(`${fact.source.title} ${fact.source.url}`)),
+  const sources = rankSourcesForPlayer([...sourceMap.values()], requestedBlock ?? profileBlock);
+  const sourceBlocks = new Set(
+    sources.map((source) => sourceTartarusBlock(source)?.toLowerCase()).filter(Boolean),
   );
+  const sourceBlock = sources.map((source) => sourceTartarusBlock(source)).find(Boolean);
   const locationCorrection =
-    requestedBlock && sourceBlock && requestedBlock.toLowerCase() !== sourceBlock.toLowerCase()
+    requestedBlock && sourceBlock && !sourceBlocks.has(requestedBlock.toLowerCase())
       ? `${entityName} is indexed in ${sourceBlock}, not ${requestedBlock}. The ${sourceBlock} version`
       : entityName;
+  const currentBlock = playerTartarusBlock(profileBlock);
+  // The player's saved block (not named in the question) differs from where the guide lists
+  // this enemy: say so instead of silently citing another floor's walkthrough.
+  const profileBlockNote =
+    !requestedBlock && currentBlock && sourceBlock && !sourceBlocks.has(currentBlock.toLowerCase())
+      ? ` The guide lists it in ${sourceBlock}, not ${currentBlock} where you are now.`
+      : "";
   const response = withMode({
-    answer: `${locationCorrection} ${joinNatural(clauses)}.`,
+    answer: `${locationCorrection} ${joinNatural(clauses)}.${profileBlockNote}`,
     sections: weaknesses.length
       ? [
           {
@@ -2265,7 +2315,7 @@ function structuredAffinityResponse(
           },
         ]
       : [],
-    sources: [...sourceMap.values()],
+    sources,
     confidence: Math.max(...matches.map((fact) => fact.confidence)),
     missingInfo: "No additional detail is needed for the confirmed affinity.",
     companion,
@@ -2295,6 +2345,7 @@ function structuredFusionResponse(
   debug: boolean,
   queries: string[],
   profile: PlayerProfile,
+  savedOwnedPersonas: string[] = [],
 ): ChatResponse | null {
   const normalizedQuestion = question.toLowerCase();
   if (/\bskills?\s+should\s+i\s+keep\s+for\b/i.test(question)) return null;
@@ -2388,14 +2439,17 @@ function structuredFusionResponse(
   );
   if (!targetRecipes.length) return null;
 
-  const mentionedOwned = personasMentionedAsOwned(question);
-  const owned = new Set(
-    [...(profile.ownedPersonas ?? []), ...mentionedOwned].map((name) => name.toLowerCase()),
-  );
+  // Ownership comes only from the player's saved Player Memory and what they said in chat,
+  // never from Personas the controller model inferred into profile updates.
+  const ownership = fusionOwnershipChecker({
+    savedOwnedPersonas,
+    mentionedOwnedPersonas: personasMentionedAsOwned(question),
+  });
+  const isOwned = (name: string) => ownership(name).owned;
   const ingredientOwnership = (fact: (typeof targetRecipes)[number]) =>
     fact.value
       .split(/\s*\+\s*/)
-      .filter((ingredient) => owned.has(ingredient.trim().toLowerCase())).length;
+      .filter((ingredient) => isOwned(ingredient)).length;
   const selected = targetRecipes
     .sort(
       (a, b) =>
@@ -2416,8 +2470,8 @@ function structuredFusionResponse(
     });
   }
   const completeRecipe = selected.find((fact) => {
-    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim().toLowerCase());
-    return ingredients.length > 0 && ingredients.every((name) => owned.has(name));
+    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim());
+    return ingredients.length > 0 && ingredients.every((name) => isOwned(name));
   });
   const answer = completeRecipe
     ? `Perfect, you already own a working route. Fuse ${completeRecipe.value} to make ${target}.`
@@ -2447,14 +2501,9 @@ function structuredFusionResponse(
       recipes: selected.map((fact) => {
         const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim());
         return {
-          ingredients: ingredients.map((name) => ({
-            name,
-            owned: owned.has(name.toLowerCase()),
-          })),
+          ingredients: ingredients.map((name) => ({ name, ...ownership(name) })),
           special: Boolean(fact.notes?.includes("Special fusion recipe")),
-          ready:
-            ingredients.length > 0 &&
-            ingredients.every((name) => owned.has(name.toLowerCase())),
+          ready: ingredients.length > 0 && ingredients.every((name) => isOwned(name)),
         };
       }),
     },
@@ -3061,8 +3110,14 @@ function exactSubjectSources(
     chunks: Array<{ source_title: string; source_url: string; source_domain: string; source_credibility_rank?: number; chunk_text: string; section_title: string | null }>;
     sources: ChatResponse["sources"];
   },
+  profile: Pick<PlayerProfile, "tartarusBlock" | "currentMonth"> = {},
 ): ChatResponse["sources"] {
   const subject = likelyExactSubject(question);
+  const currentBlock = profile.tartarusBlock;
+  // Subject-less answers (day plans, general coaching) only cite pages for the month in play.
+  const candidateSources = subject
+    ? context.sources
+    : dropOtherMonthSources(context.sources, questionCalendarMonth(question, profile.currentMonth));
   const exactChunkUrls = new Set(
     context.chunks
       .filter((chunk) =>
@@ -3090,8 +3145,14 @@ function relevantResponseSources(
     }>;
     sources: ChatResponse["sources"];
   },
+  profile: Pick<PlayerProfile, "tartarusBlock" | "currentMonth"> = {},
 ): ChatResponse["sources"] {
   const subject = likelyExactSubject(question);
+  const currentBlock = profile.tartarusBlock;
+  // Subject-less answers (day plans, general coaching) only cite pages for the month in play.
+  const candidateSources = subject
+    ? context.sources
+    : dropOtherMonthSources(context.sources, questionCalendarMonth(question, profile.currentMonth));
   const relevantUrls = new Set<string>();
 
   if (subject) {
@@ -3116,14 +3177,15 @@ function relevantResponseSources(
 
   const sourcePriority = (source: ChatResponse["sources"][number]) =>
     intent === "Fusion Advice" && isFusionToolUrl(source.url) ? 0 : 1;
-  const exactMatches = context.sources
-    .filter((source) => relevantUrls.has(source.url))
-    .sort((a, b) => sourcePriority(a) - sourcePriority(b));
+  const exactMatches = rankSourcesForPlayer(
+    candidateSources.filter((source) => relevantUrls.has(source.url)),
+    currentBlock,
+  ).sort((a, b) => sourcePriority(a) - sourcePriority(b));
   if (exactMatches.length) return exactMatches.slice(0, 4);
 
   if (intent === "Fusion Advice") {
     const fusionFactUrls = new Set(context.facts.map((fact) => fact.source.url));
-    const fusionSources = context.sources
+    const fusionSources = candidateSources
       .filter((source) => fusionFactUrls.has(source.url))
       .sort(
         (a, b) =>
@@ -3132,7 +3194,10 @@ function relevantResponseSources(
     if (fusionSources.length) return fusionSources.slice(0, 3);
   }
 
-  return context.sources.slice(0, 4);
+  // A named subject with no source that mentions it: show nothing rather than an
+  // unrelated page (e.g. a different floor's walkthrough).
+  if (subject) return [];
+  return rankSourcesForPlayer(candidateSources, currentBlock).slice(0, 4);
 }
 
 function chatResponseClaimText(response: {
@@ -3228,10 +3293,13 @@ function unsupportedNamedClaims(
       chunk_text: string;
     }>;
   },
+  /** Curated canonical facts tied to the player's own profile (see canonicalArcanaEvidenceFor). */
+  extraEvidence = "",
 ): string[] {
   const responseText = chatResponseClaimText(response);
   const evidenceText = [
     question,
+    extraEvidence,
     ...context.facts.flatMap((fact) => [
       fact.entity.name,
       fact.entity.type ?? "",
@@ -3317,6 +3385,7 @@ function applyGroundingGuardrails(
       similarity?: number;
     }>;
   },
+  extraEvidence = "",
 ): ChatResponse {
   const requiresExactEvidence = requiresExactGameEvidence(question, intent);
   const subject = likelyExactSubject(question);
@@ -3368,16 +3437,12 @@ function applyGroundingGuardrails(
         : "The question did not require an exact-fact evidence gate.",
     ],
   };
-  const unsupportedNames = unsupportedNamedClaims(question, response, context);
+  const unsupportedNames = unsupportedNamedClaims(question, response, context, extraEvidence);
   if (unsupportedNames.length && intent !== "General Discussion") {
     const prompt = exactDetailPrompt(intent);
     const friendlyTarget = subject ? subject : "that";
-    return {
-      ...response,
+    return blockedChatResponse(response, {
       answer: `I don’t want to invent a ${unsupportedNames.join(" / ")} detail for ${friendlyTarget}. ${prompt}`,
-      sections: [],
-      tables: [],
-      sources: [],
       confidence: Math.min(0.4, assessment.confidenceCeiling),
       missingInfo: prompt,
       companion: {
@@ -3399,18 +3464,14 @@ function applyGroundingGuardrails(
           `Blocked unsupported named claim(s): ${unsupportedNames.join(", ")}`,
         ],
       },
-    };
+    });
   }
 
   if (requiresExactEvidence && !hasExactEvidence) {
     const prompt = exactDetailPrompt(intent);
     const friendlyTarget = subject ? subject : "that";
-    return {
-      ...response,
+    return blockedChatResponse(response, {
       answer: `I’m not solid enough on ${friendlyTarget} to lock an exact answer yet. ${prompt}`,
-      sections: [],
-      tables: [],
-      sources: [],
       confidence: assessment.confidenceCeiling,
       missingInfo: prompt,
       companion: {
@@ -3425,7 +3486,7 @@ function applyGroundingGuardrails(
         }),
       },
       diagnostics,
-    };
+    });
   }
 
   return {
@@ -4053,7 +4114,7 @@ async function decideCompanionAction(
   history: ChatRequest["history"],
   createChatCompletion: (
     messages: Array<{ role: "system" | "user"; content: string }>,
-    options?: { jsonObject?: boolean },
+    options?: { jsonObject?: boolean; timingLabel?: string },
   ) => Promise<string>,
 ): Promise<ControllerDecision> {
   const profile = mergeProfile(playerProfile, analysis.profileUpdates);
@@ -4135,12 +4196,15 @@ Decide the next action.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { jsonObject: true },
+      { jsonObject: true, timingLabel: "controller" },
     ).catch(() =>
-      createChatCompletion([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]),
+      createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        { timingLabel: "controller-retry" },
+      ),
     );
 
     return normalizeControllerDecision(extractJson(rawDecision), analysis);
@@ -4610,6 +4674,9 @@ async function directRagResponse(
   if (isSillyQuestion(question) || isSillyQuestion(conversation.analysisQuestion)) {
     return sillyQuestionResponse(question, extractProfileUpdates(question));
   }
+  if (isOffTopicQuestion(question)) {
+    return offTopicResponse(extractProfileUpdates(question));
+  }
   // Expert clarify-first: bare "craft/make these" with no thread should not invent tips.
   if (!conversation.shortReply && isVagueCreationQuestion(question)) {
     const clarify = expertVagueCreationClarify();
@@ -4761,6 +4828,7 @@ async function directRagResponse(
       jsonObject?: boolean;
       model?: string;
       maxCompletionTokens?: number;
+      timingLabel?: string;
     } = {},
   ) => createChatCompletion(messages, { ...options, signal });
 
@@ -4942,6 +5010,7 @@ async function directRagResponse(
       debug,
       context.queries,
       controllerProfile,
+      playerProfile?.ownedPersonas,
     );
     if (fusionResponse) return fusionResponse;
     const personaProfile = structuredPersonaProfileResponse(
@@ -4964,6 +5033,7 @@ async function directRagResponse(
       companion,
       debug,
       context.queries,
+      controllerProfile.tartarusBlock,
     );
     if (exactResponse) return exactResponse;
   }
@@ -5178,10 +5248,18 @@ Spoiler policy: ${spoilerDecision.promptInstruction}
 ${formatAssistantContext(context)}
 
 Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
+  // Canonical arcana for the links/party the player tracks count as evidence for the
+  // named-claim gate (the same pairs are given to the model as canonical facts above).
+  // Uses the saved profile plus what the player typed, never model-inferred profile updates.
+  const profileCanonicalEvidence = canonicalArcanaEvidenceFor([
+    ...(analysis.profile.currentSocialLinks ?? []),
+    ...(analysis.profile.activeParty ?? []),
+  ]);
   const responseSources = relevantResponseSources(
     conversation.analysisQuestion,
     controller.intent,
     context,
+    controllerProfile,
   );
 
   const messages = [
@@ -5191,7 +5269,9 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
 
   try {
     onProgress?.("Putting the answer together...");
-    const rawAnswer = await complete(messages, { jsonObject: true }).catch(() => complete(messages));
+    const rawAnswer = await complete(messages, { jsonObject: true, timingLabel: "answer" }).catch(() =>
+      complete(messages, { timingLabel: "answer-retry" }),
+    );
     const responseCompanion = {
       intent: controller.intent,
       profileUpdates: controller.profileUpdates,
@@ -5216,11 +5296,16 @@ Your previous draft contained an affinity element that is not present in the str
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "affinity-correction" },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
-    const unsupportedNames = unsupportedNamedClaims(conversation.analysisQuestion, normalized, context);
+    const unsupportedNames = unsupportedNamedClaims(
+      conversation.analysisQuestion,
+      normalized,
+      context,
+      profileCanonicalEvidence,
+    );
     if (unsupportedNames.length && controller.intent !== "General Discussion") {
       const correctionPrompt = `${userPrompt}
 
@@ -5232,7 +5317,7 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "named-claim-correction" },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5252,7 +5337,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "relationship-correction" },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5299,7 +5384,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "party-correction" },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5318,17 +5403,14 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
       conversation.analysisQuestion,
       normalized,
     );
+    // Attach every card before the grounding gate so a blocked answer strips them all.
     const response = withMode(
-      withBossPrep(
-        applyGroundingGuardrails(
-          conversation.analysisQuestion,
-          controller.intent,
-          normalized,
-          context,
-        ),
+      applyGroundingGuardrails(
         conversation.analysisQuestion,
         controller.intent,
+        withBossPrep(normalized, conversation.analysisQuestion, controller.intent, context),
         context,
+        profileCanonicalEvidence,
       ),
       "rag",
     );
@@ -5350,6 +5432,28 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
 }
 
 async function resolveChatRequest(
+  body: Partial<ChatRequest>,
+  onProgress?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<ChatResponse> {
+  if (!requestTimingEnabled() && !body.debug) {
+    return resolveChatRequestUntimed(body, onProgress, signal);
+  }
+  return runWithRequestTiming(async () => {
+    const response = await resolveChatRequestUntimed(body, onProgress, signal);
+    const timing = currentRequestTiming();
+    if (!timing) return response;
+    const summary = summarizeRequestTiming(timing);
+    // Labels and durations only: no question text, prompts, answers or keys.
+    console.info(`[chat-timing] ${JSON.stringify({ intent: response.companion?.intent, ...summary })}`);
+    if (body.debug) {
+      return { ...response, diagnostics: { ...response.diagnostics, latency: summary } };
+    }
+    return response;
+  });
+}
+
+async function resolveChatRequestUntimed(
   body: Partial<ChatRequest>,
   onProgress?: (message: string) => void,
   signal?: AbortSignal,

@@ -43,6 +43,33 @@ test("profile changes produce distinct cache keys", () => {
   assert.notEqual(a, b);
 });
 
+test("every personalising profile field is part of the cache key", () => {
+  const key = (playerProfile: Record<string, unknown>) =>
+    responseCacheKey({ question: "How do I fuse Jack Frost?", playerProfile }, { isCasualMessage });
+  const base = { currentMonth: "June", dlcOwnership: "none" as const };
+  const empty = key(base);
+  for (const extra of [
+    { ownedPersonas: ["Apsaras"] },
+    { tartarusBlock: "Thebel" },
+    { tartarusFloor: "12F" },
+    { currentSocialLinks: ["Yukari"] },
+    { activeRequests: ["Request 4"] },
+    { socialStats: { charm: "3" } },
+    { currentGoal: "Max Fuuka" },
+  ]) {
+    assert.notEqual(key({ ...base, ...extra }), empty, `missing from key: ${Object.keys(extra)[0]}`);
+  }
+});
+
+test("profile key ignores list order and empty fields", () => {
+  const key = (playerProfile: Record<string, unknown>) =>
+    responseCacheKey({ question: "How do I fuse Jack Frost?", playerProfile }, { isCasualMessage });
+  assert.equal(
+    key({ ownedPersonas: ["Pixie", "Apsaras"], currentGoal: "" }),
+    key({ ownedPersonas: ["apsaras", "Pixie"], activeParty: [] }),
+  );
+});
+
 test("stores high-confidence rag answers only", () => {
   const key = responseCacheKey(
     { question: "What is Dancing Hand weak to?" },

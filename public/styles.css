@@ -4016,3 +4016,157 @@ button.text-link {
     margin-inline: 0;
   }
 }
+
+/* ===== WCAG AA contrast pass =====
+   The answer bubble turned light (intro-bright theme) but several components inside it
+   still used colours tuned for the old dark bubble, and small labels sat directly on
+   mid-brightness blue where neither white nor navy reaches 4.5:1. These overrides keep
+   the P3R blue palette while lifting every text run to AA (4.5:1 body, 3:1 large). */
+
+/* Light answer bubble: section titles + body text (Quick Strategy, Fusion Check, …). */
+.assistant-message .bubble .section-grid h3 {
+  color: #0645c9;
+}
+.assistant-message .bubble .section-grid p {
+  color: #1d3577;
+}
+
+/* "From the notes" status bar: light tinted strip instead of grey-on-grey. */
+.assistant-message .bubble .answer-status {
+  border-color: rgba(7, 92, 255, 0.28);
+  background: linear-gradient(120deg, rgba(7, 92, 255, 0.1), rgba(7, 92, 255, 0.04));
+}
+.assistant-message .bubble .answer-status p {
+  color: #26407a;
+}
+.assistant-message .bubble .answer-status-verified {
+  border-color: rgba(10, 107, 58, 0.32);
+  background: linear-gradient(120deg, rgba(25, 170, 90, 0.14), rgba(25, 170, 90, 0.04));
+}
+.assistant-message .bubble .answer-status-verified span {
+  color: #0a6b3a;
+}
+.assistant-message .bubble .answer-status-needs-detail span {
+  color: #8a4b00;
+}
+.assistant-message .bubble .answer-status-offline span {
+  color: #a3166a;
+}
+
+/* Dark cards embedded in the light bubble: solid navy so muted labels stay readable
+   instead of blending into a grey wash of navy-over-white. */
+.assistant-message .bubble .fusion-workshop {
+  background: linear-gradient(145deg, rgba(7, 92, 255, 0.22), transparent 52%), #071a52;
+}
+.assistant-message .bubble .daily-dashboard {
+  background: linear-gradient(145deg, rgba(7, 92, 255, 0.22), transparent 48%), #071a52;
+}
+.assistant-message .bubble .boss-prep-card {
+  background: linear-gradient(135deg, rgba(85, 247, 255, 0.1), rgba(7, 92, 255, 0.1)), #071a52;
+}
+
+/* Source cards: darker meta text on white. */
+footer span {
+  color: rgba(6, 18, 74, 0.82);
+}
+
+/* Sidebar: deepen the glass so cyan/ice labels clear AA on the bright water field. */
+.side-panel {
+  background:
+    linear-gradient(180deg, rgba(4, 26, 92, 0.42), rgba(4, 26, 92, 0.5)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(7, 92, 255, 0.18));
+}
+.recent-list p {
+  color: rgba(223, 252, 255, 0.92);
+}
+.recent-item span {
+  color: rgba(6, 18, 74, 0.78);
+}
+
+/* Hero: soft navy scrim behind the eyebrow + subtitle. */
+.hero {
+  position: relative;
+  isolation: isolate;
+}
+.hero::before {
+  content: "";
+  position: absolute;
+  inset: -0.4rem -1rem -0.4rem -1rem;
+  z-index: -1;
+  border-radius: 1rem;
+  background: linear-gradient(90deg, rgba(4, 26, 92, 0.5), rgba(4, 26, 92, 0.28) 60%, transparent);
+  /* Feather the edges so the scrim reads as shade, not a box. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0, #000 1rem),
+    linear-gradient(180deg, transparent 0, #000 0.4rem, #000 calc(100% - 0.4rem), transparent 100%);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(90deg, transparent 0, #000 1rem),
+    linear-gradient(180deg, transparent 0, #000 0.4rem, #000 calc(100% - 0.4rem), transparent 100%);
+  mask-composite: intersect;
+  pointer-events: none;
+}
+.subtitle,
+:root.has-conversation .subtitle,
+.hero-compact .subtitle {
+  color: #ffffff;
+}
+.assistant-message .bubble .assistant-name {
+  color: #0047d6;
+}
+
+/* Chat window + empty state: navy-tinted glass instead of white wash. */
+.chat-window {
+  background:
+    radial-gradient(circle at 14% 0, rgba(255, 255, 255, 0.08), transparent 40%),
+    linear-gradient(180deg, rgba(4, 26, 92, 0.34), rgba(4, 26, 92, 0.3));
+}
+.empty-state p,
+.empty-tip {
+  color: rgba(239, 250, 255, 0.95);
+}
+.empty-cat {
+  background:
+    linear-gradient(160deg, rgba(85, 247, 255, 0.1), transparent 55%),
+    rgba(4, 26, 92, 0.5);
+}
+.empty-cat button,
+.empty-examples button {
+  background: rgba(7, 92, 255, 0.34);
+}
+
+/* Composer: hint + placeholder on the light input. */
+.composer-hint {
+  color: rgba(2, 7, 32, 0.7);
+}
+.chat-form textarea::placeholder,
+.composer-shell textarea::placeholder {
+  color: #4f5d7a;
+  opacity: 1;
+}
+
+/* Starter chips: navy text on the cyan chip face (ice text on cyan was ~1.8:1). */
+.empty-examples button {
+  color: var(--navy);
+}
+
+/* "Edit memory" chip: solid navy backing so cyan text holds AA over the bright dock edge. */
+.profile-chip-edit {
+  background: rgba(2, 7, 32, 0.72);
+}
+
+/* Mobile chat window: same navy-tinted glass as desktop. */
+:root.is-mobile .chat-window {
+  background:
+    radial-gradient(circle at 18% 0, rgba(255, 255, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(4, 26, 92, 0.36), rgba(4, 26, 92, 0.3));
+}
+:root.is-mobile .chat-form textarea::placeholder {
+  color: #4f5d7a;
+  opacity: 1;
+}
+
+/* Fusion ingredients not saved in Player Memory: neutral mark, not a warning. */
+.fusion-recipe-card li.is-ingredient .fusion-owned-mark {
+  color: rgba(223, 252, 255, 0.78);
+}

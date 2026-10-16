@@ -1,3 +1,4 @@
+import { timed } from "../chat/requestTiming";
 import { normalizeName, supabase } from "../db/client";
 import type { FactMatch, FactType } from "../types/schema";
 import {
@@ -102,6 +103,14 @@ function likelyEntityTerms(query: string): string[] {
 }
 
 export async function searchFacts(
+  query: string,
+  limit = 12,
+  signal?: AbortSignal,
+): Promise<FactMatch[]> {
+  return timed("searchFacts", () => searchFactsUntimed(query, limit, signal));
+}
+
+async function searchFactsUntimed(
   query: string,
   limit = 12,
   signal?: AbortSignal,
