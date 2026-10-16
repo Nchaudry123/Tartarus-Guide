@@ -2410,11 +2410,17 @@ function setSidebarCollapsed(collapsed, { persist = true } = {}) {
   }
 }
 
+let sidebarAnimationTimer = null;
+
 function toggleSidebar() {
   if (document.documentElement.classList.contains("is-mobile")) {
     setMenu(!sidePanel.classList.contains("is-open"));
     return;
   }
+  // Animate only this user-initiated change, never window resizes.
+  appShell.classList.add("is-sidebar-animating");
+  window.clearTimeout(sidebarAnimationTimer);
+  sidebarAnimationTimer = window.setTimeout(() => appShell.classList.remove("is-sidebar-animating"), 500);
   setSidebarCollapsed(!appShell.classList.contains("is-sidebar-collapsed"));
 }
 
