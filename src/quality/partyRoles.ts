@@ -29,6 +29,24 @@ export function normalizeCombatParty(
   return normalized.length ? normalized : undefined;
 }
 
+/**
+ * The combat party a message actually states, or undefined. Mentioning one member ("junpei
+ * keeps dying") is not a party statement and must not replace the saved party; two or more
+ * names, or a cue like "my party is" / "with Yukari", is.
+ */
+export function statedCombatParty(text: string): string[] | undefined {
+  const named = combatPartyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(text));
+  if (!named.length) return undefined;
+  const memberPattern = combatPartyMembers.join("|");
+  const statesParty =
+    named.length >= 2 ||
+    new RegExp(
+      `\\b(?:my (?:party|team|squad|lineup)|party (?:is|has)|team (?:is|has)|(?:with|using|running|bringing|brought|took|taking)\\s+(?:only\\s+)?(?:${memberPattern}))\\b`,
+      "i",
+    ).test(text);
+  return statesParty ? normalizeCombatParty(named) : undefined;
+}
+
 export function partyRoleFactsForPrompt(): string {
   return [
     "Canonical Persona 3 Reload party-role facts:",

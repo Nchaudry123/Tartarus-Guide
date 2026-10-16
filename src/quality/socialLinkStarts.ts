@@ -376,7 +376,15 @@ export function socialLinkStartContradictions(response: {
 
   const record = matchedRecords[0];
   if (record.earliestStart === "No fixed date") return [];
+  // Only text about the Social Link itself counts. "Keep Yukari healing ... before June 8"
+  // names a party member and a date but makes no claim about when her link starts.
+  if (!/\b(?:social links?|s-?links?|confidants?|arcana)\b/i.test(linkText)) return [];
+  const startClaim = /\b(?:start|starts|started|starting|unlock|unlocks|unlocked|begin|begins|available|opens?|can (?:start|begin))\b/i;
   const dates = [...text.matchAll(/\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\b/gi)]
+    .filter((match) => {
+      const index = match.index ?? 0;
+      return startClaim.test(text.slice(Math.max(0, index - 70), index + match[0].length + 30));
+    })
     .map((match) => match[0]);
   const wrongDates = dates.filter(
     (date) => normalize(date) !== normalize(record.earliestStart),
