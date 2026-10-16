@@ -84,6 +84,11 @@ import {
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import {
+  isOffTopicQuestion,
+  offTopicAnswer,
+  offTopicSuggestedPrompts,
+} from "../../../src/quality/offTopic";
+import {
   expertSuggestedPrompts,
   expertVagueCreationClarify,
   isVagueCreationQuestion,
@@ -542,6 +547,7 @@ function isCasualMessage(question: string): boolean {
   if (/^(hi|hello|hey|yo)\b(?:\s+(there|again|tartarus|guide|buddy|man|friend))?$/.test(text)) return true;
   if (/^(thanks|thank you|ty|appreciate it|cool|nice|ok|okay|got it)$/.test(text)) return true;
   if (/\b(who are you|what can you do|how do you work|how are you)\b/.test(text)) return true;
+  if (/^(?:(?:hi|hello|hey|yo)[,!]?\s+)?(?:how(?:['’]s| is) it going|how have you been|how(?:['’]s| is) your day|what['’]s good|wyd)$/.test(text)) return true;
   if (/\b(do you like|what do you think (?:of|about)|your opinion|favorite)\b/.test(text)) return true;
   return false;
 }
@@ -553,6 +559,21 @@ function isSillyQuestion(question: string): boolean {
     /\b(can|could|would)\s+(?:she|he|they|elizabeth|mitsuru|yukari|aigis|fuuka)\b.{0,80}\b(jiggle|rizz|twerk|throw it back)\b/.test(text) ||
     /\b(?:is|are)\b.{0,60}\b(?:caked up|dummy thick|breedable)\b/.test(text)
   );
+}
+
+function offTopicResponse(profileUpdates: PlayerProfile = {}): ChatResponse {
+  return withMode({
+    answer: offTopicAnswer(),
+    sections: [],
+    sources: [],
+    confidence: 0.9,
+    companion: {
+      intent: "General Discussion",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: offTopicSuggestedPrompts,
+    },
+  }, "rag");
 }
 
 function sillyQuestionResponse(question: string, profileUpdates: PlayerProfile = {}): ChatResponse {
@@ -4602,6 +4623,9 @@ async function directRagResponse(
   const conversation = contextualizeQuestion(question, normalizedHistory);
   if (isSillyQuestion(question) || isSillyQuestion(conversation.analysisQuestion)) {
     return sillyQuestionResponse(question, extractProfileUpdates(question));
+  }
+  if (isOffTopicQuestion(question)) {
+    return offTopicResponse(extractProfileUpdates(question));
   }
   // Expert clarify-first: bare "craft/make these" with no thread should not invent tips.
   if (!conversation.shortReply && isVagueCreationQuestion(question)) {
