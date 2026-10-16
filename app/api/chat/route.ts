@@ -83,6 +83,7 @@ import {
 } from "../../../src/quality/personaRouting";
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
+import { fusionOwnershipChecker } from "../../../src/quality/fusionOwnership";
 import {
   dropOtherMonthSources,
   playerTartarusBlock,
@@ -2334,6 +2335,7 @@ function structuredFusionResponse(
   debug: boolean,
   queries: string[],
   profile: PlayerProfile,
+  savedOwnedPersonas: string[] = [],
 ): ChatResponse | null {
   const normalizedQuestion = question.toLowerCase();
   if (/\bskills?\s+should\s+i\s+keep\s+for\b/i.test(question)) return null;
@@ -2427,14 +2429,17 @@ function structuredFusionResponse(
   );
   if (!targetRecipes.length) return null;
 
-  const mentionedOwned = personasMentionedAsOwned(question);
-  const owned = new Set(
-    [...(profile.ownedPersonas ?? []), ...mentionedOwned].map((name) => name.toLowerCase()),
-  );
+  // Ownership comes only from the player's saved Player Memory and what they said in chat,
+  // never from Personas the controller model inferred into profile updates.
+  const ownership = fusionOwnershipChecker({
+    savedOwnedPersonas,
+    mentionedOwnedPersonas: personasMentionedAsOwned(question),
+  });
+  const isOwned = (name: string) => ownership(name).owned;
   const ingredientOwnership = (fact: (typeof targetRecipes)[number]) =>
     fact.value
       .split(/\s*\+\s*/)
-      .filter((ingredient) => owned.has(ingredient.trim().toLowerCase())).length;
+      .filter((ingredient) => isOwned(ingredient)).length;
   const selected = targetRecipes
     .sort(
       (a, b) =>
@@ -2455,8 +2460,8 @@ function structuredFusionResponse(
     });
   }
   const completeRecipe = selected.find((fact) => {
-    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim().toLowerCase());
-    return ingredients.length > 0 && ingredients.every((name) => owned.has(name));
+    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim());
+    return ingredients.length > 0 && ingredients.every((name) => isOwned(name));
   });
   const answer = completeRecipe
     ? `Perfect, you already own a working route. Fuse ${completeRecipe.value} to make ${target}.`
@@ -2486,14 +2491,9 @@ function structuredFusionResponse(
       recipes: selected.map((fact) => {
         const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim());
         return {
-          ingredients: ingredients.map((name) => ({
-            name,
-            owned: owned.has(name.toLowerCase()),
-          })),
+          ingredients: ingredients.map((name) => ({ name, ...ownership(name) })),
           special: Boolean(fact.notes?.includes("Special fusion recipe")),
-          ready:
-            ingredients.length > 0 &&
-            ingredients.every((name) => owned.has(name.toLowerCase())),
+          ready: ingredients.length > 0 && ingredients.every((name) => isOwned(name)),
         };
       }),
     },
@@ -4992,6 +4992,7 @@ async function directRagResponse(
       debug,
       context.queries,
       controllerProfile,
+      playerProfile?.ownedPersonas,
     );
     if (fusionResponse) return fusionResponse;
     const personaProfile = structuredPersonaProfileResponse(
