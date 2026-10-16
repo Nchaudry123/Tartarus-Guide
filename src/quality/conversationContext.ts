@@ -281,3 +281,14 @@ export function resolveConversationContext(
     shortReply: true,
   };
 }
+
+const referencedReplyLine = /^The previous assistant reply being referenced is: .*$/gm;
+
+/**
+ * The contextual analysis question can quote the previous assistant reply so the answer model
+ * knows what "that" refers to. Intent detection and evidence gates must use only the player's
+ * own words: a quoted "...a Persona that resists..." is not the player asking about resistances.
+ */
+export function userWordsOnly(analysisQuestion: string): string {
+  return analysisQuestion.replace(referencedReplyLine, "").replace(/\n{2,}/g, "\n").trim();
+}
