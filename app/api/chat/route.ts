@@ -82,6 +82,7 @@ import {
   isPersonaKnowledgeRequest,
 } from "../../../src/quality/personaRouting";
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
+import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import {
   expertSuggestedPrompts,
   expertVagueCreationClarify,
@@ -3372,12 +3373,8 @@ function applyGroundingGuardrails(
   if (unsupportedNames.length && intent !== "General Discussion") {
     const prompt = exactDetailPrompt(intent);
     const friendlyTarget = subject ? subject : "that";
-    return {
-      ...response,
+    return blockedChatResponse(response, {
       answer: `I don’t want to invent a ${unsupportedNames.join(" / ")} detail for ${friendlyTarget}. ${prompt}`,
-      sections: [],
-      tables: [],
-      sources: [],
       confidence: Math.min(0.4, assessment.confidenceCeiling),
       missingInfo: prompt,
       companion: {
@@ -3399,18 +3396,14 @@ function applyGroundingGuardrails(
           `Blocked unsupported named claim(s): ${unsupportedNames.join(", ")}`,
         ],
       },
-    };
+    });
   }
 
   if (requiresExactEvidence && !hasExactEvidence) {
     const prompt = exactDetailPrompt(intent);
     const friendlyTarget = subject ? subject : "that";
-    return {
-      ...response,
+    return blockedChatResponse(response, {
       answer: `I’m not solid enough on ${friendlyTarget} to lock an exact answer yet. ${prompt}`,
-      sections: [],
-      tables: [],
-      sources: [],
       confidence: assessment.confidenceCeiling,
       missingInfo: prompt,
       companion: {
@@ -3425,7 +3418,7 @@ function applyGroundingGuardrails(
         }),
       },
       diagnostics,
-    };
+    });
   }
 
   return {
@@ -5318,16 +5311,12 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
       conversation.analysisQuestion,
       normalized,
     );
+    // Attach every card before the grounding gate so a blocked answer strips them all.
     const response = withMode(
-      withBossPrep(
-        applyGroundingGuardrails(
-          conversation.analysisQuestion,
-          controller.intent,
-          normalized,
-          context,
-        ),
+      applyGroundingGuardrails(
         conversation.analysisQuestion,
         controller.intent,
+        withBossPrep(normalized, conversation.analysisQuestion, controller.intent, context),
         context,
       ),
       "rag",
