@@ -4186,3 +4186,10 @@ body {
 @keyframes velvetWordDrift {
   50% { transform: translateX(18px); }
 }
+
+/* Portrait screens: shift the crop so the protagonist's face stays fully in frame
+   (at the desktop position it was cut in half at the right edge). */
+@media (max-aspect-ratio: 3/4) {
+  .velvet-art { background-position: 95% 30%; }
+}
+:root.is-mobile .velvet-art { background-position: 95% 30%; }
