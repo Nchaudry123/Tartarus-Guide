@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { TtlCache } from "../cache/ttlCache";
+import { recordTimingEvent, timed } from "../chat/requestTiming";
 import { extractContent } from "../ingest/extractContent";
 import {
   canonicalizeSourceUrl,
@@ -198,16 +199,19 @@ async function fetchSearchResults(
   );
 
   try {
-    const response = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "TartarusGuideRAG/0.1 (+guide discovery)",
-        accept: "text/markdown,text/plain",
-      },
-      redirect: "follow",
+    const { response, body } = await timed("liveSearch", async () => {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          "user-agent": "TartarusGuideRAG/0.1 (+guide discovery)",
+          accept: "text/markdown,text/plain",
+        },
+        redirect: "follow",
+      });
+      return { response, body: response.ok ? await response.text() : "" };
     });
     if (!response.ok) return [];
-    const results = parseGuideSearchResults(await response.text());
+    const results = parseGuideSearchResults(body);
     searchCache.set(cacheKey, results);
     return results;
   } catch (error) {
@@ -257,7 +261,10 @@ function readerUrl(url: string): string {
 
 async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<string | null> {
   const cached = pageCache.get(url);
-  if (cached) return cached;
+  if (cached) {
+    recordTimingEvent("liveFetch-cache-hit");
+    return cached;
+  }
 
   const controller = new AbortController();
   const abortFromParent = () => controller.abort(signal?.reason);
@@ -269,16 +276,18 @@ async function fetchWithTimeout(url: string, signal?: AbortSignal): Promise<stri
   );
 
   try {
-    const response = await fetch(readerUrl(url), {
-      signal: controller.signal,
-      headers: {
-        "user-agent": "TartarusGuideRAG/0.1 (+live verification)",
-        accept: "text/html,text/markdown,text/plain,application/xhtml+xml",
-      },
-      redirect: "follow",
-    });
+    const { response, body } = await timed("liveFetch", async () => {
+      const response = await fetch(readerUrl(url), {
+        signal: controller.signal,
+        headers: {
+          "user-agent": "TartarusGuideRAG/0.1 (+live verification)",
+          accept: "text/html,text/markdown,text/plain,application/xhtml+xml",
+        },
+        redirect: "follow",
+      });
+      return { response, body: response.ok ? await response.text() : "" };
+    }, new URL(url).hostname);
     if (!response.ok) return null;
-    const body = await response.text();
     if (!body.trim()) return null;
     pageCache.set(url, body);
     return body;
@@ -321,6 +330,18 @@ export async function verifyAgainstLiveGuides(
   question: string,
   intent: LiveGuideIntent,
   seedUrls: string[] = [],
+  signal?: AbortSignal,
+): Promise<{
+  chunks: ChunkMatch[];
+  sources: Array<{ title: string; url: string; domain: string }>;
+}> {
+  return timed("liveGuides", () => verifyAgainstLiveGuidesUntimed(question, intent, seedUrls, signal));
+}
+
+async function verifyAgainstLiveGuidesUntimed(
+  question: string,
+  intent: LiveGuideIntent,
+  seedUrls: string[],
   signal?: AbortSignal,
 ): Promise<{
   chunks: ChunkMatch[];

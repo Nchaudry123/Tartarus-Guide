@@ -2,6 +2,7 @@ import "dotenv/config";
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { TtlCache } from "../cache/ttlCache";
+import { recordTimingEvent, timed } from "../chat/requestTiming";
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -74,7 +75,10 @@ export async function createEmbedding(input: string, signal?: AbortSignal): Prom
   throwIfAborted(signal);
   const cacheKey = embeddingCacheKey(input);
   const cached = embeddingCache.get(cacheKey);
-  if (cached) return [...cached];
+  if (cached) {
+    recordTimingEvent("embedding-cache-hit");
+    return [...cached];
+  }
 
   const pending = embeddingRequests.get(cacheKey);
   if (pending) {
@@ -83,7 +87,7 @@ export async function createEmbedding(input: string, signal?: AbortSignal): Prom
     return [...embedding];
   }
 
-  const request = createEmbeddingUncached(input, signal);
+  const request = timed("embedding", () => createEmbeddingUncached(input, signal));
   embeddingRequests.set(cacheKey, request);
   try {
     const embedding = await request;
@@ -254,7 +258,26 @@ export async function createChatCompletion(
     model?: string;
     maxCompletionTokens?: number;
     signal?: AbortSignal;
+    /** Short label for latency instrumentation, e.g. "controller" or "answer". */
+    timingLabel?: string;
   } = {},
+): Promise<string> {
+  const promptChars = messages.reduce((total, message) => total + message.content.length, 0);
+  return timed(
+    "llm",
+    () => createChatCompletionUntimed(messages, options),
+    `${options.timingLabel ?? "unlabelled"} (${promptChars} prompt chars)`,
+  );
+}
+
+async function createChatCompletionUntimed(
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  options: {
+    jsonObject?: boolean;
+    model?: string;
+    maxCompletionTokens?: number;
+    signal?: AbortSignal;
+  },
 ): Promise<string> {
   const body = JSON.stringify({
     model: options.model ?? config.chatModel,
@@ -293,6 +316,7 @@ export async function createChatCompletion(
     if (response.status !== 429 || attempt === 2) {
       throw new Error(`Chat request failed: ${response.status} ${errorText}`);
     }
+    recordTimingEvent("llm-rate-limited-retry");
 
     const retryAfterSeconds = Number(response.headers.get("retry-after"));
     const messageDelay = errorText.match(/try again in ([\d.]+)(ms|s)/i);

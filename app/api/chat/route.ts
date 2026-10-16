@@ -82,7 +82,14 @@ import {
   isPersonaKnowledgeRequest,
 } from "../../../src/quality/personaRouting";
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
+import { canonicalArcanaEvidenceFor } from "../../../src/quality/relationships";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
+import {
+  currentRequestTiming,
+  requestTimingEnabled,
+  runWithRequestTiming,
+  summarizeRequestTiming,
+} from "../../../src/chat/requestTiming";
 import { fusionOwnershipChecker } from "../../../src/quality/fusionOwnership";
 import {
   dropOtherMonthSources,
@@ -1412,12 +1419,15 @@ Answer naturally like a chat assistant, not a report.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { jsonObject: true },
+      { jsonObject: true, timingLabel: "casual" },
     ).catch(() =>
-      createChatCompletion([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]),
+      createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        { timingLabel: "casual-retry" },
+      ),
     );
 
     const normalized = normalizeRagResponse(extractJson(rawAnswer), [], {
@@ -3283,10 +3293,13 @@ function unsupportedNamedClaims(
       chunk_text: string;
     }>;
   },
+  /** Curated canonical facts tied to the player's own profile (see canonicalArcanaEvidenceFor). */
+  extraEvidence = "",
 ): string[] {
   const responseText = chatResponseClaimText(response);
   const evidenceText = [
     question,
+    extraEvidence,
     ...context.facts.flatMap((fact) => [
       fact.entity.name,
       fact.entity.type ?? "",
@@ -3372,6 +3385,7 @@ function applyGroundingGuardrails(
       similarity?: number;
     }>;
   },
+  extraEvidence = "",
 ): ChatResponse {
   const requiresExactEvidence = requiresExactGameEvidence(question, intent);
   const subject = likelyExactSubject(question);
@@ -3423,7 +3437,7 @@ function applyGroundingGuardrails(
         : "The question did not require an exact-fact evidence gate.",
     ],
   };
-  const unsupportedNames = unsupportedNamedClaims(question, response, context);
+  const unsupportedNames = unsupportedNamedClaims(question, response, context, extraEvidence);
   if (unsupportedNames.length && intent !== "General Discussion") {
     const prompt = exactDetailPrompt(intent);
     const friendlyTarget = subject ? subject : "that";
@@ -4100,7 +4114,7 @@ async function decideCompanionAction(
   history: ChatRequest["history"],
   createChatCompletion: (
     messages: Array<{ role: "system" | "user"; content: string }>,
-    options?: { jsonObject?: boolean },
+    options?: { jsonObject?: boolean; timingLabel?: string },
   ) => Promise<string>,
 ): Promise<ControllerDecision> {
   const profile = mergeProfile(playerProfile, analysis.profileUpdates);
@@ -4182,12 +4196,15 @@ Decide the next action.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { jsonObject: true },
+      { jsonObject: true, timingLabel: "controller" },
     ).catch(() =>
-      createChatCompletion([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ]),
+      createChatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        { timingLabel: "controller-retry" },
+      ),
     );
 
     return normalizeControllerDecision(extractJson(rawDecision), analysis);
@@ -4811,6 +4828,7 @@ async function directRagResponse(
       jsonObject?: boolean;
       model?: string;
       maxCompletionTokens?: number;
+      timingLabel?: string;
     } = {},
   ) => createChatCompletion(messages, { ...options, signal });
 
@@ -5230,6 +5248,13 @@ Spoiler policy: ${spoilerDecision.promptInstruction}
 ${formatAssistantContext(context)}
 
 Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
+  // Canonical arcana for the links/party the player tracks count as evidence for the
+  // named-claim gate (the same pairs are given to the model as canonical facts above).
+  // Uses the saved profile plus what the player typed, never model-inferred profile updates.
+  const profileCanonicalEvidence = canonicalArcanaEvidenceFor([
+    ...(analysis.profile.currentSocialLinks ?? []),
+    ...(analysis.profile.activeParty ?? []),
+  ]);
   const responseSources = relevantResponseSources(
     conversation.analysisQuestion,
     controller.intent,
@@ -5244,7 +5269,9 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
 
   try {
     onProgress?.("Putting the answer together...");
-    const rawAnswer = await complete(messages, { jsonObject: true }).catch(() => complete(messages));
+    const rawAnswer = await complete(messages, { jsonObject: true, timingLabel: "answer" }).catch(() =>
+      complete(messages, { timingLabel: "answer-retry" }),
+    );
     const responseCompanion = {
       intent: controller.intent,
       profileUpdates: controller.profileUpdates,
@@ -5269,11 +5296,16 @@ Your previous draft contained an affinity element that is not present in the str
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "affinity-correction" },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
-    const unsupportedNames = unsupportedNamedClaims(conversation.analysisQuestion, normalized, context);
+    const unsupportedNames = unsupportedNamedClaims(
+      conversation.analysisQuestion,
+      normalized,
+      context,
+      profileCanonicalEvidence,
+    );
     if (unsupportedNames.length && controller.intent !== "General Discussion") {
       const correctionPrompt = `${userPrompt}
 
@@ -5285,7 +5317,7 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "named-claim-correction" },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5305,7 +5337,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "relationship-correction" },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5352,7 +5384,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true },
+        { jsonObject: true, timingLabel: "party-correction" },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5378,6 +5410,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         controller.intent,
         withBossPrep(normalized, conversation.analysisQuestion, controller.intent, context),
         context,
+        profileCanonicalEvidence,
       ),
       "rag",
     );
@@ -5399,6 +5432,28 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
 }
 
 async function resolveChatRequest(
+  body: Partial<ChatRequest>,
+  onProgress?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<ChatResponse> {
+  if (!requestTimingEnabled() && !body.debug) {
+    return resolveChatRequestUntimed(body, onProgress, signal);
+  }
+  return runWithRequestTiming(async () => {
+    const response = await resolveChatRequestUntimed(body, onProgress, signal);
+    const timing = currentRequestTiming();
+    if (!timing) return response;
+    const summary = summarizeRequestTiming(timing);
+    // Labels and durations only: no question text, prompts, answers or keys.
+    console.info(`[chat-timing] ${JSON.stringify({ intent: response.companion?.intent, ...summary })}`);
+    if (body.debug) {
+      return { ...response, diagnostics: { ...response.diagnostics, latency: summary } };
+    }
+    return response;
+  });
+}
+
+async function resolveChatRequestUntimed(
   body: Partial<ChatRequest>,
   onProgress?: (message: string) => void,
   signal?: AbortSignal,
