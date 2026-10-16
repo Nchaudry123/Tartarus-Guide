@@ -76,6 +76,7 @@ import {
 import {
   normalizeConversationHistory,
   resolveConversationContext,
+  userWordsOnly,
 } from "../../../src/quality/conversationContext";
 import {
   isFusionRecipeRequest,
@@ -1174,6 +1175,33 @@ async function dailyDashboardResponse(
     };
   }
   return response;
+}
+
+/** Human-readable list of what the player has already told us, for the "never ask again" rule. */
+function knownFactsSummary(profile: PlayerProfile): string {
+  return [
+    profile.currentDate ? `date ${profile.currentDate}` : profile.currentMonth ? `month ${profile.currentMonth}` : undefined,
+    profile.currentLevel ? `level ${profile.currentLevel}` : undefined,
+    profile.activeParty?.length ? `party ${profile.activeParty.join(", ")}` : undefined,
+    profile.tartarusFloor ? `Tartarus floor ${profile.tartarusFloor}` : undefined,
+    profile.tartarusBlock ? `block ${profile.tartarusBlock}` : undefined,
+    profile.recentBoss ? `boss ${profile.recentBoss}` : undefined,
+    profile.difficulty ? `difficulty ${profile.difficulty}` : undefined,
+    profile.dlcOwnership ? `Persona DLC ${profile.dlcOwnership}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+/** Profile details the player stated in earlier messages, applied oldest first. */
+function profileFromConversation(history: NonNullable<ChatRequest["history"]>): PlayerProfile {
+  let profile: PlayerProfile = {};
+  for (const message of history.slice(-12)) {
+    if (message.role !== "user") continue;
+    const { ownedPersonas: _owned, ...updates } = extractProfileUpdates(message.content);
+    profile = mergeProfile(profile, updates);
+  }
+  return profile;
 }
 
 function extractProfileUpdates(question: string): PlayerProfile {
@@ -3454,7 +3482,7 @@ function applyGroundingGuardrails(
   },
   extraEvidence = "",
 ): ChatResponse {
-  const requiresExactEvidence = requiresExactGameEvidence(question, intent);
+  const requiresExactEvidence = requiresExactGameEvidence(userWordsOnly(question), intent);
   const subject = likelyExactSubject(question);
   const matchingFacts = context.facts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
   const matchingChunks = context.chunks.filter((chunk) =>
@@ -4229,13 +4257,15 @@ Return only JSON:
 
 Routing rules:
 - Act like a normal LLM chat assistant first. For greetings, thanks, small talk, and meta questions, choose answer_directly.
-- If the user is vague but clearly wants help, choose ask_clarifying_question and ask one natural question.
+- Prefer helping over asking. Choose ask_clarifying_question only when neither the known profile nor earlier messages give you enough to say anything useful.
+- When you do choose ask_clarifying_question, "answer" must start with one concrete, useful tip and end with exactly one short question. Never offer a menu of options.
+- Never ask for a detail that is already in the known profile or earlier messages (level, party, floor, month, boss).
 - Do not force exact guide keywords from the user. Infer the likely intent from normal language.
 - Search only when exact Persona 3 Reload facts are needed: enemy weaknesses, boss mechanics, dates, floors, fusion routes, rewards, Social Link answers, Elizabeth requests, achievements, or spoiler-sensitive story facts.
 - Use search_structured_facts for exact weakness/resistance/entity facts.
 - Use search_guides for broad plans and walkthrough-style advice.
 - Use search_both when both exact facts and guide explanation would help.
-- If the user says their team feels weak, party feels weak, they are stuck, or they need coaching, do not search immediately unless they named a boss/enemy/floor. Ask for level, active team, and bottleneck.
+- If the user says their team feels weak, they are stuck, or a party member keeps dying: when level, party or floor are known, choose search_guides and coach them; otherwise give a useful general tip in "answer" plus one question.
 - If player progress is unclear and the question could spoil story, ask before revealing story details.
 - Keep answer concise when action is answer_directly or ask_clarifying_question.
 - Never mention retrieval, database, Supabase, Groq, IGN, Game8, or guide mechanics in the answer.
@@ -4252,6 +4282,7 @@ Routing rules:
 Heuristic intent hint: ${analysis.intent}
 Heuristic ambiguity hint: ${analysis.isAmbiguous}
 Known player profile: ${JSON.stringify(profile)}
+Already known (never ask for these again): ${knownFactsSummary(profile) || "Nothing yet."}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 
@@ -4738,6 +4769,11 @@ async function directRagResponse(
   signal?.throwIfAborted();
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
+  // Player Memory as saved on the device; only this may be labelled "In Player Memory".
+  const savedPlayerProfile = playerProfile;
+  // Details the player already stated earlier in this chat (floor, level, party, month...)
+  // count as known, so the assistant never asks for them again.
+  playerProfile = mergeProfile(playerProfile, profileFromConversation(normalizedHistory));
   if (isSillyQuestion(question) || isSillyQuestion(conversation.analysisQuestion)) {
     return sillyQuestionResponse(question, extractProfileUpdates(question));
   }
@@ -4764,7 +4800,7 @@ async function directRagResponse(
       "rag",
     );
   }
-  const analysis = analyzeCompanionRequest(conversation.analysisQuestion, playerProfile);
+  const analysis = analyzeCompanionRequest(userWordsOnly(conversation.analysisQuestion), playerProfile);
   const dailyDashboard = await dailyDashboardResponse(
     conversation.analysisQuestion,
     analysis.profile,
@@ -4906,7 +4942,7 @@ async function directRagResponse(
   ) => createChatCompletion(messages, { ...options, signal });
 
   const controller =
-    deterministicControllerDecision(conversation.analysisQuestion, analysis, playerProfile) ??
+    deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile) ??
     (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, complete));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const spoilerDecision = evaluateSpoilerPolicy({
@@ -5083,7 +5119,7 @@ async function directRagResponse(
       debug,
       context.queries,
       controllerProfile,
-      playerProfile?.ownedPersonas,
+      savedPlayerProfile?.ownedPersonas,
     );
     if (fusionResponse) return fusionResponse;
     const personaProfile = structuredPersonaProfileResponse(
@@ -5096,7 +5132,7 @@ async function directRagResponse(
     if (personaProfile) return personaProfile;
   }
   if (
-    exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
+    exactWeaknessQuestion(userWordsOnly(conversation.analysisQuestion), controller.intent) &&
     Boolean(likelyExactSubject(conversation.analysisQuestion)) &&
     (controller.intent === "Enemy Weakness" || controller.intent === "Boss Help")
   ) {
@@ -5143,7 +5179,7 @@ async function directRagResponse(
   );
   if (bloodyMariaResponse) return bloodyMariaResponse;
   if (
-    exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
+    exactWeaknessQuestion(userWordsOnly(conversation.analysisQuestion), controller.intent) &&
     !hasStructuredAffinitySupport(conversation.analysisQuestion, context.facts)
   ) {
     const matchingSources = exactSubjectSources(conversation.analysisQuestion, context);
@@ -5261,7 +5297,11 @@ Reply style (this is a chat, not a report):
 - Do not dump early-game tip lists for vague questions.
 - If the user says "craft/make/fuse these" without naming a Persona or item, ask what they mean. Do not invent recommended Personas.
 - Never answer a different question than the one asked (e.g. do not give enemy weaknesses when they asked how to craft/fuse something).
+Conversation memory:
 - Treat short replies as part of the ongoing conversation. Acknowledge what the user accepted or rejected, return to the active topic, and never repeat a clarification they just answered.
+- Everything listed under "Already known" was stated by the player. Use it, and never ask for it again.
+- Never repeat advice from your previous message. When the player follows up, build on it: get more specific, add the next step, or answer the new angle.
+- Read follow-ups like "after that", "tho", "what about him" against the previous turn, and answer that thread rather than restarting the topic.
 - Ask at most one focused question per turn. If the user rejects a framing with "no" or "not really," offer the most useful interpretation of their original topic instead of asking the same menu-style question again.
 - suggestedPrompts (when you imply next steps in missingInfo) must sound like things a player would type, never "rephrase", "Player Memory", or "focused question".
 - Never say "retrieved", "database", "guide context", "provided context", "according to IGN", "based on documents", or similar mechanics-facing phrases.
@@ -5316,6 +5356,7 @@ Short follow-up reply: ${
 
 Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
+Already known (never ask for these again): ${knownFactsSummary(profileForPrompt) || "Nothing yet."}
 ${formatProgressContext(profileForPrompt)}
 ${monthBrief ? `${monthBrief}\nFor a planning question, anchor the plan on the next Full Moon operation date above and name it.\n` : ""}Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recommendation mode: ${asksForRecommendation(conversation.analysisQuestion) ? "Active. Make a clear choice and populate the recommendation card." : "Inactive. Return recommendation as null."}
@@ -5368,7 +5409,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
       normalized = responseFromPlainText(rawAnswer, responseSources, responseCompanion);
     }
     if (
-      exactWeaknessQuestion(conversation.analysisQuestion, controller.intent) &&
+      exactWeaknessQuestion(userWordsOnly(conversation.analysisQuestion), controller.intent) &&
       hasUnsupportedAffinityClaim(normalized, conversation.analysisQuestion, context.facts)
     ) {
       const correctionPrompt = `${userPrompt}
