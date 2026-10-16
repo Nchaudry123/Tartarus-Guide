@@ -1905,12 +1905,31 @@ function normalizeControllerDecision(raw: unknown, fallback: CompanionAnalysis):
   };
 }
 
+const MISSING_REPLY_TEXT =
+  "I almost had that — can you rephrase with the exact name or one more detail so I don’t guess?";
+
+/**
+ * A correction call that comes back without a reply must not replace a real draft with the
+ * canned "rephrase" line. Keep the previous draft (minus sentences that break party rules);
+ * the later grounding gate still blocks it if its named claims are unsupported.
+ */
+function keepDraftWhenEmpty(corrected: ChatResponse, previous: ChatResponse): ChatResponse {
+  if (corrected.answer !== MISSING_REPLY_TEXT) return corrected;
+  return { ...previous, answer: withoutPartyRuleViolations(previous.answer) };
+}
+
 function normalizeRagResponse(
   raw: unknown,
   fallbackSources: ChatResponse["sources"],
   companion?: NonNullable<ChatResponse["companion"]>,
 ): ChatResponse {
-  const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  // A bare JSON string ("Junpei's probably...") is the reply itself.
+  const value: Record<string, unknown> =
+    typeof raw === "string"
+      ? { answer: raw }
+      : raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
   // Models occasionally put the reply under another key; never fall back to a canned
   // "rephrase" line when the reply is actually there.
   const rawAnswer =
@@ -2013,7 +2032,7 @@ function normalizeRagResponse(
     answer:
       answer ??
       sectionReply ??
-      "I almost had that — can you rephrase with the exact name or one more detail so I don’t guess?",
+      MISSING_REPLY_TEXT,
     sections: sectionReply ? [] : sections,
     tables,
     recommendation,
@@ -5015,9 +5034,11 @@ async function directRagResponse(
 
   if (controller.action === "answer_directly") {
     return withMode({
-      answer:
+      // The controller's own reply skips the answer-path checks; drop rule-breaking sentences.
+      answer: withoutPartyRuleViolations(
         controller.answer ??
-        "I’m with you. Tell me what part of Persona 3 Reload you’re working on and I’ll help you reason through it.",
+          "I’m with you. Tell me what part of Persona 3 Reload you’re working on and I’ll help you reason through it.",
+      ),
       sections: [],
       sources: [],
       confidence: 0.78,
@@ -5481,7 +5502,10 @@ Your previous draft contained an affinity element that is not present in the str
         ],
         { jsonObject: true, timingLabel: "affinity-correction", model: chatConfig.correctionChatModel },
       );
-      normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
     }
     const unsupportedNames = unsupportedNamedClaims(
       conversation.analysisQuestion,
@@ -5502,7 +5526,10 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
         ],
         { jsonObject: true, timingLabel: "named-claim-correction", model: chatConfig.correctionChatModel },
       );
-      normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
     }
     const relationshipErrors = [
       ...relationshipContradictions(normalized),
@@ -5522,10 +5549,9 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
         ],
         { jsonObject: true, timingLabel: "relationship-correction", model: chatConfig.correctionChatModel },
       );
-      normalized = normalizeRagResponse(
-        extractJson(correctedRaw),
-        responseSources,
-        responseCompanion,
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
       );
       const remainingContradictions = [
         ...relationshipContradictions(normalized),
@@ -5572,10 +5598,9 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         ],
         { jsonObject: true, timingLabel: "party-correction", model: chatConfig.correctionChatModel },
       );
-      normalized = normalizeRagResponse(
-        extractJson(correctedRaw),
-        responseSources,
-        responseCompanion,
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
       );
       if (partyRoleContradictions(normalized).length) {
         normalized = rosterAdviceResponse(
