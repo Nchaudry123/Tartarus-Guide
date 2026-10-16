@@ -26,7 +26,7 @@ type GameDate = {
   timestamp: number;
 };
 
-const storyDeadlines = [
+export const storyDeadlines = [
   { month: "May", day: 9, title: "Priestess Full Moon operation" },
   { month: "June", day: 8, title: "Emperor and Empress Full Moon operation" },
   { month: "July", day: 7, title: "Hierophant and Lovers Full Moon operation" },

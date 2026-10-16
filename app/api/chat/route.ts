@@ -83,6 +83,12 @@ import {
 } from "../../../src/quality/personaRouting";
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
 import { canonicalArcanaEvidenceFor } from "../../../src/quality/relationships";
+import {
+  asksForMonthPlan,
+  asksWhichLinksCanStart,
+  buildMonthPlan,
+  monthPlanningBrief,
+} from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import {
   currentRequestTiming,
@@ -574,6 +580,55 @@ function isSillyQuestion(question: string): boolean {
     /\b(can|could|would)\s+(?:she|he|they|elizabeth|mitsuru|yukari|aigis|fuuka)\b.{0,80}\b(jiggle|rizz|twerk|throw it back)\b/.test(text) ||
     /\b(?:is|are)\b.{0,60}\b(?:caked up|dummy thick|breedable)\b/.test(text)
   );
+}
+
+/** "Which Social Links can I start this month?" answered from the canonical start table. */
+function startableSocialLinksResponse(
+  question: string,
+  profile: PlayerProfile,
+  profileUpdates: PlayerProfile,
+): ChatResponse | null {
+  if (!asksWhichLinksCanStart(question)) return null;
+  const plan = buildMonthPlan(profile, question);
+  if (!plan) return null;
+  const describe = (link: (typeof plan.availableLinks)[number]) =>
+    `${link.character} (${link.arcana}): ${link.requirement} ${link.location}, ${link.availability}.`;
+  const sections = [
+    plan.availableLinks.length
+      ? { title: `Open by ${plan.dateLabel}`, content: plan.availableLinks.map(describe).join(" ") }
+      : undefined,
+    plan.laterThisMonth.length
+      ? {
+          title: `Opening later in ${plan.month}`,
+          content: plan.laterThisMonth.map((link) => `From ${link.earliestStart}: ${describe(link)}`).join(" "),
+        }
+      : undefined,
+  ].filter((section): section is { title: string; content: string } => Boolean(section));
+  const names = plan.availableLinks.map((link) => `${link.character} (${link.arcana})`);
+  return withMode({
+    answer: names.length
+      ? `By ${plan.dateLabel} you can start ${names.length} Social Link${names.length === 1 ? "" : "s"}: ${names.join(", ")}.${
+          plan.laterThisMonth.length
+            ? ` ${plan.laterThisMonth.map((link) => link.character).join(" and ")} open${plan.laterThisMonth.length === 1 ? "s" : ""} later in ${plan.month}.`
+            : ""
+        }`
+      : `No new Social Links open by ${plan.dateLabel}.`,
+    sections,
+    sources: [SOCIAL_LINK_START_SOURCE],
+    confidence: 0.95,
+    missingInfo: "No additional detail is needed.",
+    companion: {
+      intent: "Social Links",
+      profileUpdates,
+      followUpQuestions: [],
+      suggestedPrompts: [
+        "Which one should I do first?",
+        ...(plan.laterThisMonth[0]
+          ? [`What do I need to start ${plan.laterThisMonth[0].character.split(" ")[0]}'s link?`]
+          : []),
+      ],
+    },
+  }, "rag");
 }
 
 function offTopicResponse(profileUpdates: PlayerProfile = {}): ChatResponse {
@@ -1280,7 +1335,15 @@ function analyzeCompanionRequest(question: string, profile?: PlayerProfile): Com
   ) {
     followUpQuestions.push("What level are you right now, and who is on your active team?");
   }
-  if (intent === "Boss Help" && !mergedProfile.recentBoss && !hasExplicitBossTarget && !hasNamedBoss) {
+  // "the next full moon" is fully determined once the player's month is known.
+  const nextFullMoonKnown = /\bnext full moon\b/i.test(question) && Boolean(mergedProfile.currentMonth);
+  if (
+    intent === "Boss Help" &&
+    !mergedProfile.recentBoss &&
+    !hasExplicitBossTarget &&
+    !hasNamedBoss &&
+    !nextFullMoonKnown
+  ) {
     followUpQuestions.push(
       /\bnext full moon\b/i.test(question)
         ? "What in-game month and date are you on, and which full moon operation is next?"
@@ -4706,6 +4769,12 @@ async function directRagResponse(
     signal,
   );
   if (dailyDashboard) return dailyDashboard;
+  const startableLinks = startableSocialLinksResponse(
+    conversation.analysisQuestion,
+    analysis.profile,
+    analysis.profileUpdates,
+  );
+  if (startableLinks) return startableLinks;
   const fusionDlcClarification = fusionDlcClarificationResponse(
     conversation.analysisQuestion,
     analysis.profile,
@@ -4818,7 +4887,7 @@ async function directRagResponse(
   }
 
   // Dynamic so mock/local mode can load without Supabase/chat credentials at module init.
-  const [{ buildPlannedContext }, { createChatCompletion }] = await Promise.all([
+  const [{ buildPlannedContext }, { createChatCompletion, config: chatConfig }] = await Promise.all([
     import("../../../src/retrieval/buildContext"),
     import("../../../src/db/client"),
   ]);
@@ -5219,6 +5288,10 @@ ${socialLinkStartFactsForPrompt()}
 ${partyRoleFactsForPrompt()}`;
 
   const profileForPrompt = controllerProfile;
+  // Month-level canonical facts for vague planning questions (deterministic profile only).
+  const monthBrief = asksForMonthPlan(conversation.analysisQuestion, controller.intent)
+    ? monthPlanningBrief(analysis.profile, conversation.analysisQuestion)
+    : "";
   const historyForPrompt = normalizedHistory
     .slice(-10)
     .map((message) => `${message.role}: ${message.content}`)
@@ -5237,7 +5310,7 @@ Short follow-up reply: ${
 Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
 ${formatProgressContext(profileForPrompt)}
-Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
+${monthBrief ? `${monthBrief}\nFor a planning question, anchor the plan on the next Full Moon operation date above and name it.\n` : ""}Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recommendation mode: ${asksForRecommendation(conversation.analysisQuestion) ? "Active. Make a clear choice and populate the recommendation card." : "Inactive. Return recommendation as null."}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
@@ -5251,10 +5324,13 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   // Canonical arcana for the links/party the player tracks count as evidence for the
   // named-claim gate (the same pairs are given to the model as canonical facts above).
   // Uses the saved profile plus what the player typed, never model-inferred profile updates.
-  const profileCanonicalEvidence = canonicalArcanaEvidenceFor([
-    ...(analysis.profile.currentSocialLinks ?? []),
-    ...(analysis.profile.activeParty ?? []),
-  ]);
+  const profileCanonicalEvidence = [
+    canonicalArcanaEvidenceFor([
+      ...(analysis.profile.currentSocialLinks ?? []),
+      ...(analysis.profile.activeParty ?? []),
+    ]),
+    monthBrief,
+  ].join("\n");
   const responseSources = relevantResponseSources(
     conversation.analysisQuestion,
     controller.intent,
@@ -5296,7 +5372,7 @@ Your previous draft contained an affinity element that is not present in the str
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "affinity-correction" },
+        { jsonObject: true, timingLabel: "affinity-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5317,7 +5393,7 @@ Regenerate the JSON answer without those unsupported named details. Keep the ans
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "named-claim-correction" },
+        { jsonObject: true, timingLabel: "named-claim-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion);
     }
@@ -5337,7 +5413,7 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "relationship-correction" },
+        { jsonObject: true, timingLabel: "relationship-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),
@@ -5384,7 +5460,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
           { role: "system", content: systemPrompt },
           { role: "user", content: correctionPrompt },
         ],
-        { jsonObject: true, timingLabel: "party-correction" },
+        { jsonObject: true, timingLabel: "party-correction", model: chatConfig.correctionChatModel },
       );
       normalized = normalizeRagResponse(
         extractJson(correctedRaw),

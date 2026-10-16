@@ -3,7 +3,8 @@ import path from "node:path";
 import Script from "next/script";
 
 async function loadStaticShell() {
-  const indexPath = path.join(process.cwd(), "index.html");
+  // Single source of the static UI shell; script.js and styles.css are served from public/ too.
+  const indexPath = path.join(process.cwd(), "public", "index.html");
   const html = await fs.readFile(indexPath, "utf8");
   const bodyMatch = html.match(/<body>([\s\S]*)<\/body>/);
   const body = bodyMatch?.[1] ?? "";
