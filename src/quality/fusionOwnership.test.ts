@@ -28,7 +28,11 @@ test("a Persona the player mentioned in chat counts as owned but is not claimed 
 
 test("fusion route takes saved ownership from the request profile, not the model-merged profile", () => {
   const route = readFileSync(new URL("../../app/api/chat/route.ts", import.meta.url), "utf8");
-  assert.match(route, /controllerProfile,\s*playerProfile\?\.ownedPersonas,\s*\);/);
+  assert.match(route, /controllerProfile,\s*savedPlayerProfile\?\.ownedPersonas,\s*\);/);
+  // The saved profile is captured before earlier-message details are merged into playerProfile.
+  const saved = route.indexOf("const savedPlayerProfile = playerProfile;");
+  const merged = route.indexOf("playerProfile = mergeProfile(playerProfile, profileFromConversation(");
+  assert.ok(saved > 0 && merged > saved, "savedPlayerProfile must be taken before the conversation merge");
   assert.doesNotMatch(route, /\.\.\.\(profile\.ownedPersonas \?\? \[\]\), \.\.\.mentionedOwned/);
 });
 
