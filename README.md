@@ -28,7 +28,7 @@ npm install
 Fast static preview:
 
 ```bash
-python3 -m http.server 4173
+python3 -m http.server 4173 --directory public
 ```
 
 Open:
@@ -37,9 +37,9 @@ Open:
 http://127.0.0.1:4173/
 ```
 
-This preview uses [index.html](</Users/namir/Documents/New project/index.html>), [styles.css](</Users/namir/Documents/New project/styles.css>), and [script.js](</Users/namir/Documents/New project/script.js>). It has the Persona-inspired chatbot UI and mock answers, so you can view and test the interface without credentials.
+This preview uses [public/index.html](</Users/namir/Documents/New project/public/index.html>), [public/styles.css](</Users/namir/Documents/New project/public/styles.css>), and [public/script.js](</Users/namir/Documents/New project/public/script.js>), the same files the Next app serves. It has the Persona-inspired chatbot UI and mock answers, so you can view and test the interface without credentials.
 
-If the static site is hosted separately from the API, set the API URL before [script.js](</Users/namir/Documents/New project/script.js>) runs:
+If the static site is hosted separately from the API, set the API URL before [public/script.js](</Users/namir/Documents/New project/public/script.js>) runs:
 
 ```html
 <script>
@@ -61,7 +61,7 @@ Open:
 http://127.0.0.1:3000/
 ```
 
-The Next app lives in [app/page.tsx](</Users/namir/Documents/New project/app/page.tsx>) and [components/ChatShell.tsx](</Users/namir/Documents/New project/components/ChatShell.tsx>). The API route is [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>).
+The Next app lives in [app/page.tsx](</Users/namir/Documents/New project/app/page.tsx>), which renders the static UI shell from `public/index.html` and loads `public/script.js` and `public/styles.css`. The API route is [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>).
 
 Create an environment file:
 
@@ -392,7 +392,7 @@ Create a Hugging Face token with Inference Providers permission. The route uses 
 
 If you deploy RAG as a separate service later, set `RAG_CHAT_ENDPOINT`; the route will call that first before trying direct Supabase retrieval.
 
-To change mock responses, edit the `mockResponse` function in [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>) for the Next app, or `mockAnswer` in [script.js](</Users/namir/Documents/New project/script.js>) for the static preview.
+To change mock responses, edit the `mockResponse` function in [app/api/chat/route.ts](</Users/namir/Documents/New project/app/api/chat/route.ts>) for the Next app, or `mockAnswer` in [public/script.js](</Users/namir/Documents/New project/public/script.js>) for the static preview.
 
 ## Adding Sources
 

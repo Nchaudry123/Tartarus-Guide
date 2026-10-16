@@ -21,6 +21,10 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // app/page.tsx reads the static UI shell from disk; make sure it ships with the server bundle.
+  outputFileTracingIncludes: {
+    "/": ["./public/index.html"],
+  },
   poweredByHeader: false,
   async headers() {
     return [
