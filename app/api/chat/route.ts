@@ -92,6 +92,7 @@ import {
 } from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
+import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -1505,6 +1506,7 @@ Rules:
   const userPrompt = `User message: ${question}
 Known player profile: ${JSON.stringify(profile)}
 ${formatProgressContext(profile)}
+${progressFactsForPrompt(profile, question)}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
 
@@ -5382,6 +5384,8 @@ ${partyRoleFactsForPrompt()}`;
   const monthBrief = asksForMonthPlan(conversation.analysisQuestion, controller.intent)
     ? monthPlanningBrief(analysis.profile, conversation.analysisQuestion)
     : "";
+  // Tartarus block for the player's floor and the fighters who have joined by their date.
+  const progressFacts = progressFactsForPrompt(analysis.profile, userWordsOnly(conversation.analysisQuestion));
   const historyForPrompt = normalizedHistory
     .slice(-10)
     .map((message) => `${message.role}: ${message.content}`)
@@ -5401,7 +5405,7 @@ Controller intent: ${controller.intent}
 Known player profile: ${JSON.stringify(profileForPrompt)}
 Already known (never ask for these again): ${knownFactsSummary(profileForPrompt) || "Nothing yet."}
 ${formatProgressContext(profileForPrompt)}
-${monthBrief ? `${monthBrief}\nFor a planning question, anchor the plan on the next Full Moon operation date above and name it.\n` : ""}Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
+${progressFacts ? `${progressFacts}\n` : ""}${monthBrief ? `${monthBrief}\nFor a planning question, anchor the plan on the next Full Moon operation date above and name it.\n` : ""}Availability note: Active party is known, but the rest of the roster is unknown unless the conversation explicitly mentions them.
 Recommendation mode: ${asksForRecommendation(conversation.analysisQuestion) ? "Active. Make a clear choice and populate the recommendation card." : "Inactive. Return recommendation as null."}
 Recent conversation:
 ${historyForPrompt || "No prior turns."}
@@ -5421,6 +5425,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
       ...(analysis.profile.activeParty ?? []),
     ]),
     monthBrief,
+    progressFacts,
   ].join("\n");
   const responseSources = relevantResponseSources(
     conversation.analysisQuestion,
