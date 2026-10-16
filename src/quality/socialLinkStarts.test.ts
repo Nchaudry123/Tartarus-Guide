@@ -84,3 +84,36 @@ test("does not treat ordinary uses of when as a Social Link start request", () =
     null,
   );
 });
+
+test("a full moon, a full-moon boss, or 'the tower' is not a Social Link mention", () => {
+  for (const question of [
+    "Is it worth grinding Tartarus before the June full moon or should I spend evenings on Social Links instead?",
+    "Should I do Social Links or prep for the full moon? Is it open tonight?",
+    "Can I start Social Links before the Emperor and Empress fight?",
+    "When can I fight the Priestess boss, and should I do social links first?",
+    "Should I climb the tower or do social links when I can?",
+  ]) {
+    assert.equal(socialLinkStartForQuestion(question), null, question);
+  }
+});
+
+test("real Moon, Tower and Emperor Social Link questions still match", () => {
+  assert.equal(socialLinkStartForQuestion("When does the Moon Social Link start?")?.character, "Nozomi Suemitsu");
+  assert.equal(socialLinkStartForQuestion("When can I start the Tower social link?")?.character, "Mutatsu");
+  assert.equal(socialLinkStartForQuestion("When does the Emperor social link start?")?.character, "Hidetoshi Odagiri");
+});
+
+test("an answer about a full-moon boss is not checked against that arcana's link start date", () => {
+  // Fuuka's Priestess link starts June 19; the Priestess boss fight is May 9.
+  assert.deepEqual(
+    socialLinkStartContradictions({
+      answer: "Rest on May 8 so you are ready for the Priestess boss on May 9.",
+    }),
+    [],
+  );
+  // A real Priestess link claim with the wrong date is still caught.
+  assert.equal(
+    socialLinkStartContradictions({ answer: "Fuuka's Priestess Social Link starts May 9." }).length,
+    1,
+  );
+});
