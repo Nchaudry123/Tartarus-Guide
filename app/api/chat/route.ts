@@ -64,6 +64,7 @@ import {
   getProgressSnapshot,
 } from "../../../src/quality/progressTimeline";
 import {
+  statedCombatParty,
   combatPartyMembers,
   normalizeCombatParty,
   partyRoleContradictions,
@@ -1224,8 +1225,8 @@ function extractProfileUpdates(question: string): PlayerProfile {
   const difficultyMatch = question.match(/\b(beginner|easy|normal|hard|merciless|peaceful)\b/i);
   if (difficultyMatch) updates.difficulty = titleCase(difficultyMatch[1]);
 
-  const activeParty = partyMembers.filter((member) => new RegExp(`\\b${member}\\b`, "i").test(question));
-  const combatParty = normalizeCombatParty(activeParty);
+  // Only a stated party ("with Yukari and Junpei") updates it; a passing mention does not.
+  const combatParty = statedCombatParty(question);
   if (combatParty?.length) updates.activeParty = combatParty;
 
   const playstyleMatch = question.match(/\b(physical|magic|balanced|defensive|aggressive|safe|grind|speedrun)\b/i);
@@ -1876,7 +1877,10 @@ function normalizeControllerDecision(raw: unknown, fallback: CompanionAnalysis):
   const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const fallbackAction: ControllerAction =
     fallback.isAmbiguous && fallback.followUpQuestions.length ? "ask_clarifying_question" : "search_both";
-  const profileUpdates = mergeProfile(fallback.profileUpdates, normalizeProfileUpdates(value.profileUpdates));
+  const modelUpdates = normalizeProfileUpdates(value.profileUpdates);
+  // The model may "extract" a party from a passing mention; only trust a party the player stated.
+  if (!fallback.profileUpdates.activeParty?.length) delete modelUpdates.activeParty;
+  const profileUpdates = mergeProfile(fallback.profileUpdates, modelUpdates);
 
   return {
     action: sanitizeControllerAction(value.action, fallbackAction),
@@ -5516,10 +5520,13 @@ Regenerate the JSON answer. Correct those claims, distinguish Social Links from 
         responseSources,
         responseCompanion,
       );
-      if (
-        relationshipContradictions(normalized).length ||
-        socialLinkStartContradictions(normalized).length
-      ) {
+      const remainingContradictions = [
+        ...relationshipContradictions(normalized),
+        ...socialLinkStartContradictions(normalized),
+      ];
+      if (remainingContradictions.length) {
+        // Canonical rule text only (no user content), to see which checker fired.
+        console.warn(`Relationship check still failing after correction: ${remainingContradictions.join(" | ")}`);
         const verifiedStart = socialLinkStartResponse(
           conversation.analysisQuestion,
           controller.profileUpdates,

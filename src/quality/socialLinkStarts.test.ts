@@ -117,3 +117,17 @@ test("an answer about a full-moon boss is not checked against that arcana's link
     1,
   );
 });
+
+test("a party member plus a date is not a Social Link start claim", () => {
+  assert.deepEqual(
+    socialLinkStartContradictions({
+      answer: "On June 4 at floor 18, keep Yukari healing and Junpei on offense, and push before June 8.",
+    }),
+    [],
+  );
+  // A real wrong start claim about Yukari's link is still caught.
+  assert.equal(
+    socialLinkStartContradictions({ answer: "Yukari's Lovers Social Link starts June 4." }).length,
+    1,
+  );
+});
