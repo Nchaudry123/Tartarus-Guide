@@ -238,14 +238,18 @@ Detailed reports are written to `evals/results/` and ignored by Git.
 ### Deployment quality gate
 
 Vercel runs `npm run vercel-build` through `vercel.json`. The command validates
-the fixtures, runs deterministic regression tests and TypeScript checks, then
-calls the current `app/api/chat` route directly for the transcript-derived
-evaluation slice. The deployment fails when its average accuracy is below 85%.
+the fixtures and runs deterministic regression tests and TypeScript checks on
+every build. On **production** builds (`VERCEL_ENV=production`) it then calls the
+current `app/api/chat` route directly for the transcript-derived evaluation slice
+(`npm run eval:gate`, via `scripts/eval-gate-production.mjs`). The deployment
+fails when its average accuracy is below 85%.
+
+Preview builds skip the gate because it calls the paid model and embedding APIs.
+To run it on a preview or local build, set `FORCE_EVAL_GATE=true`.
 
 The direct evaluation uses the same Supabase and model environment variables as
-the deployment. Keep those variables available to Production and Preview
-environments; missing credentials or mock mode should fail the gate instead of
-shipping an unverified chatbot.
+the deployment. Keep those variables available to Production; missing credentials
+or mock mode should fail the gate instead of shipping an unverified chatbot.
 
 Game8 affinity tables are parsed deterministically. Explicit table values take
 precedence over nearby strategy prose so a summoned enemy's weakness is not
