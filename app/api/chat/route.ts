@@ -84,6 +84,13 @@ import {
 import { asksForRecommendation } from "../../../src/quality/recommendationMode";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import {
+  dropOtherMonthSources,
+  playerTartarusBlock,
+  questionCalendarMonth,
+  rankSourcesForPlayer,
+  sourceTartarusBlock,
+} from "../../../src/retrieval/sourceRelevance";
+import {
   isOffTopicQuestion,
   offTopicAnswer,
   offTopicSuggestedPrompts,
@@ -2241,6 +2248,7 @@ function structuredAffinityResponse(
   companion: NonNullable<ChatResponse["companion"]>,
   debug: boolean,
   queries: string[],
+  profileBlock?: string,
 ): ChatResponse | null {
   const matches = exactAffinityFacts(question, facts);
   if (!matches.length) return null;
@@ -2270,15 +2278,24 @@ function structuredAffinityResponse(
 
   const weaknesses = byType.get("weakness") ?? [];
   const requestedBlock = tartarusBlocks.find((block) => new RegExp(`\\b${block}\\b`, "i").test(question));
-  const sourceBlock = tartarusBlocks.find((block) =>
-    matches.some((fact) => new RegExp(`\\b${block}\\b`, "i").test(`${fact.source.title} ${fact.source.url}`)),
+  const sources = rankSourcesForPlayer([...sourceMap.values()], requestedBlock ?? profileBlock);
+  const sourceBlocks = new Set(
+    sources.map((source) => sourceTartarusBlock(source)?.toLowerCase()).filter(Boolean),
   );
+  const sourceBlock = sources.map((source) => sourceTartarusBlock(source)).find(Boolean);
   const locationCorrection =
-    requestedBlock && sourceBlock && requestedBlock.toLowerCase() !== sourceBlock.toLowerCase()
+    requestedBlock && sourceBlock && !sourceBlocks.has(requestedBlock.toLowerCase())
       ? `${entityName} is indexed in ${sourceBlock}, not ${requestedBlock}. The ${sourceBlock} version`
       : entityName;
+  const currentBlock = playerTartarusBlock(profileBlock);
+  // The player's saved block (not named in the question) differs from where the guide lists
+  // this enemy: say so instead of silently citing another floor's walkthrough.
+  const profileBlockNote =
+    !requestedBlock && currentBlock && sourceBlock && !sourceBlocks.has(currentBlock.toLowerCase())
+      ? ` The guide lists it in ${sourceBlock}, not ${currentBlock} where you are now.`
+      : "";
   const response = withMode({
-    answer: `${locationCorrection} ${joinNatural(clauses)}.`,
+    answer: `${locationCorrection} ${joinNatural(clauses)}.${profileBlockNote}`,
     sections: weaknesses.length
       ? [
           {
@@ -2287,7 +2304,7 @@ function structuredAffinityResponse(
           },
         ]
       : [],
-    sources: [...sourceMap.values()],
+    sources,
     confidence: Math.max(...matches.map((fact) => fact.confidence)),
     missingInfo: "No additional detail is needed for the confirmed affinity.",
     companion,
@@ -3083,8 +3100,14 @@ function exactSubjectSources(
     chunks: Array<{ source_title: string; source_url: string; source_domain: string; source_credibility_rank?: number; chunk_text: string; section_title: string | null }>;
     sources: ChatResponse["sources"];
   },
+  profile: Pick<PlayerProfile, "tartarusBlock" | "currentMonth"> = {},
 ): ChatResponse["sources"] {
   const subject = likelyExactSubject(question);
+  const currentBlock = profile.tartarusBlock;
+  // Subject-less answers (day plans, general coaching) only cite pages for the month in play.
+  const candidateSources = subject
+    ? context.sources
+    : dropOtherMonthSources(context.sources, questionCalendarMonth(question, profile.currentMonth));
   const exactChunkUrls = new Set(
     context.chunks
       .filter((chunk) =>
@@ -3112,8 +3135,14 @@ function relevantResponseSources(
     }>;
     sources: ChatResponse["sources"];
   },
+  profile: Pick<PlayerProfile, "tartarusBlock" | "currentMonth"> = {},
 ): ChatResponse["sources"] {
   const subject = likelyExactSubject(question);
+  const currentBlock = profile.tartarusBlock;
+  // Subject-less answers (day plans, general coaching) only cite pages for the month in play.
+  const candidateSources = subject
+    ? context.sources
+    : dropOtherMonthSources(context.sources, questionCalendarMonth(question, profile.currentMonth));
   const relevantUrls = new Set<string>();
 
   if (subject) {
@@ -3138,14 +3167,15 @@ function relevantResponseSources(
 
   const sourcePriority = (source: ChatResponse["sources"][number]) =>
     intent === "Fusion Advice" && isFusionToolUrl(source.url) ? 0 : 1;
-  const exactMatches = context.sources
-    .filter((source) => relevantUrls.has(source.url))
-    .sort((a, b) => sourcePriority(a) - sourcePriority(b));
+  const exactMatches = rankSourcesForPlayer(
+    candidateSources.filter((source) => relevantUrls.has(source.url)),
+    currentBlock,
+  ).sort((a, b) => sourcePriority(a) - sourcePriority(b));
   if (exactMatches.length) return exactMatches.slice(0, 4);
 
   if (intent === "Fusion Advice") {
     const fusionFactUrls = new Set(context.facts.map((fact) => fact.source.url));
-    const fusionSources = context.sources
+    const fusionSources = candidateSources
       .filter((source) => fusionFactUrls.has(source.url))
       .sort(
         (a, b) =>
@@ -3154,7 +3184,10 @@ function relevantResponseSources(
     if (fusionSources.length) return fusionSources.slice(0, 3);
   }
 
-  return context.sources.slice(0, 4);
+  // A named subject with no source that mentions it: show nothing rather than an
+  // unrelated page (e.g. a different floor's walkthrough).
+  if (subject) return [];
+  return rankSourcesForPlayer(candidateSources, currentBlock).slice(0, 4);
 }
 
 function chatResponseClaimText(response: {
@@ -4981,6 +5014,7 @@ async function directRagResponse(
       companion,
       debug,
       context.queries,
+      controllerProfile.tartarusBlock,
     );
     if (exactResponse) return exactResponse;
   }
@@ -5199,6 +5233,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
     conversation.analysisQuestion,
     controller.intent,
     context,
+    controllerProfile,
   );
 
   const messages = [

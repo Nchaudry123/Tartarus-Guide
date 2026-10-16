@@ -46,6 +46,9 @@ test("recognizes direct daily-planning requests", () => {
   assert.equal(asksForDailyDashboard("What should I do today?"), true);
   assert.equal(asksForDailyDashboard("Show my game day dashboard"), true);
   assert.equal(asksForDailyDashboard("How do I fuse Loki?"), false);
+  assert.equal(asksForDailyDashboard("What should I do on June 6?"), true);
+  assert.equal(asksForDailyDashboard("What can I do on May 9th"), true);
+  assert.equal(asksForDailyDashboard("What should I do about Dancing Hand?"), false);
 });
 
 test("prioritizes expiring requests, available tracked links, and the next operation", () => {
