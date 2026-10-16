@@ -1,0 +1,30 @@
+name: Supabase Keep-Alive
+
+# Backup for the Vercel Cron in vercel.json (09:17 UTC): pings the health route, which runs
+# one minimal Supabase read so the free project is not paused for inactivity. A non-200
+# response fails the job, so GitHub emails a failure notification.
+on:
+  schedule:
+    - cron: "43 14 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping /api/health
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          status=$(curl --silent --output /dev/null --write-out "%{http_code}" \
+            --max-time 60 --retry 3 --retry-delay 20 --retry-all-errors \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            https://tartarus-guide.vercel.app/api/health)
+          echo "Health check returned HTTP ${status}"
+          if [ "${status}" != "200" ]; then
+            exit 1
+          fi
