@@ -766,12 +766,34 @@ function promptLabel(prompt) {
   return `${text.slice(0, 49).trim()}…`;
 }
 
+// Chat replies: paragraphs, short "- " / "1. " lists, and **bold**. Escapes first, so only
+// these few tags are ever produced.
 function renderText(value) {
+  const inline = (text) => text.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   return escapeHtml(value)
     .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
+    .map((block) => block.trim())
     .filter(Boolean)
-    .map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`)
+    .map((block) => {
+      const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+      const bullet = /^(?:[-•*]\s+)(.+)$/;
+      const numbered = /^\d+[.)]\s+(.+)$/;
+      if (lines.length > 1 && lines.every((line) => bullet.test(line))) {
+        return `<ul>${lines.map((line) => `<li>${inline(line.replace(bullet, "$1"))}</li>`).join("")}</ul>`;
+      }
+      if (lines.length > 1 && lines.every((line) => numbered.test(line))) {
+        return `<ol>${lines.map((line) => `<li>${inline(line.replace(numbered, "$1"))}</li>`).join("")}</ol>`;
+      }
+      // A lead-in sentence followed by a list in the same block.
+      const firstListLine = lines.findIndex((line) => bullet.test(line));
+      if (firstListLine > 0 && lines.slice(firstListLine).every((line) => bullet.test(line))) {
+        return `<p>${inline(lines.slice(0, firstListLine).join("<br>"))}</p><ul>${lines
+          .slice(firstListLine)
+          .map((line) => `<li>${inline(line.replace(bullet, "$1"))}</li>`)
+          .join("")}</ul>`;
+      }
+      return `<p>${inline(lines.join("<br>"))}</p>`;
+    })
     .join("");
 }
 
