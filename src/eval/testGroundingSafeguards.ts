@@ -17,6 +17,11 @@ assert.equal(
   requiresExactGameEvidence("Does Junpei have a Social Link?", "Social Links"),
   true,
 );
+// "Feels weak" is coaching, not an enemy-weakness lookup; "weak against" still is.
+assert.equal(requiresExactGameEvidence("my team feels weak", "Team Building"), false);
+assert.equal(requiresExactGameEvidence("Junpei is too weak lately", "Team Building"), false);
+assert.equal(requiresExactGameEvidence("What is Jack Frost weak against?", "Fusion Advice"), true);
+assert.equal(requiresExactGameEvidence("Which weaknesses does the Hierophant have?", "Boss Help"), true);
 assert.equal(
   requiresExactGameEvidence("Where do I get Mitsuru's best weapon?", "Team Building"),
   true,
