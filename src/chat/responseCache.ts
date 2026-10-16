@@ -4,20 +4,32 @@ import { TtlCache } from "../cache/ttlCache";
 
 const responseCache = new TtlCache<ChatResponse>(256, 15 * 60_000);
 
+/** Stable, order-insensitive serialization of every profile field. */
+function canonicalProfileValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => (typeof item === "string" ? item.trim().toLowerCase() : canonicalProfileValue(item)))
+      .filter((item) => item !== "" && item !== undefined)
+      .sort();
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined && entry !== "" && !(Array.isArray(entry) && !entry.length))
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, entry]) => [key, canonicalProfileValue(entry)]),
+    );
+  }
+  return typeof value === "string" ? value.trim() : value;
+}
+
+// Every profile field can change an answer (owned Personas drive fusion cards, the Tartarus
+// block drives source ranking, tracked links and requests drive day plans), so the whole
+// profile is part of the key. Omitting a field lets one player's personalised answer be
+// served to another player who asked the same question.
 function profileFingerprint(profile: PlayerProfile | undefined): string {
-  const value = profile ?? {};
   return createHash("sha256")
-    .update(
-      JSON.stringify({
-        currentMonth: value.currentMonth ?? "",
-        currentDate: value.currentDate ?? "",
-        currentLevel: value.currentLevel ?? "",
-        difficulty: value.difficulty ?? "",
-        activeParty: value.activeParty ?? [],
-        dlcOwnership: value.dlcOwnership ?? "",
-        spoilerPreference: value.spoilerPreference ?? "",
-      }),
-    )
+    .update(JSON.stringify(canonicalProfileValue(profile ?? {})))
     .digest("hex")
     .slice(0, 16);
 }

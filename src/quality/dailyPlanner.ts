@@ -124,7 +124,11 @@ export function asksForDailyDashboard(question: string): boolean {
     /\b(?:what should i do|what can i do|plan my day|daily plan|today'?s plan|game day dashboard)\b/i.test(
       question,
     ) &&
-    /\b(?:today|day|now|dashboard)\b/i.test(question)
+    (/\b(?:today|day|now|dashboard)\b/i.test(question) ||
+      // "What should I do on June 6?" names the day explicitly.
+      /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(?:st|nd|rd|th)?\b/i.test(
+        question,
+      ))
   );
 }
 

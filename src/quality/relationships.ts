@@ -344,3 +344,23 @@ export function relationshipContradictions(response: {
 
   return [...new Set(contradictions)];
 }
+
+/**
+ * Canonical Social Link arcana pairs for the characters/arcana the player says they are
+ * tracking (Player Memory Social Links or party). Used as grounding evidence so an answer may
+ * name "Lovers" for a player who tracks Yukari's link, without whitelisting every arcana.
+ */
+export function canonicalArcanaEvidenceFor(names: string[] = []): string {
+  const wanted = names.map((name) => name.trim().toLowerCase()).filter(Boolean);
+  if (!wanted.length) return "";
+  const pairs = Object.entries(socialLinkArcana).filter(([character, arcana]) => {
+    const characterParts = character.toLowerCase().split(/\s+/);
+    return wanted.some(
+      (name) =>
+        name === arcana.toLowerCase() ||
+        name === character.toLowerCase() ||
+        characterParts.includes(name),
+    );
+  });
+  return pairs.map(([character, arcana]) => `${character} ${arcana}`).join(" ");
+}
