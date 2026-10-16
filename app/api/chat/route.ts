@@ -1485,7 +1485,8 @@ Return only JSON:
   "answer": "string",
   "sections": [{"title": "string", "content": "string"}],
   "confidence": 0.0,
-  "missingInfo": "string"
+  "missingInfo": "string",
+  "suggestedReplies": ["2-3 short things the player might say next, in their voice"]
 }
 
 Rules:
@@ -1777,6 +1778,19 @@ function sanitizeSuggestedPrompts(value: unknown, maxItems = 3): string[] {
     .slice(0, maxItems);
 }
 
+/**
+ * Model-written follow-up chips are the player's next message, so unlike controller prompts
+ * they may be questions ("What Persona should Junpei use?"). Drop only empty, overlong,
+ * placeholder or meta chips.
+ */
+function sanitizeSuggestedReplies(value: unknown): string[] {
+  return asStringArray(value, 6)
+    .filter((reply) => reply.length >= 4 && reply.length <= 70)
+    .filter((reply) => !/\b(?:x|y|z|n\/a|unknown|player memory|rephrase|specific|certain (?:members|floor|boss))\b/i.test(reply))
+    .filter((reply) => !/^(?:do you|are you|can you tell me|would you like)\b/i.test(reply))
+    .slice(0, 3);
+}
+
 function sanitizeIntent(value: unknown, fallback: CompanionIntent): CompanionIntent {
   const intents: CompanionIntent[] = [
     "Enemy Weakness",
@@ -1966,6 +1980,15 @@ function normalizeRagResponse(
         }
       : undefined;
 
+  // Follow-up chips written for this exact reply take priority over canned topic chips.
+  const suggestedReplies = sanitizeSuggestedReplies(value.suggestedReplies);
+  const replyCompanion =
+    companion && suggestedReplies.length
+      ? {
+          ...companion,
+          suggestedPrompts: [...suggestedReplies, ...(companion.suggestedPrompts ?? [])].slice(0, 4),
+        }
+      : companion;
   // A draft with no reply text but with sections: lift the sections into the chat reply.
   const sectionReply = !answer && sections.length
     ? sections.map((section) => section.content).join("\n\n")
@@ -1984,7 +2007,7 @@ function normalizeRagResponse(
     sources: fallbackSources,
     confidence,
     missingInfo: asString(value.missingInfo) ?? "No additional detail is needed.",
-    companion,
+    companion: replyCompanion,
   };
 }
 
@@ -4592,7 +4615,7 @@ function deterministicControllerDecision(
         retrievalQueries: [],
         answer: analysis.followUpQuestions[0],
         followUpQuestions: analysis.followUpQuestions,
-        suggestedPrompts: ["I'm level 24 with Yukari and Junpei", "We're running out of SP"],
+        suggestedPrompts: ["My party keeps getting wiped", "We're running out of SP"],
       };
     }
     const profileQuery = [
@@ -4645,7 +4668,7 @@ function deterministicControllerDecision(
       retrievalQueries: [],
       answer: "What level are you, and what role do you need most: damage, healing, support, or elemental coverage?",
       followUpQuestions: ["What level are you, and what role should the new Persona fill?"],
-      suggestedPrompts: ["I'm level 24 and need healing", "I need better elemental coverage"],
+      suggestedPrompts: ["I need a healer Persona", "I need better elemental coverage"],
     };
   }
 
@@ -5300,7 +5323,8 @@ Return only JSON with this shape:
     "nextStep": "one concrete action"
   } | null,
   "confidence": 0.0,
-  "missingInfo": "string"
+  "missingInfo": "string",
+  "suggestedReplies": ["2-3 short messages the player might send next"]
 }
 
 Rules:
@@ -5313,6 +5337,7 @@ Reply style (this is a chat, not a report):
 - Sound like a friendly Persona 3 Reload veteran player: calm, tactical, slightly dry, never corporate or like a search engine.
 - Use contractions. Lead with the useful answer, not a menu of options.
 - Do not dump early-game tip lists for vague questions.
+- suggestedReplies: 2-3 things this player would plausibly type next, in their own voice and specific to your reply (after advice on keeping Junpei alive: "What Persona should Junpei use?", "Where do I get Rakukaja?"). Never restate facts they already gave, never generic menus like "Help me fuse a Persona".
 - If the user says "craft/make/fuse these" without naming a Persona or item, ask what they mean. Do not invent recommended Personas.
 - Never answer a different question than the one asked (e.g. do not give enemy weaknesses when they asked how to craft/fuse something).
 Conversation memory:
