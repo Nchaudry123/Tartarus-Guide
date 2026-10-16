@@ -79,7 +79,13 @@ function responseText(value: {
 // "Give Junpei a Persona..." / "give him a better Persona": party members can't switch Personas.
 const personaForMemberPattern =
   /\b(?:give|equip|swap|switch|change|fuse)\b.{0,25}\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|him|her)(?:'s)?\b.{0,30}\bPersona\b/i;
-const battleRowPattern = /\b(?:back|front)\s+row\b|\bin the back\b(?!\s+of)/i;
+const battleRowPattern =
+  /\b(?:back|front)\s+(?:row|line)\b|\b(?:in|to|into|at)\s+(?:the\s+)?back\b(?!\s+(?:of|to|on|up|home))|\b(?:put|putting|move|moving|keep|keeping|swap|swapping)\b.{0,25}\bin back\b/i;
+
+/** True when a short chip or sentence breaks party rules (Persona swaps, battle rows). */
+export function breaksPartyRules(text: string): boolean {
+  return personaForMemberPattern.test(text) || battleRowPattern.test(text);
+}
 
 /**
  * Removes sentences that break party rules (giving a party member a Persona, battle rows).

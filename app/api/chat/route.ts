@@ -64,6 +64,7 @@ import {
   getProgressSnapshot,
 } from "../../../src/quality/progressTimeline";
 import {
+  breaksPartyRules,
   withoutPartyRuleViolations,
   statedCombatParty,
   combatPartyMembers,
@@ -1798,6 +1799,8 @@ function sanitizeSuggestedReplies(value: unknown): string[] {
     .filter((reply) => reply.length >= 4 && reply.length <= 70)
     .filter((reply) => !/\b(?:x|y|z|n\/a|unknown|player memory|rephrase|specific|certain (?:members|floor|boss))\b/i.test(reply))
     .filter((reply) => !/^(?:do you|are you|can you tell me|would you like)\b/i.test(reply))
+    // Chips that suggest impossible moves ("putting Junpei in back") would mislead the player.
+    .filter((reply) => !breaksPartyRules(reply))
     .slice(0, 3);
 }
 
