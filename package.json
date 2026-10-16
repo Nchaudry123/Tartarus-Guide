@@ -29,7 +29,7 @@
     "smoke:production": "node scripts/smoke-production.mjs",
     "ask": "tsx src/ask.ts",
     "typecheck": "tsc --noEmit",
-    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && ALLOW_CHAT_DEBUG=true DISABLE_CHAT_RATE_LIMIT=true npm run eval:gate && next build"
+    "vercel-build": "npm run eval:validate && npm run test:facts && npm run eval:retrieval && npm run eval:grounding && npm run eval:spoilers && npm run test:security && npm run test:cache && npm run typecheck && node scripts/eval-gate-production.mjs && next build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
