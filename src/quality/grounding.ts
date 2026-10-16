@@ -32,7 +32,7 @@ export function requiresExactGameEvidence(question: string, intent: string): boo
   }
 
   const exactMechanic =
-    /\b(weak(?:ness| to)?|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate|weapon|armor|equipment|accessor(?:y|ies)|item effect|base stat|stat cap|location|obtain|acquire)\b/i;
+    /\b(weak(?:ness(?:es)?| to| against)|resist(?:ance|s)?|null(?:ifies)?|drain(?:s)?|repel(?:s)?|fusion|fuse|recipe|skill effect|what level|which level|what floor|which floor|what date|which date|deadline|reward|unlock|cost|price|boss mechanic|drop rate|weapon|armor|equipment|accessor(?:y|ies)|item effect|base stat|stat cap|location|obtain|acquire)\b/i;
   const acquisitionQuestion =
     /\b(?:where|how)\b.{0,30}\b(?:get|find|buy|obtain|acquire|unlock)\b/i.test(question);
   const namedSkillQuestion =
