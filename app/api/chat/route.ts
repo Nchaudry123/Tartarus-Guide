@@ -91,6 +91,7 @@ import {
   monthPlanningBrief,
 } from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
+import { limitQuestions } from "../../../src/quality/chatStyle";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -1883,7 +1884,16 @@ function normalizeRagResponse(
   companion?: NonNullable<ChatResponse["companion"]>,
 ): ChatResponse {
   const value = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const rawAnswer = asString(value.answer);
+  // Models occasionally put the reply under another key; never fall back to a canned
+  // "rephrase" line when the reply is actually there.
+  const rawAnswer =
+    asString(value.answer) ??
+    asString(value.reply) ??
+    asString(value.message) ??
+    asString(value.response) ??
+    asString(value.text) ??
+    // Seen in practice: the reply emitted under an empty key ({"": "...", "sections": []}).
+    asString(value[""]);
   const answer =
     rawAnswer && /^(unknown|unclear|not sure|n\/a)$/i.test(rawAnswer.trim())
       ? "I don’t have a confirmed answer for that yet. Give me the enemy, floor, boss, or date you’re looking at and I’ll narrow it down without guessing."
@@ -1956,11 +1966,19 @@ function normalizeRagResponse(
         }
       : undefined;
 
+  // A draft with no reply text but with sections: lift the sections into the chat reply.
+  const sectionReply = !answer && sections.length
+    ? sections.map((section) => section.content).join("\n\n")
+    : null;
+  if (!answer && !sectionReply) {
+    console.warn(`Model reply had no answer text; keys: ${Object.keys(value).join(",") || "none"}`);
+  }
   return {
     answer:
       answer ??
+      sectionReply ??
       "I almost had that — can you rephrase with the exact name or one more detail so I don’t guess?",
-    sections,
+    sections: sectionReply ? [] : sections,
     tables,
     recommendation,
     sources: fallbackSources,
@@ -5613,7 +5631,9 @@ async function resolveChatRequestUntimed(
   return polished;
 }
 
-function withExpertConversationPolish(response: ChatResponse): ChatResponse {
+function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
+  // One question per turn at most; later stacked questions or option menus are dropped.
+  const response = draft.answer ? { ...draft, answer: limitQuestions(draft.answer) } : draft;
   const companion = response.companion;
   const needsDetail = Boolean(
     response.missingInfo &&
