@@ -1,3 +1,4 @@
+import { timed } from "../chat/requestTiming";
 import { createEmbedding, supabase } from "../db/client";
 import type { ChunkMatch } from "../types/schema";
 import {
@@ -111,6 +112,14 @@ async function keywordFallback(
 }
 
 export async function searchChunks(
+  query: string,
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<ChunkMatch[]> {
+  return timed("searchChunks", () => searchChunksUntimed(query, limit, signal));
+}
+
+async function searchChunksUntimed(
   query: string,
   limit = 8,
   signal?: AbortSignal,

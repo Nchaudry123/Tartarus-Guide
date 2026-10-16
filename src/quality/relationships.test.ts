@@ -111,3 +111,13 @@ test("detects invalid Social Link and Arcana claims", () => {
   assert(contradictions.some((value) => /Akihiko/.test(value)));
   assert(contradictions.some((value) => /Yukari/.test(value)));
 });
+
+test("canonical arcana evidence only covers characters the player tracks", async () => {
+  const { canonicalArcanaEvidenceFor } = await import("./relationships");
+  const evidence = canonicalArcanaEvidenceFor(["Yukari"]);
+  assert.match(evidence, /Yukari Takeba Lovers/);
+  assert.doesNotMatch(evidence, /Priestess|Fortune|Fuuka/);
+  assert.match(canonicalArcanaEvidenceFor(["Priestess"]), /Fuuka Yamagishi Priestess/);
+  assert.equal(canonicalArcanaEvidenceFor([]), "");
+  assert.equal(canonicalArcanaEvidenceFor(["Pixie"]), "");
+});
