@@ -27,6 +27,12 @@ type EvalCase = {
   maxAnswerCharacters?: number;
   maxResponseMs?: number;
   expectedGroundingStatus?: "verified" | "partial" | "insufficient";
+  /** Conversation quality: cap on "?" questions in the reply (answer + sections). */
+  maxQuestions?: number;
+  /** Conversation quality: cap on titled sections; chat turns should read as one reply. */
+  maxSections?: number;
+  /** Conversation quality: max word-trigram overlap (0-1) with the previous assistant turn. */
+  maxOverlapWithPrevious?: number;
 };
 
 type Check = { name: string; passed: boolean; detail: string };
@@ -239,7 +245,41 @@ function evaluate(test: EvalCase, response: ChatResponse, responseTimeMs?: numbe
       `confidence=${response.confidence ?? "missing"}`,
     );
   }
+  if (typeof test.maxQuestions === "number") {
+    const questions = (answerText.match(/\?/g) ?? []).length;
+    add("asks at most N questions", questions <= test.maxQuestions, `${questions}/${test.maxQuestions}`);
+  }
+  if (typeof test.maxSections === "number") {
+    const sectionCount = response.sections?.length ?? 0;
+    add("reads as one chat reply", sectionCount <= test.maxSections, `${sectionCount}/${test.maxSections} sections`);
+  }
+  if (typeof test.maxOverlapWithPrevious === "number") {
+    const previous = [...(test.history ?? [])].reverse().find((message) => message.role === "assistant")?.content ?? "";
+    const overlap = trigramOverlap(answerText, previous);
+    add(
+      "does not repeat the previous reply",
+      overlap <= test.maxOverlapWithPrevious,
+      `${(overlap * 100).toFixed(0)}% trigram overlap (max ${(test.maxOverlapWithPrevious * 100).toFixed(0)}%)`,
+    );
+  }
   return checks;
+}
+
+function wordTrigrams(text: string): Set<string> {
+  const words = text.toLowerCase().replace(/[^a-z0-9' ]+/g, " ").split(/\s+/).filter(Boolean);
+  const grams = new Set<string>();
+  for (let i = 0; i + 2 < words.length; i += 1) grams.add(words.slice(i, i + 3).join(" "));
+  return grams;
+}
+
+/** Share of the reply's word trigrams that already appeared in the previous reply. */
+function trigramOverlap(reply: string, previous: string): number {
+  const replyGrams = wordTrigrams(reply);
+  if (!replyGrams.size || !previous.trim()) return 0;
+  const previousGrams = wordTrigrams(previous);
+  let shared = 0;
+  for (const gram of replyGrams) if (previousGrams.has(gram)) shared += 1;
+  return shared / replyGrams.size;
 }
 
 function isExactAnswerCase(test: EvalCase): boolean {
