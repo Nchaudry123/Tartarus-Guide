@@ -1856,5 +1856,97 @@
     "hallucinationSensitive": true,
     "maxSources": 5,
     "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "planning-june-focus",
+    "category": "planning",
+    "origin": "curated",
+    "question": "What should I focus on in June?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 3", "currentLevel": "15"},
+    "mustIncludeAny": ["June 8", "Emperor", "Empress", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-june-focus-tracked-link",
+    "category": "planning",
+    "origin": "curated",
+    "question": "What should I focus on in June?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 3", "currentLevel": "15", "currentSocialLinks": ["Yukari", "Kenji"]},
+    "mustIncludeAny": ["June 8", "Emperor", "Empress", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-before-june-full-moon",
+    "category": "planning",
+    "origin": "curated",
+    "question": "What should I prioritize before the June full moon?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "16"},
+    "mustIncludeAny": ["June 8", "Emperor", "Empress"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-grind-or-links-full-moon",
+    "category": "planning",
+    "origin": "curated",
+    "question": "Is it worth grinding Tartarus before the June full moon or should I spend evenings on Social Links instead?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 6", "currentLevel": "16", "activeParty": ["Yukari", "Junpei"]},
+    "mustIncludeAny": ["Tartarus", "level", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "Nozomi", "Moon Social Link", "Tartarus can wait"]
+  },
+  {
+    "id": "planning-may-overview",
+    "category": "planning",
+    "origin": "curated",
+    "question": "I'm in May, what should I be doing?",
+    "playerProfile": {"currentMonth": "May", "currentDate": "May 2", "currentLevel": "8"},
+    "mustIncludeAny": ["May 9", "Priestess", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-july-split",
+    "category": "planning",
+    "origin": "curated",
+    "question": "How should I split my time in July?",
+    "playerProfile": {"currentMonth": "July", "currentDate": "July 1", "currentLevel": "22"},
+    "mustIncludeAny": ["July 7", "Hierophant", "Lovers", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-august-next-full-moon",
+    "category": "planning",
+    "origin": "curated",
+    "question": "What should I do this month to prepare for the next full moon?",
+    "playerProfile": {"currentMonth": "August", "currentDate": "August 1", "currentLevel": "28"},
+    "mustIncludeAny": ["August 6", "Chariot", "Justice"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-october-links-or-tartarus",
+    "category": "planning",
+    "origin": "curated",
+    "question": "Should I do Social Links or Tartarus this week?",
+    "playerProfile": {"currentMonth": "October", "currentDate": "October 1", "currentLevel": "45", "spoilerPreference": "progress-aware"},
+    "mustIncludeAny": ["October 4", "Fortune", "Strength", "full moon"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"]
+  },
+  {
+    "id": "planning-june-6-dashboard",
+    "category": "planning",
+    "origin": "curated",
+    "question": "What should I do on June 6?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 6", "currentSocialLinks": ["Yukari"]},
+    "mustIncludeAny": ["June 8", "Emperor", "Empress"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough"],
+    "expectedIntent": "Daily Schedule Planning",
+    "shouldUseSources": true
+  },
+  {
+    "id": "planning-which-links-june",
+    "category": "planning",
+    "origin": "curated",
+    "question": "Which Social Links can I start this month?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 2"},
+    "mustIncludeAny": ["Social Link"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "Aigis", "Aeon"]
   }
 ]
