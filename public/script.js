@@ -1654,6 +1654,7 @@ async function addAssistantMessage(response, options = {}) {
   node.removeAttribute("id");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")} is-settling`;
   node.dataset.intent = response.companion?.intent || "";
+  if (response.turnId) node.dataset.turnId = response.turnId;
   if (response.dailyDashboard) node.dataset.dashboardHost = "true";
 
   const finalAnswer = response.answer || streamedAnswer;
@@ -2640,6 +2641,7 @@ async function sendAnswerFeedback(assistantNode, button) {
         question: question.slice(0, 2000),
         answer: answer.slice(0, 8000),
         intent: assistantNode.dataset.intent || undefined,
+        turnId: assistantNode.dataset.turnId || undefined,
         history: chatHistory
           .slice(-7, -1)
           .filter((message) => message?.content?.trim())

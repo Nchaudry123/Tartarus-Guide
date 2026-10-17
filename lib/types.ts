@@ -118,6 +118,8 @@ export type ChatResponse = {
   confidence?: number;
   missingInfo?: string;
   retrievalMode?: "rag" | "empty" | "mock" | "error";
+  /** Server-side turn log id; sent back with a thumbs up/down to link the two. */
+  turnId?: string;
   companion?: {
     intent?: string;
     profileUpdates?: PlayerProfile;

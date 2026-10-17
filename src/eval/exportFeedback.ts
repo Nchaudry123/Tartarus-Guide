@@ -13,7 +13,7 @@ const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 const { data, error } = await supabase
   .from("answer_feedback")
-  .select("id,created_at,rating,question,answer,intent,history,player_profile,note")
+  .select("id,created_at,rating,question,answer,intent,history,player_profile,note,turn_id")
   .eq("rating", -1)
   .gte("created_at", since)
   .order("created_at", { ascending: false })
@@ -22,6 +22,16 @@ if (error) {
   console.error("Could not read answer_feedback (has the migration been applied?).");
   process.exit(1);
 }
+
+// How each flagged turn was routed (if its turn log hasn't expired), to spot routing failures.
+const turnIds = (data ?? []).map((row) => row.turn_id).filter(Boolean);
+const { data: turnRows } = turnIds.length
+  ? await supabase
+      .from("chat_turn_logs")
+      .select("id,chat_mode,route,outcome,agent_tools,safety_net,agent_fallback,total_ms")
+      .in("id", turnIds)
+  : { data: [] };
+const turnById = new Map((turnRows ?? []).map((turn) => [turn.id, turn]));
 
 const cases = (data ?? []).map((row) => ({
   id: `feedback-${String(row.id).slice(0, 8)}`,
@@ -35,6 +45,7 @@ const cases = (data ?? []).map((row) => ({
   flaggedIntent: row.intent,
   flaggedNote: row.note,
   flaggedAt: row.created_at,
+  flaggedTurn: (row.turn_id && turnById.get(row.turn_id)) || undefined,
 }));
 
 await mkdir("evals/results", { recursive: true });

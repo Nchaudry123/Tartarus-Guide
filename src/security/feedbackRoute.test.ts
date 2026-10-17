@@ -12,6 +12,8 @@ test("feedback schema accepts a rating with question and answer, and rejects any
   assert.equal(FeedbackRequestSchema.safeParse({ ...valid, extra: "nope" }).success, false);
   assert.equal(FeedbackRequestSchema.safeParse({ ...valid, history: Array(7).fill({ role: "user", content: "hi" }) }).success, false);
   assert.equal(FeedbackRequestSchema.safeParse({ ...valid, note: "x".repeat(501) }).success, false);
+  assert.equal(FeedbackRequestSchema.safeParse({ ...valid, turnId: "6f1c2a7e-3b4d-4c5e-9f60-718293a4b5c6" }).success, true);
+  assert.equal(FeedbackRequestSchema.safeParse({ ...valid, turnId: "not-a-uuid" }).success, false);
 });
 
 test("feedback route rejects bad bodies and foreign origins without saving or leaking details", async () => {

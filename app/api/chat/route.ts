@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import type { ChatRequest, ChatResponse, PlayerProfile } from "../../../lib/types";
 import {
   corsHeaders,
@@ -133,6 +134,7 @@ import {
   runWithRequestTiming,
   summarizeRequestTiming,
 } from "../../../src/chat/requestTiming";
+import { agentToolNames, noteTurn, runWithTurnTrace, turnLogRow, turnLogsEnabled, writeTurnLog, currentTurnTrace } from "../../../src/chat/turnLog";
 import { fusionOwnershipChecker } from "../../../src/quality/fusionOwnership";
 import {
   dropOtherMonthSources,
@@ -5483,7 +5485,10 @@ async function directRagResponse(
     return offTopicResponse(extractProfileUpdates(question));
   }
   const mode = chatMode();
-  if (mode === "baseline") return singlePassRagResponse(question, playerProfile ?? {}, signal);
+  if (mode === "baseline") {
+    noteTurn({ route: "baseline" });
+    return singlePassRagResponse(question, playerProfile ?? {}, signal);
+  }
 
   // Expert clarify-first: bare "craft/make these" with no thread should not invent tips.
   if (!conversation.shortReply && isVagueCreationQuestion(question)) {
@@ -5701,6 +5706,11 @@ async function directRagResponse(
     // Agent fell back: route exactly as the pipeline would.
     rulesDecision ??
     (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, complete));
+  noteTurn({
+    route: ruleDecision ? "rules" : agentRouting ? "agent" : agentFallback ? "agent_fallback" : rulesDecision ? "rules" : "controller",
+    agentFallback,
+    agentTools: agentToolNames(agentRouting?.steps ?? []),
+  });
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const spoilerDecision = evaluateSpoilerPolicy({
     question: conversation.analysisQuestion,
@@ -5728,6 +5738,7 @@ async function directRagResponse(
     );
   };
   if (controller.action === "answer_directly" && directReplyIsSafe(controller.answer)) {
+    noteTurn({ outcome: "direct_reply" });
     return withMode({
       // The controller's own reply skips the answer-path checks; drop rule-breaking sentences.
       answer: withoutPartyRuleViolations(
@@ -5743,6 +5754,7 @@ async function directRagResponse(
   }
 
   if (controller.action === "ask_clarifying_question" && directReplyIsSafe(controller.answer)) {
+    noteTurn({ outcome: "clarify" });
     const answer =
       controller.answer ??
       controllerFollowUps[0] ??
@@ -5835,7 +5847,13 @@ async function directRagResponse(
         prefetchedSafetyNet,
         agentRouting.steps,
         signal,
-      )
+      ).then((merged) => {
+        noteTurn({
+          agentTools: agentToolNames(agentRouting.steps),
+          safetyNet: agentRouting.steps.some((step) => step.startsWith("safety-net")),
+        });
+        return merged;
+      })
     : await buildPlannedContext(
     {
       queries: retrievalQueries,
@@ -6359,7 +6377,10 @@ Regenerate the JSON answer using the canonical boss facts above.`,
       normalized,
     );
     // A reply that only asks the player something has nothing to cite.
-    if (isPureClarifyingQuestion(normalized)) normalized = { ...normalized, sources: [] };
+    if (isPureClarifyingQuestion(normalized)) {
+      normalized = { ...normalized, sources: [] };
+      noteTurn({ outcome: "clarify" });
+    }
     // Attach every card before the grounding gate so a blocked answer strips them all.
     const response = withMode(
       applyGroundingGuardrails(
@@ -6402,21 +6423,39 @@ async function resolveChatRequest(
   signal?: AbortSignal,
   onToken?: TokenCallback,
 ): Promise<ChatResponse> {
-  if (!requestTimingEnabled() && !body.debug) {
-    return resolveChatRequestUntimed(body, onProgress, signal, onToken);
-  }
-  return runWithRequestTiming(async () => {
+  // Every turn is timed (spans are cheap); the log line is opt-in via CHAT_TIMING.
+  return runWithTurnTrace(() => runWithRequestTiming(async () => {
     const response = await resolveChatRequestUntimed(body, onProgress, signal, onToken);
     const timing = currentRequestTiming();
-    if (!timing) return response;
+    const trace = currentTurnTrace();
+    if (!timing || !trace) return response;
     const summary = summarizeRequestTiming(timing);
-    // Labels and durations only: no question text, prompts, answers or keys.
-    console.info(`[chat-timing] ${JSON.stringify({ intent: response.companion?.intent, ...summary })}`);
+    if (requestTimingEnabled() || body.debug) {
+      // Labels and durations only: no question text, prompts, answers or keys.
+      console.info(`[chat-timing] ${JSON.stringify({ intent: response.companion?.intent, ...summary })}`);
+    }
     if (body.debug) {
+      // Debug requests are eval runs and local checks: not logged as player traffic.
       return { ...response, diagnostics: { ...response.diagnostics, latency: summary } };
     }
-    return response;
-  });
+    if (!turnLogsEnabled() || !hasDirectRagEnv()) return response;
+    const turnId = randomUUID();
+    writeTurnLog(
+      turnLogRow({
+        turnId,
+        question: body.question ?? "",
+        chatMode: chatMode(),
+        response,
+        trace,
+        cached: trace.route === "cache",
+        historyTurns: body.history?.length ?? 0,
+        totalMs: summary.totalMs,
+        llmCalls: summary.llmCalls,
+      }),
+    );
+    // The client sends this back with a thumbs up/down so feedback links to the turn.
+    return { ...response, turnId };
+  }));
 }
 
 async function resolveChatRequestUntimed(
@@ -6430,6 +6469,7 @@ async function resolveChatRequestUntimed(
   const cacheKey = responseCacheKey(body);
   const cached = cacheKey ? getCachedChatResponse(cacheKey) : undefined;
   if (cached) {
+    noteTurn({ route: "cache" });
     onProgress?.("Pulling that up...", "general");
     return cached;
   }
@@ -6446,7 +6486,7 @@ async function resolveChatRequestUntimed(
   );
   const external =
     direct === null
-      ? await externalRagResponse(question, body.conversationId, signal)
+      ? (noteTurn({ route: "external" }), await externalRagResponse(question, body.conversationId, signal))
       : null;
   const response =
     direct ??

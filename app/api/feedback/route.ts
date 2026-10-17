@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       answer: feedback.answer,
       intent: feedback.intent ?? null,
       note: feedback.note ?? null,
+      turn_id: feedback.turnId ?? null,
       history: feedback.history ?? [],
       player_profile: feedback.playerProfile ?? {},
       client_fingerprint: fingerprint.slice(0, 128),

@@ -93,6 +93,7 @@ Fill in:
 - `CHAT_MODE` optional: `agent` (default; the tool-calling agent routes each turn), `pipeline` (single routing call, the rollback), or `baseline` (plain single-pass RAG, for evaluation only). See "Agentic routing" below
 - `ROUTER_CHAT_MODEL` optional, a separate model for the agent's tool-picking step (defaults to `CHAT_MODEL`; a small model is faster but scored lower in the eval)
 - `CHAT_TIMING=true` optional, logs one `[chat-timing]` line per request with stage durations (labels and timings only)
+- `TURN_LOGS=off` optional, turns off the per-turn `chat_turn_logs` rows (on by default; see Real-traffic monitoring)
 - `CRON_SECRET` optional locally, required in production: bearer token for `/api/health`
 
 Use a real contact in `INGEST_USER_AGENT` if this will run outside local development.
@@ -377,6 +378,23 @@ The agent routed 94 of the 159 turns; the rest were answered by instant canonica
 handled by the routing rules. It needed the safety-net search on 7 turns and never fell back
 to the standard router. Routing with a small model (`ROUTER_CHAT_MODEL=meta-llama/llama-3.1-8b-instruct`)
 is about 3x faster per routing call but scored 98.1%, so it's opt-in.
+
+### Real-traffic monitoring
+
+Every player turn writes one row to `chat_turn_logs`: the chat mode, how it was routed
+(`agent`, `agent_fallback`, `rules`, `controller`, `handler`, `cache`), how it ended
+(`answer`, `direct_reply`, `clarify`, `no_evidence`, `error`), the agent's tool names, whether
+the safety net ran, latency, and LLM call count. No question or answer text is stored, only a
+SHA-256 fingerprint of the normalized question so repeats can be grouped; tool arguments are
+dropped too. Rows expire after 30 days. Debug requests (eval runs) are not logged.
+
+Each reply carries a `turnId`, which the thumbs up/down sends back, so a rating links to how
+that turn was routed.
+
+```bash
+npm run turns:report -- --days=7      # routes, outcomes, latency, safety net, thumbs-down rates
+npm run feedback:export -- --days=14  # thumbs-down answers (with their routing) as draft eval cases
+```
 
 ## Frontend API Contract
 
