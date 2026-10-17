@@ -1,6 +1,9 @@
-# Tartarus Guide RAG
+# Tartarus Guide: Agentic RAG Chatbot
 
-Backend foundation and frontend prototype for a Persona 3 Reload guide chatbot. The project includes a source-backed RAG database pipeline, a terminal Q&A flow, a Next.js chat app, and a static preview you can open immediately.
+An agentic RAG chatbot for Persona 3 Reload: a tool-calling agent decides what to look up
+(verified game data, guide search, or a question back to the player) and every answer is
+checked against canonical game data. See [Agentic routing](#agentic-routing) for the design
+and evaluation. Backend foundation and frontend for the guide chatbot. The project includes a source-backed RAG database pipeline, a terminal Q&A flow, a Next.js chat app, and a static preview you can open immediately.
 
 The system is designed to store source metadata, small retrieval chunks, structured facts, and links back to original guide pages. It should not clone, republish, or serve full IGN articles.
 
@@ -87,6 +90,8 @@ Fill in:
 - `RAG_CHAT_ENDPOINT` optional, for a deployed RAG chat API that accepts `POST { question, conversationId }`
 - `USE_MOCK_CHAT=true` optional, to force mock responses in the Next API route
 - `CORRECTION_CHAT_MODEL` optional, a faster model for the guardrail "correction" regeneration calls (defaults to `CHAT_MODEL`)
+- `CHAT_MODE` optional: `agent` (default; the tool-calling agent routes each turn), `pipeline` (single routing call, the rollback), or `baseline` (plain single-pass RAG, for evaluation only). See "Agentic routing" below
+- `ROUTER_CHAT_MODEL` optional, a separate model for the agent's tool-picking step (defaults to `CHAT_MODEL`; a small model is faster but scored lower in the eval)
 - `CHAT_TIMING=true` optional, logs one `[chat-timing]` line per request with stage durations (labels and timings only)
 - `CRON_SECRET` optional locally, required in production: bearer token for `/api/health`
 
@@ -317,10 +322,11 @@ npm run ask -- "What is Dancing Hand weak to?"
 
 The conversational retrieval flow:
 
-1. Sends the user message and recent conversation to Groq for intent analysis.
-2. Groq decides whether it can answer conversationally, needs clarification,
-   or needs structured facts, guide chunks, or both.
-3. Groq produces focused retrieval queries while preserving exact game names.
+1. Instant canonical answers (Social Link starts, guardian affinities, fusion results and
+   more) are returned directly when the question matches one.
+2. Otherwise a tool-calling agent decides whether it can answer conversationally, needs
+   clarification, or needs structured facts, guide chunks, or both (see Agentic routing).
+3. The agent writes focused lookup queries while preserving exact game names.
 4. Supabase returns relevant structured facts and vector chunks from the
    IGN/Game8 guide index.
 5. The strongest evidence is deduplicated and reranked by relevance,
@@ -330,6 +336,47 @@ The conversational retrieval flow:
    response is returned.
 
 Answers are intended to sound like a veteran Persona 3 Reload player: direct, practical, strategy-first, and light on filler.
+
+## Agentic routing
+
+Each chat turn that needs a lookup is routed by a tool-calling agent (`CHAT_MODE=agent`,
+the default). The agent sees the player's message and conversation and chooses between three
+tools, as many times as it needs (up to two lookup rounds):
+
+- `lookup_facts`: verified data. Canonical tables (55 Tartarus guardians, Full Moon bosses,
+  Social Link starts, rank-10 Personas, fusion results from ~20k fusion tool recipes) plus
+  structured facts from the index.
+- `search_guides`: pgvector search over IGN and Game8 guide text.
+- `ask_clarifying_question`: hands one question back to the player. It's refused until at
+  least one lookup has run, so the agent can't skip straight to asking.
+
+The agent only gathers evidence. What it finds goes through the same verified handlers,
+answer writer and checks as before: fusion claims are checked against the recipe table, boss
+facts against the boss tables, named claims against the evidence, and an exact-evidence gate
+blocks unsupported exact answers. Hand-written routing rules still handle a few known-tricky
+questions (e.g. which "Hand" Shadow), and if the agent's evidence can't support an exact
+answer, a standard focused search runs as a safety net. Code: `src/agent/agentLoop.ts`
+(the loop) and `agentRoute` in `app/api/chat/route.ts` (tools and routing).
+
+Latency work: the loop stops as soon as the evidence can carry the answer (no extra
+"done" call), tool calls from one round run in parallel, and the safety-net search starts
+alongside the agent. That halved model calls per agent turn (2.99 to 1.47).
+
+### Evaluation
+
+159-question set (`evals/persona3-reload.json`), same model (Llama 3.3 70B via OpenRouter),
+same index, run with `CHAT_MODE=<mode> npm run eval:accuracy -- --direct --out=<file>`:
+
+| Mode | Overall | Exact-answer accuracy | Hallucination safety | Cases passing | Median / mean latency |
+|---|---|---|---|---|---|
+| `baseline`: single-pass RAG (search the question, answer once, no checks) | 87.6% | 78.6% | 92.9% | 127/159 | 6.9 s / 8.1 s |
+| `pipeline`: one JSON routing call + verified handlers + checks | 99.0% | 100% | 100% | 158/159 | 0.3 s / 2.2 s |
+| `agent`: tool-calling agent routes + verified handlers + checks | 99.2% | 100% | 100% | 159/159 | 1.6 s / 3.6 s |
+
+The agent routed 94 of the 159 turns; the rest were answered by instant canonical answers or
+handled by the routing rules. It needed the safety-net search on 7 turns and never fell back
+to the standard router. Routing with a small model (`ROUTER_CHAT_MODEL=meta-llama/llama-3.1-8b-instruct`)
+is about 3x faster per routing call but scored 98.1%, so it's opt-in.
 
 ## Frontend API Contract
 

@@ -53,6 +53,7 @@ const args = new Map(
 const apiUrl = args.get("url") ?? process.env.EVAL_API_URL ?? "http://127.0.0.1:3000/api/chat";
 const category = args.get("category");
 const origin = args.get("origin");
+const outPath = args.get("out") ?? "evals/results/accuracy-latest.json";
 const ids = args.get("ids")?.split(",").map((id) => id.trim()).filter(Boolean);
 const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
@@ -481,7 +482,7 @@ async function main(): Promise<void> {
   };
   await mkdir("evals/results", { recursive: true });
   const failedCandidates = failedQuestionCandidates(results);
-  await writeFile("evals/results/accuracy-latest.json", JSON.stringify(report, null, 2));
+  await writeFile(outPath, JSON.stringify({ ...report, chatMode: process.env.CHAT_MODE ?? "pipeline" }, null, 2));
   await writeFile(
     "evals/results/failed-question-candidates-latest.json",
     JSON.stringify(
@@ -504,7 +505,7 @@ async function main(): Promise<void> {
   for (const [name, summary] of Object.entries(categoryScores)) {
     console.log(`- ${name}: ${(summary.score * 100).toFixed(1)}% (${summary.passed}/${summary.total})`);
   }
-  console.log("Detailed report: evals/results/accuracy-latest.json");
+  console.log(`Detailed report: ${outPath}`);
   console.log("Failed-question candidates: evals/results/failed-question-candidates-latest.json");
   if (score < failUnder) process.exitCode = 2;
   if (exactAnswerAccuracy !== null && exactAnswerAccuracy < exactFailUnder) process.exitCode = 2;

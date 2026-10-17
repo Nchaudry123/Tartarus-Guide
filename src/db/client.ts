@@ -34,6 +34,10 @@ export const config = {
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
   // Optional faster model for regenerate-after-guardrail "correction" calls. Unset = chatModel.
   correctionChatModel: process.env.CORRECTION_CHAT_MODEL?.trim() || undefined,
+  // Optional model for the agent's routing step (picking lookups). Unset = chatModel. A small
+  // model such as meta-llama/llama-3.1-8b-instruct routes ~3x faster but cost accuracy in the
+  // eval (98.1% vs 99.1%), so it's opt-in.
+  routerChatModel: process.env.ROUTER_CHAT_MODEL?.trim() || undefined,
   chatAppUrl: process.env.CHAT_APP_URL,
   chatAppName: process.env.CHAT_APP_NAME ?? "Tartarus Guide",
   factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "qwen/qwen3-32b",
@@ -457,4 +461,84 @@ async function createStreamingChatCompletion(
     clearTimeout(timeout);
     options.signal?.removeEventListener("abort", abortFromParent);
   }
+}
+
+export type ToolCall = { id: string; name: string; arguments: string };
+
+export type AgentMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content: string | null; tool_calls?: Array<{ id: string; type: "function"; function: { name: string; arguments: string } }> }
+  | { role: "tool"; tool_call_id: string; content: string };
+
+export type ToolDefinition = {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+};
+
+/**
+ * One OpenAI-compatible chat completion with tool calling (used by the agent loop). Returns the
+ * text reply, or the tool calls the model wants made. Retries a 429 like createChatCompletion.
+ */
+export async function createToolCompletion(
+  messages: AgentMessage[],
+  tools: ToolDefinition[],
+  options: { model?: string; signal?: AbortSignal; timingLabel?: string; toolChoice?: "auto" | "required" | "none" } = {},
+): Promise<{ content: string | null; toolCalls: ToolCall[] }> {
+  const promptChars = messages.reduce((total, message) => total + (message.content?.length ?? 0), 0);
+  return timed(
+    "llm",
+    async () => {
+      const body = JSON.stringify({
+        model: options.model ?? config.chatModel,
+        messages,
+        temperature: 0.1,
+        tools: tools.map((tool) => ({ type: "function", function: tool })),
+        tool_choice: options.toolChoice ?? "auto",
+        ...(config.chatBaseUrl.includes("openrouter.ai") ? { reasoning: { effort: "none", exclude: true } } : {}),
+      });
+      let response: Response | undefined;
+      let errorText = "";
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        response = await fetchWithTimeout(
+          `${config.chatBaseUrl}/chat/completions`,
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${config.chatApiKey}`,
+              "content-type": "application/json",
+              ...(config.chatAppUrl ? { "HTTP-Referer": config.chatAppUrl } : {}),
+              ...(config.chatAppName ? { "X-Title": config.chatAppName } : {}),
+            },
+            body,
+          },
+          45_000,
+          options.signal,
+        );
+        if (response.ok) break;
+        errorText = await response.text();
+        if (response.status !== 429 || attempt === 2) throw new Error(`Chat request failed: ${response.status} ${errorText}`);
+        recordTimingEvent("llm-rate-limited-retry");
+        await sleep(1_500 * (attempt + 1));
+      }
+      const json = (await response!.json()) as {
+        choices?: Array<{
+          message?: {
+            content?: string | null;
+            tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }>;
+          };
+        }>;
+      };
+      const message = json.choices?.[0]?.message;
+      const toolCalls = (message?.tool_calls ?? [])
+        .filter((call) => call.function?.name)
+        .map((call, index) => ({
+          id: call.id ?? `call_${index}`,
+          name: call.function!.name!,
+          arguments: call.function!.arguments ?? "{}",
+        }));
+      return { content: message?.content ?? null, toolCalls };
+    },
+    `${options.timingLabel ?? "agent"} (${promptChars} prompt chars)`,
+  );
 }
