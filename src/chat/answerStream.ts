@@ -135,3 +135,16 @@ export function createSentenceGate(options: {
     },
   };
 }
+
+/**
+ * The model occasionally writes malformed JSON ('...strategy., sections": [], ...'), and the
+ * raw text used to reach the player. Keep just the answer string, minus any key fragment the
+ * model folded into it.
+ */
+export function salvageAnswerFromBrokenJson(text: string): string | null {
+  if (!/"answer"\s*:\s*"/.test(text)) return null;
+  const answer = createAnswerExtractor().push(text)
+    .replace(/,?\s*"?(?:sections|tables|recommendation|confidence|missingInfo|suggestedReplies|suggestedPrompts)"?\s*$/i, "")
+    .trim();
+  return answer || null;
+}
