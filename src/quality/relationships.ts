@@ -89,6 +89,12 @@ export function ultimatePersonaUnlockForQuestion(
   if (!asksWhichPersona && !asksRankReward) {
     return null;
   }
+  // "When does the Lovers Arcana unlock?" asks when the link starts, not what Rank 10 gives.
+  const asksWhenItStarts =
+    /\b(?:when|how)\b.{0,60}\b(?:unlock|start|begin|open)s?\b/i.test(question) &&
+    !asksWhichPersona &&
+    !/\b(?:rank\s*10|max|maxed|maxing|ultimate|reward)\b/i.test(question);
+  if (asksWhenItStarts) return null;
 
   const normalized = question.toLowerCase();
   const matchedArcana = (

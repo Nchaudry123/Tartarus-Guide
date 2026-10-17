@@ -101,6 +101,11 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import {
+  FULL_MOON_BOSS_SOURCE,
+  bossFactContradictions,
+  withoutBossFactContradictions,
+} from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import { createAnswerExtractor, createSentenceGate } from "../../../src/chat/answerStream";
 import {
@@ -209,7 +214,7 @@ function detectIntent(question: string): CompanionIntent {
   ) {
     return "Boss Help";
   }
-  if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
+  if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|resistances|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
   if (/\b(achievement|achievements|trophy|trophies|platinum|missable|completion|complete|100%)\b/.test(text)) {
     return "Achievement Hunting";
   }
@@ -267,7 +272,7 @@ function socialLinkUltimatePersonaResponse(
   const response = withMode({
     answer,
     sections: [],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -312,7 +317,7 @@ function allSocialLinkUltimatePersonasResponse(
         ]),
       },
     ],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -352,7 +357,7 @@ function ultimatePersonaFollowUpResponse(
   const response = withMode({
     answer: `${details.join("; ")}.`,
     sections: [],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -2822,7 +2827,11 @@ function structuredPersonaProfileResponse(
       : null;
 
   const response = withMode({
-    answer: skillLead || `${persona} is ${identity}.`,
+    // "What Arcana and base level is Alilat, and what skills does it learn?" wants both parts.
+    answer:
+      skillLead && /\b(?:arcana|level|lvl)\b/i.test(question) && (arcana || baseLevel)
+        ? `${persona} is ${identity}. ${skillLead.startsWith(persona) ? `It${skillLead.slice(persona.length)}` : skillLead}`
+        : skillLead || `${persona} is ${identity}.`,
     sections: sections.slice(0, 4),
     sources: [fusionToolSource],
     confidence: Math.max(...matches.map((fact) => fact.confidence)),
@@ -5042,7 +5051,8 @@ async function directRagResponse(
     return withMode({
       answer: canonicalRelationship,
       sections: [],
-      sources: [],
+      // The answer comes from the Game8 Social Link table unless it is only asking for progress.
+      sources: needsFullProgress ? [] : [SOCIAL_LINK_START_SOURCE],
       confidence: 0.99,
       missingInfo: needsFullProgress
         ? "Your month (or date) and rough Charm / Academics / Courage ranks."
@@ -5528,13 +5538,25 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
     ]),
     monthBrief,
     progressFacts,
+    // Names the player brought up earlier in this chat ("Yukari or Ken?") are theirs to discuss.
+    ...normalizedHistory
+      .filter((message) => message.role === "user")
+      .slice(-6)
+      .map((message) => message.content),
   ].join("\n");
-  const responseSources = relevantResponseSources(
-    conversation.analysisQuestion,
-    controller.intent,
-    context,
-    controllerProfile,
-  );
+  // Answers built on the canonical month plan or boss table cite where those tables came from.
+  const canonicalSources = [
+    ...(monthBrief ? [SOCIAL_LINK_START_SOURCE] : []),
+    ...(/Full Moon operation is on/.test(progressFacts) ? [FULL_MOON_BOSS_SOURCE] : []),
+  ];
+  const responseSources = [
+    ...new Map(
+      [
+        ...relevantResponseSources(conversation.analysisQuestion, controller.intent, context, controllerProfile),
+        ...canonicalSources,
+      ].map((source) => [source.url, source]),
+    ).values(),
+  ];
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
@@ -5703,6 +5725,31 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         );
       }
     }
+    const bossErrors = bossFactContradictions(chatResponseClaimText(normalized));
+    if (bossErrors.length) {
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `${userPrompt}
+
+Your previous draft contradicted the canonical boss facts:
+${bossErrors.map((error) => `- ${error}`).join("\n")}
+
+Regenerate the JSON answer using the canonical boss facts above.`,
+          },
+        ],
+        { jsonObject: true, timingLabel: "boss-correction", model: chatConfig.correctionChatModel },
+      );
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
+      if (bossFactContradictions(chatResponseClaimText(normalized)).length) {
+        normalized = { ...normalized, answer: withoutBossFactContradictions(normalized.answer) };
+      }
+    }
     normalized = ensureRecommendationCard(
       conversation.analysisQuestion,
       normalized,
@@ -5846,7 +5893,11 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
 }
 
 function partyRulesAccept(text: string): boolean {
-  return !breaksPartyRules(text) && partyRoleContradictions({ answer: text }).length === 0;
+  return (
+    !breaksPartyRules(text) &&
+    partyRoleContradictions({ answer: text }).length === 0 &&
+    bossFactContradictions(text).length === 0
+  );
 }
 
 /**

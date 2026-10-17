@@ -44,6 +44,12 @@ export function isVagueCreationQuestion(question: string): boolean {
     return false;
   }
 
+  // "What do Ananta and Asura make?" names both ingredients: it asks for a fusion result.
+  if (/\b[a-z][a-z'’.\-]+\s+(?:and|\+|plus|with)\s+[a-z][a-z'’.\-]+\b.{0,20}\b(?:make|makes|create|creates|fuse into|become)\b/i.test(text)
+    && !/\b(?:these|those|them|this|that|it)\s+(?:and|\+|plus|with)\b/i.test(text)) {
+    return false;
+  }
+
   const stripped = text.replace(/[?.!]+$/g, "").trim();
   const namedTarget = stripped
     .match(
