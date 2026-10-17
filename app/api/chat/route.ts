@@ -317,7 +317,7 @@ function allSocialLinkUltimatePersonasResponse(
         ]),
       },
     ],
-    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
+    sources: [fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -357,7 +357,7 @@ function ultimatePersonaFollowUpResponse(
   const response = withMode({
     answer: `${details.join("; ")}.`,
     sections: [],
-    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
+    sources: [fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -5051,8 +5051,7 @@ async function directRagResponse(
     return withMode({
       answer: canonicalRelationship,
       sections: [],
-      // The answer comes from the Game8 Social Link table unless it is only asking for progress.
-      sources: needsFullProgress ? [] : [SOCIAL_LINK_START_SOURCE],
+      sources: [],
       confidence: 0.99,
       missingInfo: needsFullProgress
         ? "Your month (or date) and rough Charm / Academics / Courage ranks."
