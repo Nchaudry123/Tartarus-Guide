@@ -34,11 +34,10 @@ export const config = {
   chatModel: process.env.CHAT_MODEL ?? "llama-3.3-70b-versatile",
   // Optional faster model for regenerate-after-guardrail "correction" calls. Unset = chatModel.
   correctionChatModel: process.env.CORRECTION_CHAT_MODEL?.trim() || undefined,
-  // Model for the agent's routing step (picking lookups). Small and fast: the prompt is short
-  // and tool choice doesn't need the answer model. On OpenRouter it defaults to Llama 3.1 8B.
-  routerChatModel:
-    process.env.ROUTER_CHAT_MODEL?.trim() ||
-    ((process.env.CHAT_BASE_URL ?? "").includes("openrouter.ai") ? "meta-llama/llama-3.1-8b-instruct" : undefined),
+  // Optional model for the agent's routing step (picking lookups). Unset = chatModel. A small
+  // model such as meta-llama/llama-3.1-8b-instruct routes ~3x faster but cost accuracy in the
+  // eval (98.1% vs 99.1%), so it's opt-in.
+  routerChatModel: process.env.ROUTER_CHAT_MODEL?.trim() || undefined,
   chatAppUrl: process.env.CHAT_APP_URL,
   chatAppName: process.env.CHAT_APP_NAME ?? "Tartarus Guide",
   factExtractionModel: process.env.FACT_EXTRACTION_MODEL ?? "qwen/qwen3-32b",
