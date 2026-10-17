@@ -5528,6 +5528,11 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
     ]),
     monthBrief,
     progressFacts,
+    // Names the player brought up earlier in this chat ("Yukari or Ken?") are theirs to discuss.
+    ...normalizedHistory
+      .filter((message) => message.role === "user")
+      .slice(-6)
+      .map((message) => message.content),
   ].join("\n");
   const responseSources = relevantResponseSources(
     conversation.analysisQuestion,
