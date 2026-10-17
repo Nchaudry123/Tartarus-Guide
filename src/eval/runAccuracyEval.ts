@@ -53,6 +53,7 @@ const args = new Map(
 const apiUrl = args.get("url") ?? process.env.EVAL_API_URL ?? "http://127.0.0.1:3000/api/chat";
 const category = args.get("category");
 const origin = args.get("origin");
+const ids = args.get("ids")?.split(",").map((id) => id.trim()).filter(Boolean);
 const limit = Number(args.get("limit") ?? Number.POSITIVE_INFINITY);
 const failUnder = Number(args.get("fail-under") ?? "0.8");
 const exactFailUnder = Number(args.get("exact-fail-under") ?? "0.8");
@@ -406,6 +407,7 @@ async function main(): Promise<void> {
   const selected = allCases
     .filter((test) => !category || test.category === category)
     .filter((test) => !origin || test.origin === origin)
+    .filter((test) => !ids?.length || ids.includes(test.id))
     .slice(0, limit);
   if (!selected.length) throw new Error("No evaluation cases matched the selected filters.");
 
