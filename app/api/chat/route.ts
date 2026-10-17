@@ -58,7 +58,10 @@ import {
   responseCacheKey as buildResponseCacheKey,
   setCachedChatResponse,
 } from "../../../src/chat/responseCache";
-import { progressMessage } from "../../../src/chat/progress";
+import { progressMessage, thinkingTheme, type ThinkingTheme } from "../../../src/chat/progress";
+
+/** Progress update for streaming clients: plain text plus the theme for themed phrases. */
+type ProgressCallback = (message: string, theme?: ThinkingTheme) => void;
 import {
   formatProgressContext,
   getProgressSnapshot,
@@ -96,6 +99,7 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -4844,14 +4848,14 @@ async function directRagResponse(
   playerProfile?: PlayerProfile,
   history: ChatRequest["history"] = [],
   debug = false,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
   }
 
-  onProgress?.("Understanding your question...");
+  onProgress?.("Understanding your question...", "general");
   signal?.throwIfAborted();
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
@@ -5120,7 +5124,7 @@ async function directRagResponse(
   );
   if (levelRecommendation) return levelRecommendation;
 
-  onProgress?.(progressMessage(controller.intent, controller.action));
+  onProgress?.(progressMessage(controller.intent, controller.action), thinkingTheme(controller.intent));
   const personaProfileSubject = /\bskills?\s+should\s+i\s+keep\s+for\b/i.test(
     conversation.analysisQuestion,
   )
@@ -5160,7 +5164,7 @@ async function directRagResponse(
     requiresExactGameEvidence(conversation.analysisQuestion, controller.intent) &&
     !hasStrongExactContext(conversation.analysisQuestion, context)
   ) {
-    onProgress?.("Verifying current IGN and Game8 details...");
+    onProgress?.("Verifying current IGN and Game8 details...", "verifying");
     const { verifyAgainstLiveGuides } = await import(
       "../../../src/retrieval/liveGuideVerification"
     );
@@ -5485,7 +5489,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   ];
 
   try {
-    onProgress?.("Putting the answer together...");
+    onProgress?.("Putting the answer together...", "writing");
     const rawAnswer = await complete(messages, { jsonObject: true, timingLabel: "answer" }).catch(() =>
       complete(messages, { timingLabel: "answer-retry" }),
     );
@@ -5657,7 +5661,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
 
 async function resolveChatRequest(
   body: Partial<ChatRequest>,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
   if (!requestTimingEnabled() && !body.debug) {
@@ -5679,7 +5683,7 @@ async function resolveChatRequest(
 
 async function resolveChatRequestUntimed(
   body: Partial<ChatRequest>,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const question = body.question?.trim() ?? "";
@@ -5687,11 +5691,11 @@ async function resolveChatRequestUntimed(
   const cacheKey = responseCacheKey(body);
   const cached = cacheKey ? getCachedChatResponse(cacheKey) : undefined;
   if (cached) {
-    onProgress?.("Pulling that up...");
+    onProgress?.("Pulling that up...", "general");
     return cached;
   }
 
-  onProgress?.("On it...");
+  onProgress?.("On it...", "general");
   const direct = await directRagResponse(
     question,
     body.playerProfile,
@@ -5762,6 +5766,49 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   };
 }
 
+function instantReplyResponse(body: ChatRequest): ChatResponse | null {
+  if (body.debug || process.env.USE_MOCK_CHAT === "true") return null;
+  const question = body.question?.trim() ?? "";
+  const kind = quickReplyKind(question);
+  if (!kind) return null;
+  // "ok" right after the assistant asked something is an answer, not small talk.
+  const previousAssistant = [...(body.history ?? [])].reverse().find((message) => message.role === "assistant");
+  if (kind === "ack" && previousAssistant?.content.includes("?")) return null;
+  const reply = quickReply(question, body.playerProfile ?? {});
+  if (!reply) return null;
+  return withMode(
+    {
+      answer: reply.answer,
+      sections: [],
+      sources: [],
+      confidence: 0.95,
+      missingInfo: "No additional detail is needed.",
+      companion: {
+        intent: "General Discussion",
+        profileUpdates: {},
+        followUpQuestions: [],
+        suggestedPrompts: reply.suggestedPrompts,
+      },
+    },
+    "rag",
+  );
+}
+
+function streamedInstantResponse(request: Request, response: ChatResponse): Response {
+  const encoder = new TextEncoder();
+  const lines = [
+    { type: "token", delta: response.answer },
+    { type: "response", data: response },
+  ].map((event) => `${JSON.stringify(event)}\n`);
+  return new Response(encoder.encode(lines.join("")), {
+    headers: {
+      ...corsHeaders(request),
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+    },
+  });
+}
+
 function streamedChatResponse(request: Request, body: ChatRequest): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -5772,10 +5819,10 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
 
       try {
         // Immediate feedback so the UI never sits on a blank spinner.
-        emit({ type: "status", message: "Reading your question..." });
+        emit({ type: "status", message: "Reading your question...", theme: "general" });
         const response = await resolveChatRequest(
           body,
-          (message) => emit({ type: "status", message }),
+          (message, theme) => emit({ type: "status", message, ...(theme ? { theme } : {}) }),
           request.signal,
         );
 
@@ -5838,6 +5885,15 @@ export async function POST(request: Request) {
       { error: message },
       { status, headers: corsHeaders(request) },
     );
+  }
+
+  // Pure greetings/thanks/goodbyes are answered instantly: no model, no lookup, and no
+  // rate-limit round trip, since serving them costs nothing.
+  const instant = instantReplyResponse(body);
+  if (instant) {
+    return body.stream
+      ? streamedInstantResponse(request, instant)
+      : NextResponse.json(instant, { headers: corsHeaders(request) });
   }
 
   try {
