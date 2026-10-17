@@ -97,13 +97,27 @@ import {
   asksWhichLinksCanStart,
   buildMonthPlan,
   monthPlanningBrief,
+  asksForNextStep,
 } from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
-import { limitQuestions } from "../../../src/quality/chatStyle";
+import { isPureClarifyingQuestion, limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import {
+  checkFusionClaims,
+  extractFusionClaims,
+  fusionCorrectionNotes,
+  withoutWrongFusionClaims,
+  type FusionClaimCheck,
+} from "../../../src/quality/fusionClaims";
+import { personaNames, personaNamesIfLoaded, recipesForClaims } from "../../../src/retrieval/fusionLookup";
+import { TARTARUS_GUARDIAN_SOURCE } from "../../../src/quality/tartarusGuardians";
+import { withRepairedSourceUrls } from "../../../src/retrieval/sourceUrls";
 import {
   FULL_MOON_BOSS_SOURCE,
   bossFactContradictions,
+  canonicalBossAffinities,
+  guardianAffinityAnswer,
+  guardiansIn,
   withoutBossFactContradictions,
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
@@ -478,7 +492,7 @@ function fusionDlcClarificationResponse(
   if (!asksForFusionRoute(question) || profile.dlcOwnership) return null;
   const response = withMode({
     answer:
-      "Before I calculate the recipes: do you have the Persona DLC enabled? DLC Personas change the fusion chart, so the same ingredients can produce a different result.",
+      "Before I calculate the recipes: do you have the Persona DLC enabled? DLC Personas change the fusion chart, so the same ingredients can produce a different result. Tell me \"No Persona DLC\" or \"I have all Persona DLC\".",
     sections: [],
     sources: [fusionToolSource],
     confidence: 0.99,
@@ -1644,7 +1658,7 @@ function companionClarificationResponse(question: string, analysis: CompanionAna
 }
 
 function withMode(response: ChatResponse, retrievalMode: NonNullable<ChatResponse["retrievalMode"]>): ChatResponse {
-  return { ...response, retrievalMode };
+  return { ...withRepairedSourceUrls(response), retrievalMode };
 }
 
 function mockResponse(question: string): ChatResponse {
@@ -2416,10 +2430,23 @@ function buildBossPrepCard(
     firstFactValue(selectedFacts, "strategy") ??
     evidenceText.match(/(?:watch out for|avoid|use|bring|focus)[^.]{20,180}\./i)?.[0];
 
+  // Game8's boss tables are canonical; retrieved facts only fill in bosses they don't cover.
+  const canonical = canonicalBossAffinities(bossName);
+  // Retrieved weaknesses only fill attack types the table marks unknown.
+  const canonicalWeak = canonical
+    ? uniqueStrings([
+        ...canonical.weak,
+        ...weaknesses.filter((value) => canonical.unknown.some((attack) => attack.toLowerCase() === value.toLowerCase())),
+      ])
+    : [];
+  const weaknessLabel = canonical
+    ? canonicalWeak.length ? joinNatural(canonicalWeak) : canonical.unknown.length ? "Not confirmed" : "None"
+    : weaknesses.length ? joinNatural(weaknesses) : "Not confirmed";
+  const avoidLabel = canonical ? canonical.avoid : defensiveAffinities;
   return {
     boss: bossName,
-    weakness: weaknesses.length ? joinNatural(weaknesses) : "Not confirmed",
-    avoid: defensiveAffinities.length ? defensiveAffinities.slice(0, 2).join(" · ") : undefined,
+    weakness: weaknessLabel,
+    avoid: avoidLabel.length ? avoidLabel.slice(0, 2).join(" · ") : undefined,
     recommendedLevel: recommendedLevel ? compactCardValue(recommendedLevel, 40) : undefined,
     party: firstFactValue(selectedFacts, "recommended_party")
       ? compactCardValue(firstFactValue(selectedFacts, "recommended_party")!, 120)
@@ -2557,7 +2584,10 @@ function structuredFusionResponse(
   const asksForResult =
     /\b(what|which)\b.*\b(make|makes|create|creates|result|become|fuse into)\b/i.test(question) ||
     /\b(make|makes|create|creates)\b.*\b(what|which)\b/i.test(question) ||
-    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question);
+    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question) ||
+    // "If I fuse Ananta with Asura what do I get?"
+    /\b(?:fuse|fusing|combine|combining)\b.+\b(?:with|and|plus)\b.+\bwhat\b.*\b(?:get|make|happen)\b/i.test(question) ||
+    /\bwhat\b.*\b(?:get|make)\b.*\b(?:fus(?:e|ing)|combin(?:e|ing))\b.+\b(?:with|and|plus)\b/i.test(question);
   if (asksForResult) {
     const matches = recipeFacts.filter((fact) => {
       const ingredients = fact.value
@@ -3057,6 +3087,35 @@ function structuredExactFactResponse(
   return response;
 }
 
+/** "What is the Swift Axle weak to?" answered from Game8's guardian table. */
+function guardianAffinityResponse(
+  question: string,
+  intent: CompanionIntent,
+  facts: FactMatch[],
+  companion: NonNullable<ChatResponse["companion"]>,
+): ChatResponse | null {
+  if (!exactWeaknessQuestion(question, intent)) return null;
+  const named = guardiansIn(question);
+  if (named.length !== 1) return null;
+  const guardian = named[0]!;
+  // The boss's own Game8 page can fill attack types the summary table marks unknown.
+  const pageFacts = facts.filter(
+    (fact) => fact.fact_type === "weakness" && fact.entity.name.toLowerCase() === guardian.name.toLowerCase(),
+  );
+  const sources = new Map<string, ChatResponse["sources"][number]>([[TARTARUS_GUARDIAN_SOURCE.url, { ...TARTARUS_GUARDIAN_SOURCE }]]);
+  for (const fact of pageFacts) {
+    sources.set(fact.source.url, { title: fact.source.title, url: fact.source.url, domain: fact.source.domain });
+  }
+  return withMode({
+    answer: guardianAffinityAnswer(guardian, pageFacts.map((fact) => fact.value)),
+    sections: [],
+    sources: [...sources.values()].slice(0, 2),
+    confidence: 0.95,
+    missingInfo: "No additional detail is needed.",
+    companion,
+  }, "rag");
+}
+
 function structuredBloodyMariaResponse(
   question: string,
   context: {
@@ -3068,6 +3127,8 @@ function structuredBloodyMariaResponse(
   queries: string[],
 ): ChatResponse | null {
   if (!/\bbloody\s+maria\b/i.test(question)) return null;
+  // "How do I deal with the Executioner's Crown next to Bloody Maria?" is about the Crown.
+  if (guardiansIn(question).some((guardian) => guardian.name !== "Bloody Maria")) return null;
   const strategyFacts = context.facts.filter(
     (fact) =>
       fact.entity.name.toLowerCase() === "bloody maria" &&
@@ -3107,7 +3168,7 @@ function structuredBloodyMariaResponse(
       ],
       bossPrep: {
         boss: "Bloody Maria",
-        weakness: "Not confirmed",
+        weakness: "Pierce",
         avoid: "Fear follow-up pressure",
         party: "Yukari for Me Patra; Aigis for Pierce pressure",
         danger: "Evil Smile can set up Fear before a punishing follow-up",
@@ -3192,7 +3253,7 @@ function structuredPriestessBossResponse(
       ],
       bossPrep: {
         boss: "Priestess",
-        weakness: "Not confirmed",
+        weakness: "None listed (nulls Ice)",
         avoid: "Ice attacks into Priestess",
         recommendedLevel: "10+",
         party: "Yukari for healing; protagonist covers elements",
@@ -4924,6 +4985,8 @@ async function directRagResponse(
 
   onProgress?.("Understanding your question...", "general");
   signal?.throwIfAborted();
+  // Warm the Persona name list so the stream gate can hold back fusion claims for checking.
+  void personaNames().catch(() => undefined);
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
   // Player Memory as saved on the device; only this may be labelled "In Player Memory".
@@ -5117,7 +5180,18 @@ async function directRagResponse(
     suggestedPrompts: controller.suggestedPrompts.length ? controller.suggestedPrompts : undefined,
   };
 
-  if (controller.action === "answer_directly") {
+  // The controller's own reply skips the answer-path checks, so it is only used when there is
+  // nothing to check: not a next-step request, and no boss or fusion claims.
+  const directReplyIsSafe = (text: string | null | undefined) => {
+    if (!text) return true;
+    const names = personaNamesIfLoaded();
+    return (
+      !asksForNextStep(conversation.analysisQuestion) &&
+      bossFactContradictions(text).length === 0 &&
+      !(names && extractFusionClaims(text, names).length)
+    );
+  };
+  if (controller.action === "answer_directly" && directReplyIsSafe(controller.answer)) {
     return withMode({
       // The controller's own reply skips the answer-path checks; drop rule-breaking sentences.
       answer: withoutPartyRuleViolations(
@@ -5132,7 +5206,7 @@ async function directRagResponse(
     }, "rag");
   }
 
-  if (controller.action === "ask_clarifying_question") {
+  if (controller.action === "ask_clarifying_question" && directReplyIsSafe(controller.answer)) {
     const answer =
       controller.answer ??
       controllerFollowUps[0] ??
@@ -5291,6 +5365,13 @@ async function directRagResponse(
     );
     if (personaProfile) return personaProfile;
   }
+  const guardianAnswer = guardianAffinityResponse(
+    userWordsOnly(conversation.analysisQuestion),
+    controller.intent,
+    context.facts,
+    companion,
+  );
+  if (guardianAnswer) return guardianAnswer;
   if (
     exactWeaknessQuestion(userWordsOnly(conversation.analysisQuestion), controller.intent) &&
     Boolean(likelyExactSubject(conversation.analysisQuestion)) &&
@@ -5508,8 +5589,9 @@ ${partyRoleFactsForPrompt()}`;
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
+  const nextStep = asksForNextStep(conversation.analysisQuestion);
   const userPrompt = `Current user message: ${question}
-Resolved conversation topic: ${conversation.previousTopic ?? question}
+Resolved conversation topic: ${nextStep ? "The player's next step in their run, after the previous advice." : conversation.previousTopic ?? question}
 Previous assistant message: ${conversation.previousAssistant ?? "None."}
 Contextual request for analysis: ${conversation.analysisQuestion}
 Short follow-up reply: ${
@@ -5532,7 +5614,11 @@ Spoiler policy: ${spoilerDecision.promptInstruction}
 
 ${formatAssistantContext(context)}
 
-Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
+Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.${
+    nextStep
+      ? "\n\nThis is a next-step request: the previous topic is settled. Answer with the next concrete milestone in their run from the canonical facts above (the next Full Moon operation and its date, the Tartarus block border, a Social Link to start). Do not give more advice on the previous topic."
+      : ""
+  }`;
   // Canonical arcana for the links/party the player tracks count as evidence for the
   // named-claim gate (the same pairs are given to the model as canonical facts above).
   // Uses the saved profile plus what the player typed, never model-inferred profile updates.
@@ -5553,6 +5639,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   const canonicalSources = [
     ...(monthBrief ? [SOCIAL_LINK_START_SOURCE] : []),
     ...(/Full Moon operation is on/.test(progressFacts) ? [FULL_MOON_BOSS_SOURCE] : []),
+    ...(guardiansIn(userWordsOnly(conversation.analysisQuestion)).length ? [TARTARUS_GUARDIAN_SOURCE] : []),
   ];
   const responseSources = [
     ...new Map(
@@ -5730,6 +5817,39 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         );
       }
     }
+    // Fusion claims ("A + B makes C") must match the fusion tool recipes.
+    const fusionChecks = await checkAnswerFusionClaims(chatResponseClaimText(normalized), controllerProfile.dlcOwnership);
+    if (fusionChecks.some((check) => !check.ok)) {
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `${userPrompt}
+
+Your previous draft stated fusion recipes that the fusion tool data contradicts:
+${fusionCorrectionNotes(fusionChecks).map((note) => `- ${note}`).join("\n")}
+
+Regenerate the JSON answer. Only state a fusion recipe if it is listed in the facts above.`,
+          },
+        ],
+        { jsonObject: true, timingLabel: "fusion-correction", model: chatConfig.correctionChatModel },
+      );
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
+      const stillWrong = await checkAnswerFusionClaims(chatResponseClaimText(normalized), controllerProfile.dlcOwnership);
+      if (stillWrong.some((check) => !check.ok)) {
+        normalized = {
+          ...normalized,
+          answer: withoutWrongFusionClaims(normalized.answer, stillWrong),
+          sections: (normalized.sections ?? []).filter(
+            (section) => !stillWrong.some((check) => !check.ok && section.content.includes(check.sentence)),
+          ),
+        };
+      }
+    }
     const bossErrors = bossFactContradictions(chatResponseClaimText(normalized));
     if (bossErrors.length) {
       const correctedRaw = await complete(
@@ -5759,6 +5879,8 @@ Regenerate the JSON answer using the canonical boss facts above.`,
       conversation.analysisQuestion,
       normalized,
     );
+    // A reply that only asks the player something has nothing to cite.
+    if (isPureClarifyingQuestion(normalized)) normalized = { ...normalized, sources: [] };
     // Attach every card before the grounding gate so a blocked answer strips them all.
     const response = withMode(
       applyGroundingGuardrails(
@@ -5897,8 +6019,23 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   };
 }
 
+/** Checks every fusion claim in an answer; a lookup failure checks nothing rather than failing the reply. */
+async function checkAnswerFusionClaims(text: string, dlc?: string): Promise<FusionClaimCheck[]> {
+  try {
+    const claims = extractFusionClaims(text, await personaNames());
+    if (!claims.length) return [];
+    return checkFusionClaims(claims, await recipesForClaims(claims), dlc);
+  } catch (error) {
+    console.warn("Fusion claim check skipped:", error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 function partyRulesAccept(text: string): boolean {
+  const names = personaNamesIfLoaded();
   return (
+    // A fusion claim is verified after the reply finishes, so the live preview stops before it.
+    !(names && extractFusionClaims(text, names).length) &&
     !breaksPartyRules(text) &&
     partyRoleContradictions({ answer: text }).length === 0 &&
     bossFactContradictions(text).length === 0
