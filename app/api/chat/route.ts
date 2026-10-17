@@ -43,6 +43,7 @@ import {
   requestedExactFactTypes,
 } from "../../../src/quality/exactFacts";
 import type { ChunkMatch, FactMatch } from "../../../src/types/schema";
+import type { RetrievalContext } from "../../../src/retrieval/buildContext";
 import {
   analyzeRetrievalQuery,
   buildFocusedQueries,
@@ -3659,8 +3660,10 @@ function exactEvidenceStatus(question: string, intent: CompanionIntent, context:
   const matchingFacts = context.facts.filter(
     (fact) =>
       factMatchesQuestionSubject(question, fact.entity.name) ||
-      // Verified canonical records (agent lookups) count when the question names their entity.
-      ((fact as { notes?: string | null }).notes === "Canonical table" && playerWords.includes(fact.entity.name.toLowerCase())),
+      // Verified canonical records (agent lookups) count when the question names their entity,
+      // or names no subject at all ("what level should i be" after asking about a boss).
+      ((fact as { notes?: string | null }).notes === "Canonical table" &&
+        (playerWords.includes(fact.entity.name.toLowerCase()) || !likelyExactSubject(question))),
   );
   const matchingChunks = context.chunks.filter((chunk) =>
     chunkMatchesQuestion(question, chunk),
@@ -4994,6 +4997,8 @@ type AgentEvidence = {
   sources: Map<string, ChatResponse["sources"][number]>;
   /** Which kinds of verified data the lookups hit; decides the reply's intent label. */
   kinds: Set<"guardian" | "fullMoon" | "socialLink" | "rankTen" | "fusion">;
+  /** Whether the player's own wording has been searched yet (done once per turn). */
+  searchedPlayerWords: boolean;
 };
 
 /** The intent implied by what the agent's lookups actually found, if anything. */
@@ -5001,7 +5006,6 @@ function intentFromEvidence(evidence: AgentEvidence, question: string, fallback:
   if (evidence.kinds.has("fusion")) return "Fusion Advice";
   if (evidence.kinds.has("socialLink") || evidence.kinds.has("rankTen")) return "Social Links";
   if (evidence.kinds.has("guardian")) return /\b(?:beat|fight|strategy|party|bring|deal with)\b/i.test(question) ? "Boss Help" : "Enemy Weakness";
-  if (evidence.kinds.has("fullMoon") && fallback === "General Discussion") return "Boss Help";
   return fallback;
 }
 
@@ -5104,7 +5108,17 @@ function agentTools(
           }
         }
         const { searchFacts } = await import("../../../src/retrieval/searchFacts");
-        const facts = await searchFacts(query, 12, signal).catch(() => [] as FactMatch[]);
+        // The first lookup also searches the player's own wording, which finds facts the
+        // agent's paraphrase can miss ("best answer for Emperor rank 4" vs "Emperor rank 4").
+        const searchPlayerWords = !evidence.searchedPlayerWords && Boolean(playerQuestion) && playerQuestion !== query;
+        evidence.searchedPlayerWords = true;
+        const [facts, playerFacts] = await Promise.all([
+          searchFacts(query, 12, signal).catch(() => [] as FactMatch[]),
+          searchPlayerWords ? searchFacts(playerQuestion, 12, signal).catch(() => [] as FactMatch[]) : Promise.resolve([] as FactMatch[]),
+        ]);
+        for (const fact of playerFacts) {
+          if (!evidence.facts.some((known) => known.id === fact.id)) evidence.facts.push(fact);
+        }
         const known = new Set(evidence.facts.map((fact) => fact.id));
         for (const fact of facts) {
           if (!known.has(fact.id)) evidence.facts.push(fact);
@@ -5162,141 +5176,102 @@ function agentTools(
   ];
 }
 
-const agentInstructions = `
-You are running as an agent with tools:
-- lookup_facts: verified game data. Call it before stating any exact fact (weaknesses, fusion recipes or results, Persona details, dates, levels, Social Link starts). Lines marked [verified] are canonical and override anything else.
-- search_guides: guide text for strategy and mechanics.
-- ask_clarifying_question: only when the answer truly depends on a missing detail.
-Plan briefly, call the tools you need (several are fine), then reply with the final JSON described above and no tool call. Small talk needs no tools. Never state a game fact that no tool result supports.`;
+const agentRouterSystem = `You are the research step of Tartarus Guide, a Persona 3 Reload companion. Another step writes the final reply from what you gather, so your job is to decide what to look up and gather the right evidence.
+
+Tools:
+- lookup_facts: verified game data (fusion recipes and results, Persona profiles, enemy and boss affinities, Tartarus guardians, Full Moon bosses and levels, Social Link starts and rank-10 Personas, the calendar). Lines marked [verified] are canonical.
+- search_guides: IGN and Game8 guide text for strategy, walkthrough steps, mechanics and anything the structured data doesn't cover.
+- ask_clarifying_question: only when the answer truly depends on a detail the player hasn't given and you can't look it up (e.g. which of several bosses). Never ask for anything listed as already known.
+
+Rules:
+- Use the player's exact names in queries. One focused query per thing you need; call several tools if the question has several parts.
+- For exact facts use lookup_facts; for strategy or "how do I" questions also use search_guides.
+- For pure small talk ("hey", "thanks") call no tools and reply with a short friendly message.
+- When you have enough evidence, reply with the single word READY.`;
+
+type AgentRouting = {
+  controller: ControllerDecision;
+  context: RetrievalContext | null;
+  steps: string[];
+};
 
 /**
- * Agent mode: the model chooses between fact lookup, guide search and asking the player, then
- * writes the answer. The answer gets the same claim checks and grounding gate as the pipeline.
+ * Agent mode: a tool-calling agent replaces the routing step. It chooses between fact lookup,
+ * guide search and asking the player (and how many lookups to make); its evidence then goes
+ * through the same verified handlers, answer writer and checks as the pipeline.
  */
-async function agentRagResponse(input: {
+async function agentRoute(input: {
   question: string;
   conversation: ReturnType<typeof contextualizeQuestion>;
   normalizedHistory: NonNullable<ChatRequest["history"]>;
-  playerProfile: PlayerProfile;
-  debug: boolean;
+  analysis: CompanionAnalysis;
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
-}): Promise<ChatResponse> {
-  const { question, conversation, normalizedHistory, playerProfile, debug, onProgress, signal } = input;
+}): Promise<AgentRouting> {
+  const { question, conversation, normalizedHistory, analysis, onProgress, signal } = input;
   const userWords = userWordsOnly(conversation.analysisQuestion);
-  const analysis = analyzeCompanionRequest(userWords, playerProfile);
   const profile = analysis.profile;
-  const evidence: AgentEvidence = { facts: [], chunks: [], canonical: [], sources: new Map(), kinds: new Set() };
-  const spoilerDecision = evaluateSpoilerPolicy({
-    question: conversation.analysisQuestion,
-    intent: analysis.intent,
-    preference: profile.spoilerPreference,
-    currentMonth: profile.currentMonth,
-  });
-  const monthBrief = asksForMonthPlan(conversation.analysisQuestion, analysis.intent)
-    ? monthPlanningBrief(profile, conversation.analysisQuestion)
-    : "";
-  const progressFacts = progressFactsForPrompt(profile, userWords);
-  const history = normalizedHistory.slice(-10).map((message) => `${message.role}: ${message.content}`).join("\n");
-  const nextStep = asksForNextStep(conversation.analysisQuestion);
+  const evidence: AgentEvidence = { facts: [], chunks: [], canonical: [], sources: new Map(), kinds: new Set(), searchedPlayerWords: false };
+  const history = normalizedHistory.slice(-8).map((message) => `${message.role}: ${message.content}`).join("\n");
   const user = [
     `Player message: ${question}`,
     conversation.shortReply ? `This is a follow-up. Full request: ${conversation.analysisQuestion}` : "",
-    `Known player profile: ${JSON.stringify(profile)}`,
-    `Already known (never ask for these again): ${knownFactsSummary(profile) || "Nothing yet."}`,
-    formatProgressContext(profile),
-    progressFacts,
-    monthBrief,
-    `Recommendation mode: ${asksForRecommendation(conversation.analysisQuestion) ? "Active. Make a clear choice and populate the recommendation card." : "Inactive. Return recommendation as null."}`,
-    `Spoiler policy: ${spoilerDecision.promptInstruction}`,
+    `Already known (never ask for these): ${knownFactsSummary(profile) || "Nothing yet."}`,
     `Recent conversation:\n${history || "No prior turns."}`,
-    nextStep
-      ? "This is a next-step request: give the next concrete milestone in their run (next Full Moon operation and date, Tartarus block border, a Social Link to start), not more advice on the previous topic."
-      : "",
   ].filter(Boolean).join("\n\n");
-
   const { createToolCompletion } = await import("../../../src/db/client");
+  const casual = isCasualMessage(question) && !conversation.previousTopic;
   const outcome = await runAgentLoop({
-    system: `${answerSystemPrompt()}\n${agentInstructions}`,
+    system: agentRouterSystem,
     user,
     tools: agentTools(evidence, profile, userWords, signal),
-    maxSteps: 4,
-    // Small talk ("hey", "thanks") needs no lookup; anything else must look before answering.
-    requireToolFirst: !isCasualMessage(question),
+    maxSteps: 3,
+    requireToolFirst: !casual,
     onProgress: (text) => onProgress?.(`${text}...`, thinkingTheme(analysis.intent)),
     complete: (messages, tools, options) =>
       createToolCompletion(messages, tools, { toolChoice: options.toolChoice, timingLabel: options.timingLabel, signal }),
   });
-
+  const steps = outcome.steps.map((step) => `${step.tool}(${JSON.stringify(step.args)})${step.ok ? "" : " failed"}`);
   const intent = intentFromEvidence(evidence, userWords, analysis.intent);
-  const companion = {
+  const queries = uniqueStrings(outcome.steps.map((step) => (typeof step.args.query === "string" ? step.args.query : undefined)));
+  const base: ControllerDecision = {
+    action: "search_both",
     intent,
+    retrievalQuery: queries[0] ?? userWords,
+    retrievalQueries: queries,
+    answer: null,
+    followUpQuestions: [],
     profileUpdates: analysis.profileUpdates,
-    followUpQuestions: [] as string[],
+    suggestedPrompts: [],
+    spoilerCaution: false,
   };
-  const trace = outcome.steps.map((step) => `${step.tool}(${JSON.stringify(step.args)})${step.ok ? "" : " failed"}`);
   if (outcome.kind === "terminal") {
     const options = Array.isArray(outcome.args.options) ? outcome.args.options.map(String).slice(0, 3) : [];
-    const response = withMode({
-      answer: outcome.content || "Which part of Persona 3 Reload are you working on right now?",
-      sections: [],
-      sources: [],
-      confidence: 0.72,
-      missingInfo: outcome.content,
-      companion: { ...companion, followUpQuestions: [outcome.content], suggestedPrompts: options.length ? options : undefined },
-    }, "rag");
-    if (debug) response.diagnostics = { guardrailNotes: [`Agent steps: ${trace.join(" -> ") || "none"}`] };
-    return response;
-  }
-
-  // Verified canonical sources first; with those, two sources are enough.
-  const canonicalUrls = new Set(evidence.facts.filter((fact) => fact.notes === "Canonical table").map((fact) => fact.source.url));
-  const sources = [...evidence.sources.values()]
-    .sort((a, b) => Number(canonicalUrls.has(b.url)) - Number(canonicalUrls.has(a.url)))
-    .slice(0, canonicalUrls.size ? 2 : 4);
-  let normalized: ChatResponse;
-  try {
-    normalized = normalizeRagResponse(extractJson(outcome.content), sources, companion);
-  } catch {
-    normalized = responseFromPlainText(outcome.content || "I couldn't put that together just now. Could you ask again?", sources, companion);
-  }
-  normalized = { ...normalized, answer: withoutPartyRuleViolations(limitQuestions(normalized.answer)) };
-  // Same claim checks as the pipeline: fusion recipes and boss facts.
-  const fusionChecks = await checkAnswerFusionClaims(chatResponseClaimText(normalized), profile.dlcOwnership);
-  if (fusionChecks.some((check) => !check.ok)) {
-    normalized = { ...normalized, answer: withoutWrongFusionClaims(normalized.answer, fusionChecks) };
-  }
-  if (bossFactContradictions(chatResponseClaimText(normalized)).length) {
-    normalized = { ...normalized, answer: withoutBossFactContradictions(normalized.answer) };
-  }
-  if (isPureClarifyingQuestion(normalized)) normalized = { ...normalized, sources: [] };
-  const extraEvidence = [
-    ...evidence.canonical,
-    canonicalArcanaEvidenceFor([...(profile.currentSocialLinks ?? []), ...(profile.activeParty ?? [])]),
-    monthBrief,
-    progressFacts,
-    ...normalizedHistory.filter((message) => message.role === "user").slice(-6).map((message) => message.content),
-  ].join("\n");
-  const context = { facts: evidence.facts, chunks: evidence.chunks };
-  const response = withMode(
-    applyGroundingGuardrails(
-      conversation.analysisQuestion,
-      intent,
-      withBossPrep(normalized, conversation.analysisQuestion, intent, context),
-      context,
-      extraEvidence,
-    ),
-    "rag",
-  );
-  if (debug) {
-    response.diagnostics = {
-      ...response.diagnostics,
-      factCount: evidence.facts.length,
-      chunkCount: evidence.chunks.length,
-      guardrailNotes: [...(response.diagnostics?.guardrailNotes ?? []), `Agent steps: ${trace.join(" -> ") || "none"}`],
+    return {
+      controller: { ...base, action: "ask_clarifying_question", answer: outcome.content || null, followUpQuestions: outcome.content ? [outcome.content] : [], suggestedPrompts: options },
+      context: null,
+      steps,
     };
   }
-  return response;
+  if (!outcome.steps.length) {
+    const text = outcome.content.trim();
+    return {
+      controller: { ...base, action: "answer_directly", answer: text && !/^ready\.?$/i.test(text) ? text : null },
+      context: null,
+      steps,
+    };
+  }
+  return {
+    controller: base,
+    context: {
+      query: base.retrievalQuery,
+      queries,
+      facts: evidence.facts,
+      chunks: evidence.chunks,
+      sources: [...evidence.sources.values()],
+    },
+    steps,
+  };
 }
 
 /**
@@ -5447,9 +5422,7 @@ async function directRagResponse(
   }
   const mode = chatMode();
   if (mode === "baseline") return singlePassRagResponse(question, playerProfile ?? {}, signal);
-  if (mode === "agent") {
-    return agentRagResponse({ question, conversation, normalizedHistory, playerProfile: playerProfile ?? {}, debug, onProgress, signal });
-  }
+
   // Expert clarify-first: bare "craft/make these" with no thread should not invent tips.
   if (!conversation.shortReply && isVagueCreationQuestion(question)) {
     const clarify = expertVagueCreationClarify();
@@ -5618,8 +5591,16 @@ async function directRagResponse(
     } = {},
   ) => createChatCompletion(messages, { ...options, signal });
 
+  // Agent mode: the tool-calling agent makes the routing decision and gathers the evidence.
+  // Hand-written routing rules for known-tricky questions run first in every mode.
+  const ruleDecision = deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile);
+  const agentRouting =
+    mode === "agent" && !ruleDecision
+      ? await agentRoute({ question, conversation, normalizedHistory, analysis, onProgress, signal })
+      : null;
   const controller =
-    deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile) ??
+    ruleDecision ??
+    agentRouting?.controller ??
     (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, complete));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const spoilerDecision = evaluateSpoilerPolicy({
@@ -5746,7 +5727,7 @@ async function directRagResponse(
   const skillProfileQuestion =
     /\bskills?\s+should\s+i\s+keep\b/i.test(conversation.analysisQuestion) ||
     isPersonaKnowledgeRequest(conversation.analysisQuestion);
-  const context = await buildPlannedContext(
+  const context = agentRouting?.context ?? await buildPlannedContext(
     {
       queries: retrievalQueries,
       includeFacts: !guidesOnly,
@@ -6288,6 +6269,9 @@ Regenerate the JSON answer using the canonical boss facts above.`,
         factCount: context.facts.length,
         chunkCount: context.chunks.length,
         spoilerMode: spoilerDecision.mode,
+        ...(agentRouting
+          ? { guardrailNotes: [...(response.diagnostics?.guardrailNotes ?? []), `Agent steps: ${agentRouting.steps.join(" -> ") || "none"}`] }
+          : {}),
       };
     }
     return response;
