@@ -105,6 +105,8 @@ import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
 import {
   checkFusionClaims,
   extractFusionClaims,
+  pairResultIngredients,
+  pairResults,
   fusionCorrectionNotes,
   withoutWrongFusionClaims,
   type FusionClaimCheck,
@@ -5042,6 +5044,12 @@ async function directRagResponse(
     debug,
   );
   if (fusionDlcClarification) return fusionDlcClarification;
+  const pairResult = await fusionPairResultResponse(
+    userWordsOnly(conversation.analysisQuestion),
+    analysis.profile.dlcOwnership,
+    analysis.profileUpdates,
+  );
+  if (pairResult) return pairResult;
   const clarificationRecovery = rejectedClarificationResponse(question, conversation, analysis);
   if (clarificationRecovery) return clarificationRecovery;
   if (isCasualMessage(question) && !conversation.previousTopic) {
@@ -6017,6 +6025,41 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
       suggestedPrompts: prompts.length ? prompts : companion?.suggestedPrompts,
     },
   };
+}
+
+/**
+ * "What do Ananta and Asura make?" answered by looking the recipe up directly, so it never
+ * depends on retrieval happening to surface that recipe.
+ */
+async function fusionPairResultResponse(
+  question: string,
+  dlc: string | undefined,
+  profileUpdates: PlayerProfile,
+): Promise<ChatResponse | null> {
+  try {
+    const ingredients = pairResultIngredients(question, await personaNames());
+    if (!ingredients) return null;
+    const recipes = await recipesForClaims([{ ingredients, result: "", sentence: question }]);
+    const results = pairResults(ingredients, recipes, dlc);
+    // Unknown DLC setting with different results per mode: let the normal path ask.
+    if (results.length !== 1) return null;
+    return withMode({
+      answer: `${ingredients.join(" + ")} fuses into ${results[0]}.`,
+      sections: [],
+      sources: [fusionToolSource],
+      confidence: 0.97,
+      missingInfo: "No additional detail is needed for this recipe.",
+      companion: {
+        intent: "Fusion Advice",
+        profileUpdates,
+        followUpQuestions: [],
+        suggestedPrompts: [`What skills does ${results[0]} learn?`, `Show other routes to ${results[0]}`],
+      },
+    }, "rag");
+  } catch (error) {
+    console.warn("Fusion pair lookup skipped:", error instanceof Error ? error.message : error);
+    return null;
+  }
 }
 
 /** Checks every fusion claim in an answer; a lookup failure checks nothing rather than failing the reply. */
