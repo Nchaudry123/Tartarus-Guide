@@ -2071,5 +2071,27 @@
     "maxQuestions": 1,
     "maxSections": 0,
     "maxAnswerCharacters": 600
+  },
+  {
+    "id": "chat-patra-misuse",
+    "category": "chat-flow",
+    "origin": "curated",
+    "question": "should i use patra to get rid of the enemy's buffs?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "16", "activeParty": ["Yukari", "Junpei", "Akihiko"]},
+    "mustIncludeAny": ["Dekaja"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "Patra removes buffs", "Patra clears buffs", "use Patra to clear"],
+    "maxQuestions": 1,
+    "maxSections": 1
+  },
+  {
+    "id": "chat-akihiko-ice",
+    "category": "chat-flow",
+    "origin": "curated",
+    "question": "akihiko keeps dropping to these ice shadows, should i bench him?",
+    "playerProfile": {"currentMonth": "June", "currentDate": "June 4", "currentLevel": "16", "activeParty": ["Yukari", "Junpei", "Akihiko"]},
+    "mustIncludeAny": ["weak to Ice", "weak to ice", "Ice weakness", "ice weakness", "weakness to Ice", "weakness to ice"],
+    "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "Akihiko is weak to Fire", "Akihiko is weak to Wind", "in the back", "back row"],
+    "maxQuestions": 1,
+    "maxSections": 1
   }
 ]

@@ -262,6 +262,8 @@ export async function createChatCompletion(
     signal?: AbortSignal;
     /** Short label for latency instrumentation, e.g. "controller" or "answer". */
     timingLabel?: string;
+    /** When set, stream the completion and report each new chunk of model text as it arrives. */
+    onDelta?: (chunk: string) => void;
   } = {},
 ): Promise<string> {
   const promptChars = messages.reduce((total, message) => total + message.content.length, 0);
@@ -279,8 +281,10 @@ async function createChatCompletionUntimed(
     model?: string;
     maxCompletionTokens?: number;
     signal?: AbortSignal;
+    onDelta?: (chunk: string) => void;
   },
 ): Promise<string> {
+  if (options.onDelta) return createStreamingChatCompletion(messages, options, options.onDelta);
   const body = JSON.stringify({
     model: options.model ?? config.chatModel,
     messages,
@@ -360,3 +364,97 @@ async function createChatCompletionUntimed(
 
 export const embeddingToSqlVector = (embedding: number[]): string =>
   `[${embedding.join(",")}]`;
+
+/**
+ * Streams an OpenAI-compatible chat completion (Groq, OpenRouter) and reports text as it
+ * arrives, so the UI can show the reply while the model is still writing. Returns the full text.
+ * A 429 before any text arrives is retried once; there is one overall timeout for the stream.
+ */
+async function createStreamingChatCompletion(
+  messages: Array<{ role: "system" | "user"; content: string }>,
+  options: {
+    jsonObject?: boolean;
+    model?: string;
+    maxCompletionTokens?: number;
+    signal?: AbortSignal;
+  },
+  onDelta: (chunk: string) => void,
+): Promise<string> {
+  const body = JSON.stringify({
+    model: options.model ?? config.chatModel,
+    messages,
+    temperature: 0.1,
+    stream: true,
+    ...(config.chatBaseUrl.includes("openrouter.ai")
+      ? { reasoning: { effort: "none", exclude: true } }
+      : {}),
+    ...(options.maxCompletionTokens ? { max_completion_tokens: options.maxCompletionTokens } : {}),
+    ...(options.jsonObject ? { response_format: { type: "json_object" } } : {}),
+  });
+
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) abortFromParent();
+  options.signal?.addEventListener("abort", abortFromParent, { once: true });
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("The streamed request timed out.", "TimeoutError")),
+    60_000,
+  );
+
+  try {
+    let response: Response | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      response = await fetch(`${config.chatBaseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.chatApiKey}`,
+          "content-type": "application/json",
+          ...(config.chatAppUrl ? { "HTTP-Referer": config.chatAppUrl } : {}),
+          ...(config.chatAppName ? { "X-Title": config.chatAppName } : {}),
+        },
+        body,
+        signal: controller.signal,
+      });
+      if (response.status !== 429 || attempt === 1) break;
+      recordTimingEvent("llm-rate-limited-retry");
+      await sleep(1_500);
+    }
+    if (!response?.ok || !response.body) {
+      const errorText = response ? await response.text() : "";
+      throw new Error(`Chat request failed: ${response?.status ?? "unknown"} ${errorText}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = done ? "" : lines.pop() ?? "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) continue; // skip keep-alive comments
+        const data = trimmed.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+        try {
+          const event = JSON.parse(data) as { choices?: Array<{ delta?: { content?: string } }> };
+          const chunk = event.choices?.[0]?.delta?.content;
+          if (chunk) {
+            content += chunk;
+            onDelta(chunk);
+          }
+        } catch {
+          // A malformed keep-alive line is not fatal; the final content check below is.
+        }
+      }
+      if (done) break;
+    }
+    if (!content) throw new Error("Chat stream did not include content.");
+    return content;
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortFromParent);
+  }
+}
