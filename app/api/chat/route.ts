@@ -5325,6 +5325,39 @@ async function singlePassRagResponse(question: string, playerProfile: PlayerProf
   }
 }
 
+/**
+ * When the agent's own lookups can't support an exact answer (or found nothing), also run the
+ * standard focused search on the player's question and merge it in. The agent still chooses
+ * its lookups; this covers the times its queries miss what a verified handler needs.
+ */
+async function withRetrievalSafetyNet(
+  agentContext: RetrievalContext,
+  question: string,
+  intent: CompanionIntent,
+  fallbackQueries: string[],
+  steps: string[],
+  signal?: AbortSignal,
+): Promise<RetrievalContext> {
+  const thin = !agentContext.facts.length && !agentContext.chunks.length;
+  const needsExact = requiresExactGameEvidence(question, intent) && !hasStrongExactContext(question, agentContext);
+  if (!thin && !needsExact) return agentContext;
+  const queries = uniqueStrings(fallbackQueries).slice(0, 3);
+  if (!queries.length) return agentContext;
+  const { buildPlannedContext } = await import("../../../src/retrieval/buildContext");
+  const extra = await buildPlannedContext({ queries, factLimit: 14, chunkLimit: 10 }, signal);
+  steps.push(`safety-net search(${JSON.stringify(queries)})`);
+  const factIds = new Set(agentContext.facts.map((fact) => fact.id));
+  const chunkIds = new Set(agentContext.chunks.map((chunk) => chunk.id));
+  const sourceUrls = new Set(agentContext.sources.map((source) => source.url));
+  return {
+    ...agentContext,
+    queries: uniqueStrings([...agentContext.queries, ...queries]),
+    facts: [...agentContext.facts, ...extra.facts.filter((fact) => !factIds.has(fact.id))],
+    chunks: [...agentContext.chunks, ...extra.chunks.filter((chunk) => !chunkIds.has(chunk.id))],
+    sources: [...agentContext.sources, ...extra.sources.filter((source) => !sourceUrls.has(source.url))],
+  };
+}
+
 /** The answer model's system prompt, shared by the pipeline and the agent. */
 function answerSystemPrompt(): string {
   return `You are SEES Navigator, the conversational voice of Tartarus Guide: a Persona 3 Reload expert companion, strategic coach, and spoiler-aware veteran.
@@ -5756,7 +5789,12 @@ async function directRagResponse(
   const skillProfileQuestion =
     /\bskills?\s+should\s+i\s+keep\b/i.test(conversation.analysisQuestion) ||
     isPersonaKnowledgeRequest(conversation.analysisQuestion);
-  const context = agentRouting?.context ?? await buildPlannedContext(
+  const context = agentRouting?.context
+    ? await withRetrievalSafetyNet(agentRouting.context, conversation.analysisQuestion, controller.intent, [
+        ...(rulesDecision ? [...rulesDecision.retrievalQueries, rulesDecision.retrievalQuery] : []),
+        ...buildFocusedQueries(userWordsOnly(conversation.analysisQuestion)),
+      ], agentRouting.steps, signal)
+    : await buildPlannedContext(
     {
       queries: retrievalQueries,
       includeFacts: !guidesOnly,
