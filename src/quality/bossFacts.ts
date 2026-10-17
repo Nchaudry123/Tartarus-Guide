@@ -84,7 +84,9 @@ function describeAffinities(guardian: TartarusGuardian): string {
   const parts = (["Weak", "Resist", "Null", "Drain", "Repel"] as Affinity[])
     .filter((affinity) => byAffinity.has(affinity))
     .map((affinity) => `${verbs[affinity]} ${byAffinity.get(affinity)!.join(", ")}`);
-  if (!byAffinity.has("Weak")) parts.unshift("has no listed weakness");
+  const unknown = (guardian.unknown ?? []).map((attack) => attackLabels[attack]);
+  if (!byAffinity.has("Weak") && !unknown.length) parts.unshift("has no weakness to any attack type");
+  if (unknown.length) parts.push(`Game8's list has no data for ${unknown.join(", ")}`);
   return parts.join("; ");
 }
 
@@ -113,11 +115,12 @@ const fullMoonAffinities: Record<string, TartarusGuardian["affinities"]> = {
 };
 
 /** Canonical weaknesses and defensive affinities for a named boss, for boss cards. */
-export function canonicalBossAffinities(name: string): { weak: string[]; avoid: string[] } | null {
+export function canonicalBossAffinities(
+  name: string,
+): { weak: string[]; avoid: string[]; unknown: string[] } | null {
   const key = normalizeName(name);
-  const affinities =
-    tartarusGuardians.find((guardian) => normalizeName(guardian.name) === key)?.affinities ??
-    Object.entries(fullMoonAffinities).find(([boss]) => normalizeName(boss) === key)?.[1];
+  const guardian = tartarusGuardians.find((entry) => normalizeName(entry.name) === key);
+  const affinities = guardian?.affinities ?? Object.entries(fullMoonAffinities).find(([boss]) => normalizeName(boss) === key)?.[1];
   if (!affinities) return null;
   const entries = Object.entries(affinities) as Array<[AttackType, Affinity]>;
   const verbs: Record<Affinity, string> = { Weak: "", Resist: "Resists", Null: "Nulls", Drain: "Drains", Repel: "Repels" };
@@ -127,6 +130,7 @@ export function canonicalBossAffinities(name: string): { weak: string[]; avoid: 
       const attacks = entries.filter(([, value]) => value === affinity).map(([attack]) => attackLabels[attack]);
       return attacks.length ? [`${verbs[affinity]} ${attacks.join(", ")}`] : [];
     }),
+    unknown: (guardian?.unknown ?? []).map((attack) => attackLabels[attack]),
   };
 }
 
@@ -186,8 +190,12 @@ function guardianClaimProblems(rawSentence: string): string[] {
   if (!named.length) return problems;
   for (const guardian of named) {
     const weak = weaknessesOf(guardian);
-    if (weak.length && /\b(?:no|doesnt have any|does not have any|has no|without any)\s+(?:real\s+|elemental\s+)?weakness(?:es)?\b/i.test(sentence)) {
-      problems.push(`${guardian.name} is weak to ${weak.map((attack) => attackLabels[attack]).join(" and ")}.`);
+    if ((weak.length || guardian.unknown?.length) && /\b(?:no|doesnt have any|does not have any|has no|without any)\s+(?:real\s+|elemental\s+)?weakness(?:es)?\b/i.test(sentence)) {
+      problems.push(
+        weak.length
+          ? `${guardian.name} is weak to ${weak.map((attack) => attackLabels[attack]).join(" and ")}.`
+          : `${guardian.name}'s weaknesses aren't fully listed; don't say it has none.`,
+      );
     }
   }
   // Attribute each "weak to X" to the nearest guardian named before it in the sentence.
@@ -203,6 +211,8 @@ function guardianClaimProblems(rawSentence: string): string[] {
     const attack = (Object.keys(attackWords) as AttackType[]).find((key) => attackWords[key].test(claim[1]));
     if (!attack) continue;
     const affinity = owner.guardian.affinities[attack];
+    // An attack type the list marks unknown may be a weakness on the boss's own page.
+    if (owner.guardian.unknown?.includes(attack)) continue;
     if (affinity !== "Weak") {
       const weak = weaknessesOf(owner.guardian);
       problems.push(
@@ -234,4 +244,41 @@ export function bossFactContradictions(text: string): string[] {
 export function withoutBossFactContradictions(text: string): string {
   const kept = text.split(/(?<=[.!?])\s+/).filter((sentence) => bossFactContradictions(sentence).length === 0);
   return kept.length ? kept.join(" ") : text;
+}
+
+/**
+ * A direct answer to "what is <guardian> weak to?" from the table. `extraWeak` are weaknesses
+ * from the boss's own Game8 page for attack types the table marks unknown.
+ */
+export function guardianAffinityAnswer(guardian: TartarusGuardian, extraWeak: string[] = []): string {
+  const entries = Object.entries(guardian.affinities) as Array<[AttackType, Affinity]>;
+  const unknown = guardian.unknown ?? [];
+  const filled = extraWeak
+    .map((value) => (Object.keys(attackWords) as AttackType[]).find((attack) => attackWords[attack].test(value)))
+    .filter((attack): attack is AttackType => Boolean(attack) && unknown.includes(attack!));
+  const weak = [...new Set([...entries.filter(([, affinity]) => affinity === "Weak").map(([attack]) => attack), ...filled])];
+  const list = (attacks: AttackType[]) => {
+    const labels = attacks.map((attack) => attackLabels[attack]);
+    return labels.length > 1 ? `${labels.slice(0, -1).join(", ")} and ${labels[labels.length - 1]}` : labels[0] ?? "";
+  };
+  const defensive = (["Repel", "Drain", "Null", "Resist"] as Affinity[])
+    .map((affinity) => [affinity, entries.filter(([, value]) => value === affinity).map(([attack]) => attack)] as const)
+    .filter(([, attacks]) => attacks.length)
+    .map(([affinity, attacks]) => `${affinity === "Resist" ? "resists" : `${affinity.toLowerCase()}s`} ${list(attacks)}`);
+  const stillUnknown = unknown.filter((attack) => !filled.includes(attack));
+  const where = `${guardian.name} (the Tartarus ${guardian.floor}F guardian, recommended level ${guardian.level}+)`;
+  const lead = weak.length
+    ? `${where} is weak to ${list(weak)}.`
+    : stillUnknown.length
+      ? `${where} has no confirmed weakness in Game8's data (it has no data for ${list(stillUnknown)}).`
+      : `${where} has no weakness to any attack type.`;
+  const physicalOpen = !weak.length && !stillUnknown.length
+    ? (["slash", "strike", "pierce"] as AttackType[]).filter((attack) => !guardian.affinities[attack])
+    : [];
+  return [
+    lead,
+    defensive.length ? `It ${defensive.join(", ")}.` : "",
+    physicalOpen.length ? `${list(physicalOpen)} hit${physicalOpen.length === 1 ? "s" : ""} it for normal damage, so lean on physical attacks.` : "",
+    weak.length && stillUnknown.length ? `Game8's list has no data for ${list(stillUnknown)}.` : "",
+  ].filter(Boolean).join(" ");
 }
