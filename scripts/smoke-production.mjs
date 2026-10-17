@@ -256,6 +256,8 @@ try {
 
   await step("mobile layout has no overflow", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
+    // Measure the settled layout, not a frame of the 780ms entrance animation.
+    await page.waitForFunction(() => !document.querySelector(".app-shell.is-entering"), null, { timeout: 5_000 });
     const layout = await page.evaluate(() => {
       const card = document.querySelector(".recommendation-card");
       const chatWindow = document.querySelector(".chat-window");
