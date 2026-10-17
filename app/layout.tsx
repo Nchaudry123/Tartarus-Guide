@@ -32,6 +32,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="stylesheet" href="/styles.css?v=sea-of-souls-theme" />
         <link rel="stylesheet" href="/liquid-glass.css?v=1" />
+        <link rel="stylesheet" href="/fluid-spacing.css?v=1" />
       </head>
       <body>{children}</body>
     </html>
