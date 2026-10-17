@@ -4564,3 +4564,8 @@ body {
     text-overflow: ellipsis;
   }
 }
+
+/* Live-streamed reply text keeps its line breaks until the final formatted reply replaces it. */
+.answer.is-typing {
+  white-space: pre-wrap;
+}
