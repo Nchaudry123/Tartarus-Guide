@@ -1,4 +1,5 @@
 import type { PlayerProfile } from "../../lib/types";
+import { battleFactContradictions, battleFactsForPrompt } from "./battleFacts";
 
 export const combatPartyMembers = [
   "Yukari",
@@ -57,6 +58,8 @@ export function partyRoleFactsForPrompt(): string {
     "- Only the protagonist (the Wild Card) can switch, fuse or equip different Personas. Every party member has one fixed Persona that evolves through the story; never suggest giving a party member a different Persona or fusing one for them.",
     "- To help a struggling party member, use their level, weapons, armor and accessories, healing and buffs (Dia, Rakukaja), Guard, tactics commands, or swapping them out for another joined member.",
     "- Battles have no front or back row and no formation; never suggest positioning a character.",
+    "",
+    battleFactsForPrompt(),
   ].join("\n");
 }
 
@@ -87,7 +90,12 @@ const battleRowPattern =
 const personaQuestionPattern = /\b(?:which|what)\s+Persona\s+should\s+(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro|he|she)\s+(?:use|equip|have|run)\b/i;
 
 export function breaksPartyRules(text: string): boolean {
-  return personaForMemberPattern.test(text) || personaQuestionPattern.test(text) || battleRowPattern.test(text);
+  return (
+    personaForMemberPattern.test(text) ||
+    personaQuestionPattern.test(text) ||
+    battleRowPattern.test(text) ||
+    battleFactContradictions(text).length > 0
+  );
 }
 
 /**
@@ -97,7 +105,7 @@ export function breaksPartyRules(text: string): boolean {
 export function withoutPartyRuleViolations(text: string): string {
   const kept = text
     .split(/(?<=[.!?])\s+/)
-    .filter((sentence) => !personaForMemberPattern.test(sentence) && !battleRowPattern.test(sentence));
+    .filter((sentence) => !breaksPartyRules(sentence));
   return kept.length ? kept.join(" ") : text;
 }
 
@@ -123,6 +131,7 @@ export function partyRoleContradictions(response: {
       /\b(?:Yukari|Junpei|Akihiko|Mitsuru|Aigis|Koromaru|Ken|Shinjiro)(?:'s)?\s+(?:new |different )?Persona\s+(?:to|for|with)\b.{0,40}\b(?:resist|null|block)/i.test(text)) {
     contradictions.push("Party members have one fixed Persona; only the protagonist can switch or fuse Personas.");
   }
+  contradictions.push(...battleFactContradictions(text));
   if (battleRowPattern.test(text)) {
     contradictions.push("Persona 3 Reload battles have no front or back row.");
   }

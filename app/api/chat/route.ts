@@ -62,6 +62,8 @@ import { progressMessage, thinkingTheme, type ThinkingTheme } from "../../../src
 
 /** Progress update for streaming clients: plain text plus the theme for themed phrases. */
 type ProgressCallback = (message: string, theme?: ThinkingTheme) => void;
+/** Live reply text for streaming clients, released only after it passes the guardrail checks. */
+type TokenCallback = (delta: string) => void;
 import {
   formatProgressContext,
   getProgressSnapshot,
@@ -100,6 +102,7 @@ import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
+import { createAnswerExtractor, createSentenceGate } from "../../../src/chat/answerStream";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -1483,6 +1486,7 @@ async function casualChatResponse(
   question: string,
   playerProfile?: PlayerProfile,
   history: ChatRequest["history"] = [],
+  onToken?: TokenCallback,
 ): Promise<ChatResponse> {
   const { createChatCompletion } = await import("../../../src/db/client");
   const profileUpdates = extractProfileUpdates(question);
@@ -1533,7 +1537,7 @@ Answer naturally like a chat assistant, not a report.`;
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { jsonObject: true, timingLabel: "casual" },
+      { jsonObject: !onToken, timingLabel: "casual", onDelta: liveReplyStreamer(onToken, partyRulesAccept) },
     ).catch(() =>
       createChatCompletion(
         [
@@ -3545,11 +3549,7 @@ function unsupportedNamedClaims(
   return [...new Set(unsupported)].slice(0, 5);
 }
 
-function applyGroundingGuardrails(
-  question: string,
-  intent: CompanionIntent,
-  response: ChatResponse,
-  context: {
+type GuardrailContext = {
     facts: Array<{
       confidence: number;
       fact_type?: string;
@@ -3565,9 +3565,13 @@ function applyGroundingGuardrails(
       chunk_text: string;
       similarity?: number;
     }>;
-  },
-  extraEvidence = "",
-): ChatResponse {
+  };
+
+/**
+ * Whether the question needs exact evidence and whether the retrieved context has it. Shared by
+ * the grounding guardrail and live streaming (which is skipped when the gate will block).
+ */
+function exactEvidenceStatus(question: string, intent: CompanionIntent, context: GuardrailContext) {
   const requiresExactEvidence = requiresExactGameEvidence(userWordsOnly(question), intent);
   const subject = likelyExactSubject(question);
   const matchingFacts = context.facts.filter((fact) => factMatchesQuestionSubject(question, fact.entity.name));
@@ -3596,6 +3600,53 @@ function applyGroundingGuardrails(
   );
   const hasExactEvidence =
     strongStructuredSupport || hasDualGuideSupport || hasVerifiedLiveGuideSupport;
+  return {
+    requiresExactEvidence,
+    subject,
+    matchingFacts,
+    matchingChunks,
+    matchingUrls,
+    strongStructuredSupport,
+    hasDualGuideSupport,
+    hasVerifiedLiveGuideSupport,
+    hasExactEvidence,
+  };
+}
+
+function applyGroundingGuardrails(
+  question: string,
+  intent: CompanionIntent,
+  response: ChatResponse,
+  context: {
+    facts: Array<{
+      confidence: number;
+      fact_type?: string;
+      value?: string;
+      entity: { name: string };
+      source: { title?: string; url: string };
+    }>;
+    chunks: Array<{
+      id?: string;
+      source_title?: string;
+      source_url: string;
+      section_title: string | null;
+      chunk_text: string;
+      similarity?: number;
+    }>;
+  },
+  extraEvidence = "",
+): ChatResponse {
+  const {
+    requiresExactEvidence,
+    subject,
+    matchingFacts,
+    matchingChunks,
+    matchingUrls,
+    strongStructuredSupport,
+    hasDualGuideSupport,
+    hasVerifiedLiveGuideSupport,
+    hasExactEvidence,
+  } = exactEvidenceStatus(question, intent, context);
   const assessment = assessGrounding({
     requiresExactEvidence,
     matchingFactConfidences: matchingFacts.map((fact) => fact.confidence),
@@ -4850,6 +4901,7 @@ async function directRagResponse(
   debug = false,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  onToken?: TokenCallback,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
@@ -4915,7 +4967,7 @@ async function directRagResponse(
   const clarificationRecovery = rejectedClarificationResponse(question, conversation, analysis);
   if (clarificationRecovery) return clarificationRecovery;
   if (isCasualMessage(question) && !conversation.previousTopic) {
-    return casualChatResponse(question, playerProfile, normalizedHistory);
+    return casualChatResponse(question, playerProfile, normalizedHistory, onToken);
   }
   if (asksForProgressSummary(conversation.analysisQuestion)) {
     return progressSummaryResponse(
@@ -5028,6 +5080,7 @@ async function directRagResponse(
       model?: string;
       maxCompletionTokens?: number;
       timingLabel?: string;
+      onDelta?: (chunk: string) => void;
     } = {},
   ) => createChatCompletion(messages, { ...options, signal });
 
@@ -5490,9 +5543,32 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
 
   try {
     onProgress?.("Putting the answer together...", "writing");
-    const rawAnswer = await complete(messages, { jsonObject: true, timingLabel: "answer" }).catch(() =>
-      complete(messages, { timingLabel: "answer-retry" }),
-    );
+    // Stream the reply live unless the exact-fact gate is going to block it anyway. Each
+    // sentence is released only if everything shown so far passes the same checks the
+    // finished answer gets; otherwise the stream stops and the final reply replaces it.
+    const exactGate = exactEvidenceStatus(conversation.analysisQuestion, controller.intent, context);
+    const streamLive = !exactGate.requiresExactEvidence || exactGate.hasExactEvidence;
+    const answerWordsOnly = userWordsOnly(conversation.analysisQuestion);
+    const acceptLiveText = (text: string): boolean => {
+      const draft: ChatResponse = { answer: text, sections: [], sources: [] };
+      return (
+        partyRulesAccept(text) &&
+        relationshipContradictions(draft).length === 0 &&
+        socialLinkStartContradictions(draft).length === 0 &&
+        !(exactWeaknessQuestion(answerWordsOnly, controller.intent) &&
+          hasUnsupportedAffinityClaim(draft, conversation.analysisQuestion, context.facts)) &&
+        (controller.intent === "General Discussion" ||
+          unsupportedNamedClaims(conversation.analysisQuestion, draft, context, profileCanonicalEvidence).length === 0)
+      );
+    };
+    const liveStreamer = streamLive ? liveReplyStreamer(onToken, acceptLiveText) : undefined;
+    const rawAnswer = await complete(messages, {
+      // JSON mode makes some providers buffer the whole reply; when streaming, rely on the
+      // prompt's JSON-only instruction (extractJson tolerates stray text around the object).
+      jsonObject: !liveStreamer,
+      timingLabel: "answer",
+      onDelta: liveStreamer,
+    }).catch(() => complete(messages, { timingLabel: "answer-retry" }));
     const responseCompanion = {
       intent: controller.intent,
       profileUpdates: controller.profileUpdates,
@@ -5663,12 +5739,13 @@ async function resolveChatRequest(
   body: Partial<ChatRequest>,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  onToken?: TokenCallback,
 ): Promise<ChatResponse> {
   if (!requestTimingEnabled() && !body.debug) {
-    return resolveChatRequestUntimed(body, onProgress, signal);
+    return resolveChatRequestUntimed(body, onProgress, signal, onToken);
   }
   return runWithRequestTiming(async () => {
-    const response = await resolveChatRequestUntimed(body, onProgress, signal);
+    const response = await resolveChatRequestUntimed(body, onProgress, signal, onToken);
     const timing = currentRequestTiming();
     if (!timing) return response;
     const summary = summarizeRequestTiming(timing);
@@ -5685,6 +5762,7 @@ async function resolveChatRequestUntimed(
   body: Partial<ChatRequest>,
   onProgress?: ProgressCallback,
   signal?: AbortSignal,
+  onToken?: TokenCallback,
 ): Promise<ChatResponse> {
   const question = body.question?.trim() ?? "";
   signal?.throwIfAborted();
@@ -5703,6 +5781,7 @@ async function resolveChatRequestUntimed(
     body.debug,
     onProgress,
     signal,
+    onToken,
   );
   const external =
     direct === null
@@ -5766,6 +5845,34 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   };
 }
 
+function partyRulesAccept(text: string): boolean {
+  return !breaksPartyRules(text) && partyRoleContradictions({ answer: text }).length === 0;
+}
+
+/**
+ * Turns streamed model JSON into live reply text: extracts the "answer" string as it arrives
+ * and releases whole sentences that `accept` approves. Undefined when no client is listening.
+ */
+function liveReplyStreamer(
+  onToken: TokenCallback | undefined,
+  accept: (text: string) => boolean,
+): ((chunk: string) => void) | undefined {
+  if (!onToken) return undefined;
+  const extract = createAnswerExtractor();
+  const gate = createSentenceGate({ accept, emit: onToken });
+  let finished = false;
+  return (chunk: string) => {
+    if (finished) return;
+    const text = extract.push(chunk);
+    if (text) gate.push(text);
+    // The answer string closes before the rest of the JSON arrives: flush its last sentence.
+    if (extract.done) {
+      finished = true;
+      gate.finish();
+    }
+  };
+}
+
 function instantReplyResponse(body: ChatRequest): ChatResponse | null {
   if (body.debug || process.env.USE_MOCK_CHAT === "true") return null;
   const question = body.question?.trim() ?? "";
@@ -5820,11 +5927,22 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
       try {
         // Immediate feedback so the UI never sits on a blank spinner.
         emit({ type: "status", message: "Reading your question...", theme: "general" });
+        // Guard-approved sentences are sent the moment the model writes them.
+        let streamedLive = false;
         const response = await resolveChatRequest(
           body,
           (message, theme) => emit({ type: "status", message, ...(theme ? { theme } : {}) }),
           request.signal,
+          (delta) => {
+            streamedLive = true;
+            emit({ type: "token", delta });
+          },
         );
+        if (streamedLive) {
+          // The final payload carries the complete, checked reply; the client swaps it in.
+          emit({ type: "response", data: response });
+          return;
+        }
 
         const answer = response.answer ?? "";
         const tokens = answer.match(/\S+\s*/g) ?? (answer ? [answer] : []);
