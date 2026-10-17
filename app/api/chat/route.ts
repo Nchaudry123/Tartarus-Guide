@@ -101,10 +101,13 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import { TARTARUS_GUARDIAN_SOURCE } from "../../../src/quality/tartarusGuardians";
 import {
   FULL_MOON_BOSS_SOURCE,
   bossFactContradictions,
   canonicalBossAffinities,
+  guardianAffinityAnswer,
+  guardiansIn,
   withoutBossFactContradictions,
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
@@ -2419,8 +2422,15 @@ function buildBossPrepCard(
 
   // Game8's boss tables are canonical; retrieved facts only fill in bosses they don't cover.
   const canonical = canonicalBossAffinities(bossName);
+  // Retrieved weaknesses only fill attack types the table marks unknown.
+  const canonicalWeak = canonical
+    ? uniqueStrings([
+        ...canonical.weak,
+        ...weaknesses.filter((value) => canonical.unknown.some((attack) => attack.toLowerCase() === value.toLowerCase())),
+      ])
+    : [];
   const weaknessLabel = canonical
-    ? canonical.weak.length ? joinNatural(canonical.weak) : "None listed"
+    ? canonicalWeak.length ? joinNatural(canonicalWeak) : canonical.unknown.length ? "Not confirmed" : "None"
     : weaknesses.length ? joinNatural(weaknesses) : "Not confirmed";
   const avoidLabel = canonical ? canonical.avoid : defensiveAffinities;
   return {
@@ -3064,6 +3074,35 @@ function structuredExactFactResponse(
   return response;
 }
 
+/** "What is the Swift Axle weak to?" answered from Game8's guardian table. */
+function guardianAffinityResponse(
+  question: string,
+  intent: CompanionIntent,
+  facts: FactMatch[],
+  companion: NonNullable<ChatResponse["companion"]>,
+): ChatResponse | null {
+  if (!exactWeaknessQuestion(question, intent)) return null;
+  const named = guardiansIn(question);
+  if (named.length !== 1) return null;
+  const guardian = named[0]!;
+  // The boss's own Game8 page can fill attack types the summary table marks unknown.
+  const pageFacts = facts.filter(
+    (fact) => fact.fact_type === "weakness" && fact.entity.name.toLowerCase() === guardian.name.toLowerCase(),
+  );
+  const sources = new Map<string, ChatResponse["sources"][number]>([[TARTARUS_GUARDIAN_SOURCE.url, { ...TARTARUS_GUARDIAN_SOURCE }]]);
+  for (const fact of pageFacts) {
+    sources.set(fact.source.url, { title: fact.source.title, url: fact.source.url, domain: fact.source.domain });
+  }
+  return withMode({
+    answer: guardianAffinityAnswer(guardian, pageFacts.map((fact) => fact.value)),
+    sections: [],
+    sources: [...sources.values()].slice(0, 2),
+    confidence: 0.95,
+    missingInfo: "No additional detail is needed.",
+    companion,
+  }, "rag");
+}
+
 function structuredBloodyMariaResponse(
   question: string,
   context: {
@@ -3075,6 +3114,8 @@ function structuredBloodyMariaResponse(
   queries: string[],
 ): ChatResponse | null {
   if (!/\bbloody\s+maria\b/i.test(question)) return null;
+  // "How do I deal with the Executioner's Crown next to Bloody Maria?" is about the Crown.
+  if (guardiansIn(question).some((guardian) => guardian.name !== "Bloody Maria")) return null;
   const strategyFacts = context.facts.filter(
     (fact) =>
       fact.entity.name.toLowerCase() === "bloody maria" &&
@@ -5298,6 +5339,13 @@ async function directRagResponse(
     );
     if (personaProfile) return personaProfile;
   }
+  const guardianAnswer = guardianAffinityResponse(
+    userWordsOnly(conversation.analysisQuestion),
+    controller.intent,
+    context.facts,
+    companion,
+  );
+  if (guardianAnswer) return guardianAnswer;
   if (
     exactWeaknessQuestion(userWordsOnly(conversation.analysisQuestion), controller.intent) &&
     Boolean(likelyExactSubject(conversation.analysisQuestion)) &&
@@ -5560,6 +5608,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   const canonicalSources = [
     ...(monthBrief ? [SOCIAL_LINK_START_SOURCE] : []),
     ...(/Full Moon operation is on/.test(progressFacts) ? [FULL_MOON_BOSS_SOURCE] : []),
+    ...(guardiansIn(userWordsOnly(conversation.analysisQuestion)).length ? [TARTARUS_GUARDIAN_SOURCE] : []),
   ];
   const responseSources = [
     ...new Map(

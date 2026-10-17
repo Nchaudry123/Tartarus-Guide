@@ -2,13 +2,20 @@
  * Tartarus guardian affinities, recommended levels and floors, generated from Game8's
  * "Tartarus Guardians: List of All Mini-Bosses" table in the indexed data
  * (https://game8.co/games/Persona-3-Reload/archives/440374). Normal and unknown affinities
- * are omitted. Regenerate rather than hand-edit.
+ * are omitted; unknown ones are listed separately. Regenerate rather than hand-edit.
  */
 
 export type Affinity = "Weak" | "Resist" | "Null" | "Drain" | "Repel";
 export type AttackType = "slash" | "strike" | "pierce" | "fire" | "ice" | "electric" | "wind" | "light" | "dark";
 
-export type TartarusGuardian = { name: string; level: number; floor: number; affinities: Partial<Record<AttackType, Affinity>> };
+export type TartarusGuardian = {
+  name: string;
+  level: number;
+  floor: number;
+  affinities: Partial<Record<AttackType, Affinity>>;
+  /** Attack types the table marks as unknown; other Game8 pages may list them. */
+  unknown?: AttackType[];
+};
 
 export const TARTARUS_GUARDIAN_SOURCE = {
   title: "Tartarus Guardians: List of All Mini-Bosses",
@@ -17,13 +24,13 @@ export const TARTARUS_GUARDIAN_SOURCE = {
 } as const;
 
 export const tartarusGuardians: TartarusGuardian[] = [
-  { name: "Ruthless Ice Raven", level: 4, floor: 5, affinities: { fire: "Weak", wind: "Resist" } },
-  { name: "Barbaric Beast Wheel", level: 7, floor: 11, affinities: { fire: "Resist", wind: "Weak" } },
-  { name: "Swift Axle", level: 9, floor: 17, affinities: { strike: "Resist", electric: "Weak", wind: "Resist" } },
-  { name: "Will O Wisp Raven", level: 12, floor: 28, affinities: { fire: "Drain", ice: "Weak", wind: "Resist" } },
-  { name: "Heretic Magus", level: 13, floor: 35, affinities: { electric: "Weak", wind: "Resist" } },
+  { name: "Ruthless Ice Raven", level: 4, floor: 5, affinities: { fire: "Weak", wind: "Resist" }, unknown: ["strike", "pierce", "ice", "electric", "light", "dark"] },
+  { name: "Barbaric Beast Wheel", level: 7, floor: 11, affinities: { fire: "Resist", wind: "Weak" }, unknown: ["electric", "light", "dark"] },
+  { name: "Swift Axle", level: 9, floor: 17, affinities: { strike: "Resist", electric: "Weak", wind: "Resist" }, unknown: ["slash", "ice", "light", "dark"] },
+  { name: "Will O Wisp Raven", level: 12, floor: 28, affinities: { fire: "Drain", ice: "Weak", wind: "Resist" }, unknown: ["dark"] },
+  { name: "Heretic Magus", level: 13, floor: 35, affinities: { electric: "Weak", wind: "Resist" }, unknown: ["dark"] },
   { name: "Disturbing Dice", level: 14, floor: 36, affinities: { fire: "Resist" } },
-  { name: "Clairvoyant Relic", level: 16, floor: 42, affinities: { light: "Null" } },
+  { name: "Clairvoyant Relic", level: 16, floor: 42, affinities: { light: "Null" }, unknown: ["dark"] },
   { name: "Servant Tower", level: 18, floor: 47, affinities: { fire: "Null", ice: "Resist", electric: "Repel", wind: "Resist", light: "Null", dark: "Weak" } },
   { name: "Lascivious Lady", level: 20, floor: 54, affinities: { fire: "Null", ice: "Null", electric: "Null", wind: "Null", light: "Null", dark: "Null" } },
   { name: "Fleetfooted Cavalry", level: 22, floor: 60, affinities: { wind: "Drain", light: "Null", dark: "Null" } },
@@ -58,7 +65,7 @@ export const tartarusGuardians: TartarusGuardian[] = [
   { name: "Luckless Cupid", level: 66, floor: 203, affinities: { fire: "Drain", electric: "Weak", light: "Repel" } },
   { name: "Blazing Middle Sibling", level: 69, floor: 212, affinities: { fire: "Repel", ice: "Weak" } },
   { name: "Deadly Eldest Sibling", level: 69, floor: 212, affinities: { ice: "Drain", wind: "Drain", dark: "Repel" } },
-  { name: "Voltaic Youngest Sibling", level: 69, floor: 212, affinities: { electric: "Repel", wind: "Weak" } },
+  { name: "Voltaic Youngest Sibling", level: 69, floor: 212, affinities: { electric: "Repel", wind: "Weak" }, unknown: ["slash", "strike", "pierce", "fire", "ice", "light"] },
   { name: "Scornful Dice", level: 70, floor: 218, affinities: { slash: "Drain", strike: "Drain", pierce: "Drain" } },
   { name: "Minotaur Nulla", level: 71, floor: 225, affinities: { strike: "Repel", electric: "Null", light: "Resist" } },
   { name: "Comeback Castle", level: 74, floor: 230, affinities: { slash: "Repel", ice: "Resist", electric: "Resist" } },
