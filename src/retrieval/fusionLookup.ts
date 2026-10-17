@@ -1,5 +1,4 @@
 import { timed } from "../chat/requestTiming";
-import { supabase } from "../db/client";
 import type { FusionClaim, FusionRecipeRow } from "../quality/fusionClaims";
 
 /**
@@ -12,6 +11,7 @@ let loadedPersonaNames: string[] | null = null;
 
 export function personaNames(): Promise<string[]> {
   personaNamesPromise ??= (async () => {
+    const { supabase } = await import("../db/client");
     const { data, error } = await supabase.from("entities").select("name").eq("type", "persona").limit(2000);
     if (error) throw error;
     loadedPersonaNames = [...new Set((data ?? []).map((row) => row.name as string))];
@@ -36,6 +36,8 @@ function dlcModeOf(notes: string | null | undefined): FusionRecipeRow["dlcMode"]
 /** Fusion tool recipes containing all of each claim's ingredients. */
 export async function recipesForClaims(claims: FusionClaim[]): Promise<FusionRecipeRow[]> {
   return timed("fusionLookup", async () => {
+    // Loaded lazily: the client needs database env vars, and the chat route must load without them.
+    const { supabase } = await import("../db/client");
     const results = await Promise.all(
       claims.map(async (claim) => {
         let query = supabase
