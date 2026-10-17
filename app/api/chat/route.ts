@@ -2614,8 +2614,14 @@ function structuredFusionResponse(
         domain: best.source.domain,
       };
       const special = best.notes?.includes("Special fusion recipe");
+      // "Does Orpheus plus Pixie fuse into Satan?" names a result; say no when it's wrong.
+      const claimedResult = question.match(/\b(?:fuse into|fuses into|make|makes|create|creates|become|becomes|give|gives)\s+(?:an?\s+|the\s+)?([A-Z][\w'’-]*(?:\s+[A-Z][\w'’-]*)?)\s*\??$/)?.[1];
+      const wrongPremise =
+        claimedResult && claimedResult.toLowerCase() !== best.entity.name.toLowerCase() && /^\s*(?:does|do|will|would|can|is)\b/i.test(question);
       const response = withMode({
-        answer: `${best.value} fuses into ${best.entity.name}.`,
+        answer: wrongPremise
+          ? `No. ${best.value} fuses into ${best.entity.name}, not ${claimedResult}.`
+          : `${best.value} fuses into ${best.entity.name}.`,
         sections: special
           ? [{ title: "Fusion Type", content: "This is a fixed special fusion recipe." }]
           : [],
@@ -5181,7 +5187,7 @@ const agentRouterSystem = `You are the research step of Tartarus Guide, a Person
 Tools:
 - lookup_facts: verified game data (fusion recipes and results, Persona profiles, enemy and boss affinities, Tartarus guardians, Full Moon bosses and levels, Social Link starts and rank-10 Personas, the calendar). Lines marked [verified] are canonical.
 - search_guides: IGN and Game8 guide text for strategy, walkthrough steps, mechanics and anything the structured data doesn't cover.
-- ask_clarifying_question: only when the answer truly depends on a detail the player hasn't given and you can't look it up (e.g. which of several bosses). Never ask for anything listed as already known.
+- ask_clarifying_question: only when the answer truly depends on a detail the player hasn't given and you can't look it up (e.g. which of several bosses). Never ask for anything listed as already known, and never ask instead of looking up a general "why/how/what is" question.
 
 Rules:
 - Use the player's exact names in queries. One focused query per thing you need; call several tools if the question has several parts.
@@ -5205,10 +5211,12 @@ async function agentRoute(input: {
   conversation: ReturnType<typeof contextualizeQuestion>;
   normalizedHistory: NonNullable<ChatRequest["history"]>;
   analysis: CompanionAnalysis;
+  suggestedLookups?: string[];
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
 }): Promise<AgentRouting> {
   const { question, conversation, normalizedHistory, analysis, onProgress, signal } = input;
+  const suggested = (input.suggestedLookups ?? []).filter(Boolean);
   const userWords = userWordsOnly(conversation.analysisQuestion);
   const profile = analysis.profile;
   const evidence: AgentEvidence = { facts: [], chunks: [], canonical: [], sources: new Map(), kinds: new Set(), searchedPlayerWords: false };
@@ -5217,6 +5225,7 @@ async function agentRoute(input: {
     `Player message: ${question}`,
     conversation.shortReply ? `This is a follow-up. Full request: ${conversation.analysisQuestion}` : "",
     `Already known (never ask for these): ${knownFactsSummary(profile) || "Nothing yet."}`,
+    suggested.length ? `Suggested lookups (curated queries for this kind of question; use them if they fit): ${suggested.join(" | ")}` : "",
     `Recent conversation:\n${history || "No prior turns."}`,
   ].filter(Boolean).join("\n\n");
   const { createToolCompletion } = await import("../../../src/db/client");
@@ -5594,14 +5603,25 @@ async function directRagResponse(
   // Agent mode: the tool-calling agent makes the routing decision and gathers the evidence.
   // Hand-written routing rules run first. In agent mode only their clarify/answer-directly
   // decisions for known-tricky questions are kept; every lookup decision is the agent's.
-  const ruleDecision = (() => {
-    const decision = deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile);
-    if (mode !== "agent" || !decision) return decision;
-    return decision.action === "ask_clarifying_question" || decision.action === "answer_directly" ? decision : null;
-  })();
+  const rulesDecision = deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile);
+  const ruleDecision =
+    mode !== "agent" || !rulesDecision
+      ? rulesDecision
+      : rulesDecision.action === "ask_clarifying_question" || rulesDecision.action === "answer_directly"
+        ? rulesDecision
+        : null;
   const agentRouting =
     mode === "agent" && !ruleDecision
-      ? await agentRoute({ question, conversation, normalizedHistory, analysis, onProgress, signal })
+      ? await agentRoute({
+          question,
+          conversation,
+          normalizedHistory,
+          analysis,
+          // The rules' curated queries for tricky topics are offered as hints; the agent decides.
+          suggestedLookups: rulesDecision ? uniqueStrings([...rulesDecision.retrievalQueries, rulesDecision.retrievalQuery]).slice(0, 3) : [],
+          onProgress,
+          signal,
+        })
       : null;
   const controller =
     ruleDecision ??
