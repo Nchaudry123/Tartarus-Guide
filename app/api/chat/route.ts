@@ -5228,7 +5228,7 @@ async function agentRoute(input: {
     suggested.length ? `Suggested lookups (curated queries for this kind of question; use them if they fit): ${suggested.join(" | ")}` : "",
     `Recent conversation:\n${history || "No prior turns."}`,
   ].filter(Boolean).join("\n\n");
-  const { createToolCompletion } = await import("../../../src/db/client");
+  const { createToolCompletion, config: clientConfig } = await import("../../../src/db/client");
   const casual = isCasualMessage(question) && !conversation.previousTopic;
   const outcome = await runAgentLoop({
     system: agentRouterSystem,
@@ -5245,7 +5245,12 @@ async function agentRoute(input: {
     },
     onProgress: (text) => onProgress?.(`${text}...`, thinkingTheme(analysis.intent)),
     complete: (messages, tools, options) =>
-      createToolCompletion(messages, tools, { toolChoice: options.toolChoice, timingLabel: options.timingLabel, signal }),
+      createToolCompletion(messages, tools, {
+        model: clientConfig.routerChatModel,
+        toolChoice: options.toolChoice,
+        timingLabel: options.timingLabel,
+        signal,
+      }),
   });
   const steps = outcome.steps.map((step) => `${step.tool}(${JSON.stringify(step.args)})${step.ok ? "" : " failed"}`);
   const intent = intentFromEvidence(evidence, userWords, analysis.intent);
