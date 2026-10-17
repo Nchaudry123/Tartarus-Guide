@@ -10,6 +10,7 @@ const lookup: AgentTool = {
   progress: () => "Checking the facts",
 };
 const ask: AgentTool = {
+  terminalTool: true,
   name: "ask_clarifying_question",
   description: "ask",
   parameters: { type: "object", properties: { question: { type: "string" } } },
@@ -121,4 +122,16 @@ test("tool calls from one round run in parallel", async () => {
   await runAgentLoop({ system: "s", user: "u", tools: [slow], complete });
   assert.equal(peak, 2);
   assert.equal(seen[1]!.lastMessage, "b");
+});
+
+test("lookupBeforeTerminal refuses a question until something has been looked up", async () => {
+  const { complete, seen } = scripted([
+    { calls: [["ask_clarifying_question", { question: "Which Persona?" }]] },
+    { calls: [["lookup_facts", { query: "inheritance" }]] },
+    { content: "done" },
+  ]);
+  const outcome = await runAgentLoop({ system: "s", user: "u", tools: [lookup, ask], complete, lookupBeforeTerminal: true });
+  assert.match(seen[1]!.lastMessage, /look it up first/);
+  assert.equal(outcome.kind, "answer");
+  assert.deepEqual(outcome.steps.map((step) => step.tool), ["ask_clarifying_question", "lookup_facts"]);
 });

@@ -17,6 +17,8 @@ export type AgentToolResult = {
 
 export type AgentTool = ToolDefinition & {
   run: (args: Record<string, unknown>) => Promise<AgentToolResult>;
+  /** Ends the turn (e.g. asking the player); see lookupBeforeTerminal. */
+  terminalTool?: boolean;
   /** Short progress text for the UI, e.g. "Checking the fusion chart". */
   progress?: (args: Record<string, unknown>) => string;
 };
@@ -55,6 +57,11 @@ export async function runAgentLoop(input: {
    * for when the gathered evidence is already enough (saves the "I'm done" round trip).
    */
   shouldStop?: () => boolean;
+  /**
+   * Terminal tools (asking the player) are refused until at least one lookup has run, so the
+   * agent can't skip straight to a question it could have answered.
+   */
+  lookupBeforeTerminal?: boolean;
   onProgress?: (text: string) => void;
 }): Promise<AgentOutcome> {
   const maxSteps = input.maxSteps ?? 4;
@@ -112,9 +119,19 @@ export async function runAgentLoop(input: {
         }
       }),
     );
+    const lookedUpBefore = steps.some((step) => step.ok && !byName.get(step.tool)?.terminalTool);
+    const lookedUpNow = results.some(({ call, ok }) => ok && !byName.get(call.name)?.terminalTool);
     for (const { call, args, ok, result } of results) {
       steps.push({ tool: call.name, args, ok });
       if (result.terminal) {
+        if (input.lookupBeforeTerminal && !lookedUpBefore && !lookedUpNow) {
+          messages.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: "Not yet: look it up first with lookup_facts or search_guides. Ask only if the results don't cover it.",
+          });
+          continue;
+        }
         return { kind: "terminal", tool: call.name, args, content: result.content, steps };
       }
       messages.push({ role: "tool", tool_call_id: call.id, content: result.content });

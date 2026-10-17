@@ -5166,6 +5166,7 @@ function agentTools(
       },
     },
     {
+      terminalTool: true,
       name: "ask_clarifying_question",
       description:
         "Ask the player one short question when the answer depends on a detail they haven't given (which boss, which Persona, their date). Never ask for anything listed as already known. This ends your turn.",
@@ -5237,6 +5238,7 @@ async function agentRoute(input: {
     tools: agentTools(evidence, profile, userWords, signal),
     maxSteps: 3,
     requireToolFirst: !casual,
+    lookupBeforeTerminal: true,
     // Stop as soon as the evidence can carry the answer: anything for an open question, strong
     // subject-matched support for an exact one. Otherwise the agent gets another round.
     shouldStop: () => {
