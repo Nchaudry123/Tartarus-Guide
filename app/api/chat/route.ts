@@ -5348,6 +5348,7 @@ async function withRetrievalSafetyNet(
   question: string,
   intent: CompanionIntent,
   fallbackQueries: string[],
+  prefetched: Promise<RetrievalContext | null> | null,
   steps: string[],
   signal?: AbortSignal,
 ): Promise<RetrievalContext> {
@@ -5356,8 +5357,11 @@ async function withRetrievalSafetyNet(
   if (!thin && !needsExact) return agentContext;
   const queries = uniqueStrings(fallbackQueries).slice(0, 3);
   if (!queries.length) return agentContext;
-  const { buildPlannedContext } = await import("../../../src/retrieval/buildContext");
-  const extra = await buildPlannedContext({ queries, factLimit: 14, chunkLimit: 10 }, signal);
+  const extra: RetrievalContext =
+    (await prefetched) ??
+    (await import("../../../src/retrieval/buildContext").then(({ buildPlannedContext }) =>
+      buildPlannedContext({ queries, factLimit: 14, chunkLimit: 10 }, signal),
+    ));
   steps.push(`safety-net search(${JSON.stringify(queries)})`);
   const factIds = new Set(agentContext.facts.map((fact) => fact.id));
   const chunkIds = new Set(agentContext.chunks.map((chunk) => chunk.id));
@@ -5655,6 +5659,19 @@ async function directRagResponse(
         ? rulesDecision
         : null;
   let agentFallback = false;
+  // The safety-net search starts alongside the agent so it's ready if the agent's lookups fall short.
+  const safetyNetQueries =
+    mode === "agent" && !ruleDecision
+      ? uniqueStrings([
+          ...(rulesDecision ? [...rulesDecision.retrievalQueries, rulesDecision.retrievalQuery] : []),
+          ...buildFocusedQueries(userWordsOnly(conversation.analysisQuestion)),
+        ]).slice(0, 3)
+      : [];
+  const prefetchedSafetyNet: Promise<RetrievalContext | null> | null = safetyNetQueries.length
+    ? import("../../../src/retrieval/buildContext")
+        .then(({ buildPlannedContext: plan }) => plan({ queries: safetyNetQueries, factLimit: 14, chunkLimit: 10 }, signal))
+        .catch(() => null)
+    : null;
   const agentRouting =
     mode === "agent" && !ruleDecision
       ? await agentRoute({
@@ -5803,10 +5820,15 @@ async function directRagResponse(
     /\bskills?\s+should\s+i\s+keep\b/i.test(conversation.analysisQuestion) ||
     isPersonaKnowledgeRequest(conversation.analysisQuestion);
   const context = agentRouting?.context
-    ? await withRetrievalSafetyNet(agentRouting.context, conversation.analysisQuestion, controller.intent, [
-        ...(rulesDecision ? [...rulesDecision.retrievalQueries, rulesDecision.retrievalQuery] : []),
-        ...buildFocusedQueries(userWordsOnly(conversation.analysisQuestion)),
-      ], agentRouting.steps, signal)
+    ? await withRetrievalSafetyNet(
+        agentRouting.context,
+        conversation.analysisQuestion,
+        controller.intent,
+        safetyNetQueries,
+        prefetchedSafetyNet,
+        agentRouting.steps,
+        signal,
+      )
     : await buildPlannedContext(
     {
       queries: retrievalQueries,
