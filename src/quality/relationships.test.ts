@@ -46,6 +46,12 @@ test("maps rank-10 Arcana rewards to the verified ultimate Persona", () => {
   assert.equal(ultimatePersonaUnlockForQuestion("Is a Strength Persona good for this boss?"), null);
 });
 
+test("a question about when a link unlocks is not a rank-10 reward question", () => {
+  assert.equal(ultimatePersonaUnlockForQuestion("When does the Lovers Arcana unlock?"), null);
+  assert.equal(ultimatePersonaUnlockForQuestion("how do i unlock the aeon social link"), null);
+  assert.equal(ultimatePersonaUnlockForQuestion("When do I unlock the Lovers Rank 10 Persona?")?.persona, "Cybele");
+});
+
 test("stores all rank-10 Persona unlocks and recognizes a full-list request", () => {
   assert.equal(socialLinkUltimatePersonaRecords().length, 22);
   assert.equal(

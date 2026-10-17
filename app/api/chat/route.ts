@@ -267,7 +267,7 @@ function socialLinkUltimatePersonaResponse(
   const response = withMode({
     answer,
     sections: [],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -312,7 +312,7 @@ function allSocialLinkUltimatePersonasResponse(
         ]),
       },
     ],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
@@ -352,7 +352,7 @@ function ultimatePersonaFollowUpResponse(
   const response = withMode({
     answer: `${details.join("; ")}.`,
     sections: [],
-    sources: [fusionToolSource],
+    sources: [SOCIAL_LINK_START_SOURCE, fusionToolSource],
     confidence: 0.99,
     missingInfo: "No additional detail is needed.",
     companion: {
