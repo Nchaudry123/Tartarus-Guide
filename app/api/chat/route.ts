@@ -97,6 +97,7 @@ import {
   asksWhichLinksCanStart,
   buildMonthPlan,
   monthPlanningBrief,
+  asksForNextStep,
 } from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
@@ -5576,8 +5577,9 @@ ${partyRoleFactsForPrompt()}`;
     .map((message) => `${message.role}: ${message.content}`)
     .join("\n");
 
+  const nextStep = asksForNextStep(conversation.analysisQuestion);
   const userPrompt = `Current user message: ${question}
-Resolved conversation topic: ${conversation.previousTopic ?? question}
+Resolved conversation topic: ${nextStep ? "The player's next step in their run, after the previous advice." : conversation.previousTopic ?? question}
 Previous assistant message: ${conversation.previousAssistant ?? "None."}
 Contextual request for analysis: ${conversation.analysisQuestion}
 Short follow-up reply: ${
@@ -5600,7 +5602,11 @@ Spoiler policy: ${spoilerDecision.promptInstruction}
 
 ${formatAssistantContext(context)}
 
-Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.`;
+Answer as a companion. First solve the user's stated bottleneck. Use only the supplied material for game-specific claims, and do not mention sources or backend mechanics inside the prose.${
+    nextStep
+      ? "\n\nThis is a next-step request: the previous topic is settled. Answer with the next concrete milestone in their run from the canonical facts above (the next Full Moon operation and its date, the Tartarus block border, a Social Link to start). Do not give more advice on the previous topic."
+      : ""
+  }`;
   // Canonical arcana for the links/party the player tracks count as evidence for the
   // named-claim gate (the same pairs are given to the model as canonical facts above).
   // Uses the saved profile plus what the player typed, never model-inferred profile updates.
