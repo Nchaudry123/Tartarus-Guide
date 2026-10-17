@@ -4,6 +4,7 @@ import {
   asksForMonthPlan,
   asksWhichLinksCanStart,
   buildMonthPlan,
+  asksForNextStep,
   monthPlanningBrief,
 } from "./monthPlanning";
 
@@ -49,4 +50,13 @@ test("planning and startable-link question detection", () => {
   assert.equal(asksWhichLinksCanStart("Which Social Links can I start this month?"), true);
   assert.equal(asksWhichLinksCanStart("When does Yukari's Social Link start?"), false);
   assert.equal(asksWhichLinksCanStart("Which Social Links can I max?") , false);
+});
+
+test("recognizes next-step follow-ups but not new questions", () => {
+  for (const text of ["ok what should i do after that", "now what?", "what's next", "alright, what do I do next", "and then what"]) {
+    assert.equal(asksForNextStep(text), true, text);
+  }
+  for (const text of ["what should i do about junpei dying", "what do i do on june 8", "what's next to Fuuka's room"]) {
+    assert.equal(asksForNextStep(text), false, text);
+  }
 });
