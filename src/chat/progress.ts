@@ -45,3 +45,43 @@ export function progressMessage(intent: CompanionIntent, action: ControllerActio
       return "One moment...";
   }
 }
+
+/**
+ * Theme for the client's rotating "thinking" phrases (Velvet Room, Tartarus, fusion...).
+ * The server only picks the theme; the playful wording lives in the client.
+ */
+export type ThinkingTheme =
+  | "general"
+  | "fusion"
+  | "weakness"
+  | "boss"
+  | "social"
+  | "schedule"
+  | "tartarus"
+  | "team"
+  | "quest"
+  | "verifying"
+  | "writing";
+
+export function thinkingTheme(intent: CompanionIntent): ThinkingTheme {
+  switch (intent) {
+    case "Fusion Advice":
+      return "fusion";
+    case "Enemy Weakness":
+      return "weakness";
+    case "Boss Help":
+      return "boss";
+    case "Social Links":
+      return "social";
+    case "Daily Schedule Planning":
+      return "schedule";
+    case "Tartarus Navigation":
+      return "tartarus";
+    case "Team Building":
+      return "team";
+    case "Quest Help":
+      return "quest";
+    default:
+      return "general";
+  }
+}
