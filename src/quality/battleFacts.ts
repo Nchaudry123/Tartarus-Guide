@@ -13,6 +13,7 @@ export const partyAffinities: Record<string, { weak?: Element; resists?: Element
   Junpei: { weak: "Wind" },
   Akihiko: { weak: "Ice" },
   Mitsuru: { weak: "Fire" },
+  Aigis: { weak: "Electric" },
   Koromaru: { weak: "Light" },
   Ken: { resists: ["Light"] },
 };
