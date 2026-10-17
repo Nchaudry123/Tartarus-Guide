@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAnswerExtractor, createSentenceGate } from "./answerStream";
+import { createAnswerExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "./answerStream";
 
 function feed(chunks: string[]): string {
   const extract = createAnswerExtractor();
@@ -70,4 +70,12 @@ test("list items stream line by line", () => {
   gate.push("Try this:\n- Guard on charges\n- Keep Dia ready\n");
   gate.finish();
   assert.equal(emitted.join(""), "Try this:\n- Guard on charges\n- Keep Dia ready\n");
+});
+
+test("salvages the answer from malformed model JSON instead of showing raw JSON", () => {
+  const broken =
+    '{"answer": "Level up to at least 16 before June 8. Review your skills., sections": [], "tables": [], "confidence":0.8, "suggestedReplies": ["x"}';
+  assert.equal(salvageAnswerFromBrokenJson(broken), "Level up to at least 16 before June 8. Review your skills.");
+  assert.equal(salvageAnswerFromBrokenJson('{"answer": "Fine."}'), "Fine.");
+  assert.equal(salvageAnswerFromBrokenJson("no json here"), null);
 });
