@@ -5592,8 +5592,13 @@ async function directRagResponse(
   ) => createChatCompletion(messages, { ...options, signal });
 
   // Agent mode: the tool-calling agent makes the routing decision and gathers the evidence.
-  // Hand-written routing rules for known-tricky questions run first in every mode.
-  const ruleDecision = deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile);
+  // Hand-written routing rules run first. In agent mode only their clarify/answer-directly
+  // decisions for known-tricky questions are kept; every lookup decision is the agent's.
+  const ruleDecision = (() => {
+    const decision = deterministicControllerDecision(userWordsOnly(conversation.analysisQuestion), analysis, playerProfile);
+    if (mode !== "agent" || !decision) return decision;
+    return decision.action === "ask_clarifying_question" || decision.action === "answer_directly" ? decision : null;
+  })();
   const agentRouting =
     mode === "agent" && !ruleDecision
       ? await agentRoute({ question, conversation, normalizedHistory, analysis, onProgress, signal })
