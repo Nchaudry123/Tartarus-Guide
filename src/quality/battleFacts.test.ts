@@ -9,6 +9,7 @@ test("flags wrong party weaknesses and accepts the right ones", () => {
   assert.equal(battleFactContradictions("Akihiko's weakness to fire makes this risky.").length, 1);
   assert.deepEqual(battleFactContradictions("Junpei's weak to wind and Akihiko is weak to Ice."), []);
   assert.deepEqual(battleFactContradictions("Yukari is weak to Electric but resists Wind."), []);
+  assert.deepEqual(battleFactContradictions("Aigis is weak to Fire, so keep her back."), ["Aigis is weak to Electric, not Fire."]);
   // No claim about a member's weakness: nothing to check.
   assert.deepEqual(battleFactContradictions("Use Junpei's fire skills on enemies weak to Fire."), []);
 });
@@ -25,5 +26,6 @@ test("prompt facts list the known affinities and skill effects", () => {
   assert.match(facts, /Junpei is weak to Wind/);
   assert.match(facts, /Patra cures Distress, Confuse, Charm and Rage/);
   assert.match(facts, /Dekaja removes the enemies' -kaja buffs/);
-  assert.doesNotMatch(facts, /Aigis|Shinjiro/);
+  assert.match(facts, /Aigis is weak to Electric/);
+  assert.doesNotMatch(facts, /Shinjiro/);
 });

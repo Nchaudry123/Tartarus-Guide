@@ -23,7 +23,8 @@ const inheritableCategories = new Set([
   "beginner_strategy",
 ]);
 
-const markdownLinkPattern = /\[([^\]]{2,160})]\((https?:\/\/[^)\s]+|\/[^)\s]+)(?:\s+"[^"]*")?\)/g;
+// URLs may contain balanced parentheses ("Harabah_(Floors_199_-_226)_Tartarus_Walkthrough").
+const markdownLinkPattern = /\[([^\]]{2,160})]\(((?:https?:\/\/|\/)(?:[^()\s]|\([^()\s]*\))+)(?:\s+"[^"]*")?\)/g;
 const hrefPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
 
 function discoverLinks(page: string, baseUrl: string): LinkCandidate[] {

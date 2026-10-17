@@ -15,8 +15,20 @@ const monthNames = ["January", "April", "May", "June", "July", "August", "Septem
 const planningQuestion =
   /\b(?:focus|prioriti[sz]e|priorities|plan(?:ning)?|split my time|spend (?:my )?(?:time|evenings|days)|should i (?:do|be doing|spend)|what should i|this (?:month|week)|prepare|before the (?:\w+ )?full moon|next full moon|grind(?:ing)?)\b/i;
 
+/**
+ * "ok what should i do after that", "now what?", "what's next": the player wants the next step
+ * in their run, not more of the previous answer's topic.
+ */
+const nextStepQuestion =
+  /^(?:(?:ok(?:ay)?|alright|cool|got it|k+|bet|nice|and|so)[,.!]?\s+)*(?:(?:so|then)\s+)?(?:what\s+(?:should|do|can|would)\s+i\s+(?:do|focus on|work on)\s+(?:after\s+(?:that|this)|next|then|now|afterwards)|what(?:'|’)?s\s+next|what\s+next|now\s+what|then\s+what|what\s+after\s+(?:that|this))(?:\s+(?:tho|though|lol|then|now|bro))?\s*[?.!]*$/i;
+
+export function asksForNextStep(question: string): boolean {
+  const latest = question.match(/The user's latest follow-up is:\s*(.+)$/im)?.[1] ?? question;
+  return nextStepQuestion.test(latest.trim());
+}
+
 export function asksForMonthPlan(question: string, intent?: string): boolean {
-  return intent === "Daily Schedule Planning" || planningQuestion.test(question);
+  return intent === "Daily Schedule Planning" || planningQuestion.test(question) || asksForNextStep(question);
 }
 
 type PlanningDate = { month: string; day: number; ordinal: number; exactDay: boolean };
