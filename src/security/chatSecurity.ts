@@ -63,6 +63,7 @@ export const FeedbackRequestSchema = z
     answer: z.string().trim().min(1).max(8_000),
     intent: z.string().trim().max(80).optional(),
     note: z.string().trim().max(500).optional(),
+    turnId: z.string().uuid().optional(),
     history: z
       .array(
         z
