@@ -210,7 +210,7 @@ function detectIntent(question: string): CompanionIntent {
   ) {
     return "Boss Help";
   }
-  if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
+  if (/\b(weak to|weakness|weaknesses|resist|resists|resistance|resistances|null|drain|repel)\b/.test(text)) return "Enemy Weakness";
   if (/\b(achievement|achievements|trophy|trophies|platinum|missable|completion|complete|100%)\b/.test(text)) {
     return "Achievement Hunting";
   }
