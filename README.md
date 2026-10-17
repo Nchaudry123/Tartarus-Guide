@@ -93,7 +93,7 @@ Fill in:
 - `CHAT_MODE` optional: `agent` (default; the tool-calling agent routes each turn), `pipeline` (single routing call, the rollback), or `baseline` (plain single-pass RAG, for evaluation only). See "Agentic routing" below
 - `ROUTER_CHAT_MODEL` optional, a separate model for the agent's tool-picking step (defaults to `CHAT_MODEL`; a small model is faster but scored lower in the eval)
 - `CHAT_TIMING=true` optional, logs one `[chat-timing]` line per request with stage durations (labels and timings only)
-- `TURN_LOGS=off` optional, turns off the per-turn `chat_turn_logs` rows (on by default; see Real-traffic monitoring)
+- `TURN_LOGS=on|off` optional, overrides per-turn `chat_turn_logs` rows (by default on only in the production Vercel deployment; see Real-traffic monitoring)
 - `CRON_SECRET` optional locally, required in production: bearer token for `/api/health`
 
 Use a real contact in `INGEST_USER_AGENT` if this will run outside local development.
@@ -386,7 +386,8 @@ Every player turn writes one row to `chat_turn_logs`: the chat mode, how it was 
 (`answer`, `direct_reply`, `clarify`, `no_evidence`, `error`), the agent's tool names, whether
 the safety net ran, latency, and LLM call count. No question or answer text is stored, only a
 SHA-256 fingerprint of the normalized question so repeats can be grouped; tool arguments are
-dropped too. Rows expire after 30 days. Debug requests (eval runs) are not logged.
+dropped too. Rows expire after 30 days. Only the production deployment logs: local runs, evals and
+preview deployments don't.
 
 Each reply carries a `turnId`, which the thumbs up/down sends back, so a rating links to how
 that turn was routed.
