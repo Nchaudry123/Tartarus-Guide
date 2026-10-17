@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { clipReply, parsePlainReply, separateInlineList } from "./plainReply";
+import { clipReply, parsePlainReply, separateInlineList, withoutFieldLabels } from "./plainReply";
 
 const leaked =
   "Yo! With the Emperor and Empress Full Moon op just 2 days away on June 8, your focus should be getting your party ready for that fight. " +
@@ -50,4 +50,14 @@ test("a list started mid-line moves onto its own line; a lone dash stays", () =>
   );
   const prose = "Bring Yukari. - She heals. Then fight.";
   assert.equal(separateInlineList(prose), prose);
+});
+
+test("labels folded into a JSON answer are dropped, including one-word key spellings", () => {
+  assert.equal(
+    withoutFieldLabels("Prioritize exploiting the current weakness each turn. SuggestedReplies: What Persona should I fuse?"),
+    "Prioritize exploiting the current weakness each turn.",
+  );
+  assert.equal(withoutFieldLabels("Hit it with Fire.\nmissingInfo: party level"), "Hit it with Fire.");
+  const clean = "My recommendation: fuse Orpheus first.";
+  assert.equal(withoutFieldLabels(clean), clean);
 });

@@ -128,7 +128,7 @@ import {
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import { createReplyExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "../../../src/chat/answerStream";
-import { clipReply, parsePlainReply, separateInlineList } from "../../../src/chat/plainReply";
+import { clipReply, fieldLabelPattern, parsePlainReply, separateInlineList, withoutFieldLabels } from "../../../src/chat/plainReply";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -6168,6 +6168,8 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
     const acceptLiveText = (text: string): boolean => {
       const draft: ChatResponse = { answer: text, sections: [], sources: [] };
       return (
+        // A folded-in field label ("SuggestedReplies: ...") is never shown, even briefly.
+        !fieldLabelPattern.test(text) &&
         partyRulesAccept(text) &&
         relationshipContradictions(draft).length === 0 &&
         socialLinkStartContradictions(draft).length === 0 &&
@@ -6508,7 +6510,7 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   const response = draft.answer
     ? {
         ...draft,
-        answer: separateInlineList(withoutPartyRuleViolations(limitQuestions(draft.answer))),
+        answer: separateInlineList(withoutFieldLabels(withoutPartyRuleViolations(limitQuestions(draft.answer)))),
         companion: draft.companion
           ? {
               ...draft.companion,

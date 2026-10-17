@@ -16,6 +16,15 @@ const fieldLabels = [
   "Sections",
   "Tables",
   "Sources",
+  // One-word JSON key spellings the model also writes as labels.
+  "SuggestedReplies",
+  "suggestedReplies",
+  "SuggestedPrompts",
+  "suggestedPrompts",
+  "MissingInfo",
+  "missingInfo",
+  "FollowUpQuestions",
+  "followUpQuestions",
 ];
 
 /**
@@ -87,4 +96,10 @@ export function clipReply(text: string, maxLength: number): string {
  */
 export function separateInlineList(text: string): string {
   return text.replace(/([.!?:])[ \t]+-[ \t]+(?=[^\n]+\n[ \t]*-[ \t]+\S)/g, "$1\n- ");
+}
+
+/** Drops labelled fields the model folded into a reply ("... SuggestedReplies: What ..."). */
+export function withoutFieldLabels(answer: string): string {
+  const cut = fieldLabelPattern.exec(answer);
+  return cut && cut.index > 0 ? tidy(answer.slice(0, cut.index)) : answer;
 }
