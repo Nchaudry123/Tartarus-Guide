@@ -101,6 +101,14 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import {
+  checkFusionClaims,
+  extractFusionClaims,
+  fusionCorrectionNotes,
+  withoutWrongFusionClaims,
+  type FusionClaimCheck,
+} from "../../../src/quality/fusionClaims";
+import { personaNames, personaNamesIfLoaded, recipesForClaims } from "../../../src/retrieval/fusionLookup";
 import { TARTARUS_GUARDIAN_SOURCE } from "../../../src/quality/tartarusGuardians";
 import {
   FULL_MOON_BOSS_SOURCE,
@@ -2574,7 +2582,10 @@ function structuredFusionResponse(
   const asksForResult =
     /\b(what|which)\b.*\b(make|makes|create|creates|result|become|fuse into)\b/i.test(question) ||
     /\b(make|makes|create|creates)\b.*\b(what|which)\b/i.test(question) ||
-    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question);
+    /\bdoes\b.+\b(?:plus|and|\+)\b.+\b(?:fuse into|make|create|become)\b/i.test(question) ||
+    // "If I fuse Ananta with Asura what do I get?"
+    /\b(?:fuse|fusing|combine|combining)\b.+\b(?:with|and|plus)\b.+\bwhat\b.*\b(?:get|make|happen)\b/i.test(question) ||
+    /\bwhat\b.*\b(?:get|make)\b.*\b(?:fus(?:e|ing)|combin(?:e|ing))\b.+\b(?:with|and|plus)\b/i.test(question);
   if (asksForResult) {
     const matches = recipeFacts.filter((fact) => {
       const ingredients = fact.value
@@ -4972,6 +4983,8 @@ async function directRagResponse(
 
   onProgress?.("Understanding your question...", "general");
   signal?.throwIfAborted();
+  // Warm the Persona name list so the stream gate can hold back fusion claims for checking.
+  void personaNames().catch(() => undefined);
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
   // Player Memory as saved on the device; only this may be labelled "In Player Memory".
@@ -5786,6 +5799,39 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         );
       }
     }
+    // Fusion claims ("A + B makes C") must match the fusion tool recipes.
+    const fusionChecks = await checkAnswerFusionClaims(chatResponseClaimText(normalized), controllerProfile.dlcOwnership);
+    if (fusionChecks.some((check) => !check.ok)) {
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `${userPrompt}
+
+Your previous draft stated fusion recipes that the fusion tool data contradicts:
+${fusionCorrectionNotes(fusionChecks).map((note) => `- ${note}`).join("\n")}
+
+Regenerate the JSON answer. Only state a fusion recipe if it is listed in the facts above.`,
+          },
+        ],
+        { jsonObject: true, timingLabel: "fusion-correction", model: chatConfig.correctionChatModel },
+      );
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
+      const stillWrong = await checkAnswerFusionClaims(chatResponseClaimText(normalized), controllerProfile.dlcOwnership);
+      if (stillWrong.some((check) => !check.ok)) {
+        normalized = {
+          ...normalized,
+          answer: withoutWrongFusionClaims(normalized.answer, stillWrong),
+          sections: (normalized.sections ?? []).filter(
+            (section) => !stillWrong.some((check) => !check.ok && section.content.includes(check.sentence)),
+          ),
+        };
+      }
+    }
     const bossErrors = bossFactContradictions(chatResponseClaimText(normalized));
     if (bossErrors.length) {
       const correctedRaw = await complete(
@@ -5953,8 +5999,23 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   };
 }
 
+/** Checks every fusion claim in an answer; a lookup failure checks nothing rather than failing the reply. */
+async function checkAnswerFusionClaims(text: string, dlc?: string): Promise<FusionClaimCheck[]> {
+  try {
+    const claims = extractFusionClaims(text, await personaNames());
+    if (!claims.length) return [];
+    return checkFusionClaims(claims, await recipesForClaims(claims), dlc);
+  } catch (error) {
+    console.warn("Fusion claim check skipped:", error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 function partyRulesAccept(text: string): boolean {
+  const names = personaNamesIfLoaded();
   return (
+    // A fusion claim is verified after the reply finishes, so the live preview stops before it.
+    !(names && extractFusionClaims(text, names).length) &&
     !breaksPartyRules(text) &&
     partyRoleContradictions({ answer: text }).length === 0 &&
     bossFactContradictions(text).length === 0
