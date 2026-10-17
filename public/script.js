@@ -2569,6 +2569,12 @@ function settleAppShell() {
   document.documentElement.classList.add("ui-settled");
 }
 
+// A resize mid-entrance (rotating a phone, or the smoke test switching to mobile) finishes
+// the entrance at once: its slide/stretch transforms would otherwise skew layout geometry.
+window.addEventListener("resize", () => {
+  if (appShell?.classList.contains("is-entering")) settleAppShell();
+});
+
 enterApp?.addEventListener("click", () => {
   if (entranceScreen.classList.contains("is-exiting")) return;
   enterApp.disabled = true;

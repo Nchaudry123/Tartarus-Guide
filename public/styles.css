@@ -4529,3 +4529,38 @@ body {
     transition: none !important;
   }
 }
+
+/* ===== Narrow screens never widen past the viewport =====
+   On phones the shell column was "1fr" (= minmax(auto, 1fr)), so it could not shrink below
+   its content, and the one-line "Tartarus Guide" title set that content width. With a wider
+   fallback face (Linux has no Impact) the app grew to ~416px on a 390px screen, which is why
+   the production smoke test failed on CI only. Columns may now shrink and the title truncates. */
+:root.is-mobile .app-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+:root.is-mobile .chat-stage,
+:root.is-mobile .chat-window,
+:root.is-mobile .hero,
+:root.is-mobile .hero .hero-title {
+  min-width: 0;
+  max-width: 100%;
+}
+:root.is-mobile .hero h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 720px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-stage,
+  .hero,
+  .hero .hero-title {
+    min-width: 0;
+  }
+  .hero h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
