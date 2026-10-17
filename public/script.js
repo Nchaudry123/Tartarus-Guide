@@ -1506,6 +1506,41 @@ function startThinking(theme = "general") {
   }, thinkingIntervalMs);
 }
 
+// Elapsed-time counter: ticks in the thinking bubble and the streaming reply, then stays on the
+// finished reply as its response time.
+let answerStartedAt = 0;
+let answerTimerInterval = null;
+
+function formatElapsed(ms) {
+  const seconds = Math.max(0, ms) / 1000;
+  return seconds < 10 ? `${seconds.toFixed(1)}s` : `${Math.round(seconds)}s`;
+}
+
+function tickAnswerTimer() {
+  const text = formatElapsed(performance.now() - answerStartedAt);
+  document.querySelectorAll("#loading .loading-timer, #streamingAssistant .answer-timer").forEach((node) => {
+    node.textContent = text;
+  });
+}
+
+function startAnswerTimer() {
+  stopAnswerTimer();
+  answerStartedAt = performance.now();
+  answerTimerInterval = window.setInterval(tickAnswerTimer, 100);
+}
+
+/** Stops the counter and returns the elapsed time, or null when no request was being timed. */
+function stopAnswerTimer() {
+  if (answerTimerInterval == null) return null;
+  window.clearInterval(answerTimerInterval);
+  answerTimerInterval = null;
+  return performance.now() - answerStartedAt;
+}
+
+function answerTimerHtml(text = "") {
+  return `<span class="answer-timer" title="Response time">${escapeHtml(text)}</span>`;
+}
+
 function addLoading() {
   const node = document.createElement("div");
   node.className = "loading";
@@ -1518,9 +1553,11 @@ function addLoading() {
       <span class="sr-only">Thinking</span>
       <span class="loading-status" aria-hidden="true">${escapeHtml(pool[Math.floor(Math.random() * pool.length)])}</span>
       <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="loading-timer" aria-hidden="true">0.0s</span>
     </div>
   `;
   messages.appendChild(node);
+  startAnswerTimer();
   stopThinking();
   thinkingTheme = "";
   startThinking("general");
@@ -1549,7 +1586,7 @@ function ensureStreamingMessage() {
     node.innerHTML = `
       <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
       <div class="bubble">
-        <span class="assistant-name">SEES Navigator</span>
+        <span class="assistant-name">SEES Navigator ${answerTimerHtml(formatElapsed(performance.now() - answerStartedAt))}</span>
         <div class="answer is-typing" aria-live="polite"></div>
       </div>
     `;
@@ -1640,6 +1677,8 @@ function clearStickySuggestions() {
 }
 
 async function addAssistantMessage(response, options = {}) {
+  const elapsedMs = stopAnswerTimer();
+  const timerText = elapsedMs == null ? "" : formatElapsed(elapsedMs);
   flushStreamTokens();
   resetStreamBuffer();
   document.getElementById("loading")?.remove();
@@ -1663,6 +1702,8 @@ async function addAssistantMessage(response, options = {}) {
   if (streamed) {
     const bubble = node.querySelector(".bubble");
     if (bubble) {
+      const timer = bubble.querySelector(".answer-timer");
+      if (timer) timer.textContent = timerText;
       const answerNode = bubble.querySelector(".answer");
       if (answerNode) {
         answerNode.classList.remove("is-typing");
@@ -1682,7 +1723,7 @@ async function addAssistantMessage(response, options = {}) {
     node.innerHTML = `
       <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
       <div class="bubble">
-        <span class="assistant-name">SEES Navigator</span>
+        <span class="assistant-name">SEES Navigator ${timerText ? answerTimerHtml(timerText) : ""}</span>
         <div class="answer is-typing"></div>
         <div class="message-extra is-pending">
           ${extrasHtml}
@@ -2421,6 +2462,7 @@ async function askQueuedQuestion(question) {
     const response = await requestAnswer(question, priorHistory, requestController.signal);
     await addAssistantMessage(response, { question });
   } catch (error) {
+    if (error?.name === "AbortError") stopAnswerTimer();
     resetStreamBuffer();
     document.getElementById("loading")?.remove();
     document.getElementById("streamingAssistant")?.remove();

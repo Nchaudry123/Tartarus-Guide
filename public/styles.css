@@ -1652,6 +1652,22 @@ footer span {
   font-weight: 850;
   transition: opacity .12s ease, transform .12s ease;
 }
+.loading-timer {
+  margin-left: .6rem;
+  color: var(--cyan);
+  font-size: .78rem;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+  opacity: .85;
+}
+.assistant-name .answer-timer {
+  margin-left: .45rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .04em;
+  text-transform: none;
+  opacity: .62;
+}
+.assistant-name .answer-timer:empty { display: none; }
 .loading-status.is-swapping {
   opacity: .35;
   transform: translateY(.12rem);
