@@ -2093,5 +2093,51 @@
     "mustNotInclude": ["I don’t want to invent", "I don't want to invent", "I’m not solid enough", "I'm not solid enough", "Akihiko is weak to Fire", "Akihiko is weak to Wind", "in the back", "back row"],
     "maxQuestions": 1,
     "maxSections": 1
+  },
+  {
+    "id": "guardian-swift-axle-weakness",
+    "category": "boss",
+    "origin": "curated",
+    "question": "what is the swift axle weak to?",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["Electric", "Elec", "Zio"],
+    "mustNotInclude": ["weak to Ice", "weak to Fire", "weak to Wind"],
+    "hallucinationSensitive": true,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "guardian-executioners-crown",
+    "category": "boss",
+    "origin": "curated",
+    "question": "How do I deal with the Executioner's Crown next to Bloody Maria?",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Fire"],
+    "mustNotInclude": ["Crown is weak to Wind", "Crown is weak to Pierce"],
+    "hallucinationSensitive": true,
+    "maxAnswerCharacters": 1400
+  },
+  {
+    "id": "guardian-lascivious-lady-no-weakness",
+    "category": "boss",
+    "origin": "curated",
+    "question": "what element is the Lascivious Lady weak to?",
+    "shouldUseSources": true,
+    "mustIncludeAny": ["no weakness", "no listed weakness", "no elemental weakness", "nulls", "physical", "Slash", "Strike", "Pierce"],
+    "mustNotInclude": ["weak to Fire", "weak to Ice", "weak to Electric", "weak to Wind", "weak to Light", "weak to Dark"],
+    "hallucinationSensitive": true,
+    "maxAnswerCharacters": 1200
+  },
+  {
+    "id": "fusion-pair-result-no-invention",
+    "category": "fusion",
+    "origin": "curated",
+    "question": "If I fuse Ananta with Asura what do I get?",
+    "playerProfile": {"dlcOwnership": "none"},
+    "expectedIntent": "Fusion Advice",
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Alilat"],
+    "mustNotInclude": ["Ravana"],
+    "hallucinationSensitive": true,
+    "maxAnswerCharacters": 700
   }
 ]
