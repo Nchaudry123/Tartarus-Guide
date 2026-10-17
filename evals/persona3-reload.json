@@ -860,7 +860,7 @@
     "expectedIntent": "Boss Help",
     "shouldUseSources": true,
     "mustIncludeAny": ["Pierce", "Yukari", "Junpei", "Aigis"],
-    "mustNotInclude": ["weak to fire"],
+    "mustNotInclude": ["Maria is weak to Fire", "she's weak to Fire", "she is weak to Fire", "no weaknesses", "has no weakness"],
     "forbidUnsupportedExactness": true,
     "hallucinationSensitive": true,
     "maxSources": 6,
