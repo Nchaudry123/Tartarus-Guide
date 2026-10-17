@@ -5917,7 +5917,7 @@ async function directRagResponse(
   ) {
     const fusionResponse = structuredFusionResponse(
       conversation.analysisQuestion,
-      context.facts,
+      [...context.facts, ...(await ownedPairRecipeFacts(personasMentionedAsOwned(conversation.analysisQuestion)))],
       companion,
       debug,
       context.queries,
@@ -6585,6 +6585,31 @@ async function fusionPairResultResponse(
   } catch (error) {
     console.warn("Fusion pair lookup skipped:", error instanceof Error ? error.message : error);
     return null;
+  }
+}
+
+/**
+ * "I have Asura and Futsunushi": the recipes made from exactly that pair, looked up directly so
+ * the fusion handler can confirm the route even when retrieval didn't surface it this turn.
+ */
+async function ownedPairRecipeFacts(owned: string[]): Promise<Parameters<typeof structuredFusionResponse>[1]> {
+  if (owned.length !== 2) return [];
+  try {
+    const wanted = owned.map((name) => name.toLowerCase()).sort().join("+");
+    const recipes = await recipesForClaims([{ ingredients: owned, result: "", sentence: "" }]);
+    return recipes
+      .filter((recipe) => recipe.ingredients.map((name) => name.toLowerCase()).sort().join("+") === wanted)
+      .map((recipe) => ({
+        fact_type: "fusion_recipe",
+        value: recipe.ingredients.join(" + "),
+        confidence: 0.99,
+        notes: `DLC mode: ${recipe.dlcMode}`,
+        entity: { name: recipe.result },
+        source: fusionToolSource,
+      }));
+  } catch (error) {
+    console.warn("Owned-pair recipe lookup skipped:", error instanceof Error ? error.message : error);
+    return [];
   }
 }
 
