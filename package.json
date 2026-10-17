@@ -19,6 +19,7 @@
     "ingest:gaps": "tsx src/ingest/analyzeCoverage.ts",
     "ingest:cleanup": "tsx src/ingest/cleanupInvalidFacts.ts",
     "feedback:export": "tsx src/eval/exportFeedback.ts",
+    "sources:check": "tsx src/eval/checkSourceLinks.ts",
     "eval:accuracy": "tsx src/eval/runAccuracyEval.ts",
     "eval:gate": "tsx src/eval/runAccuracyEval.ts --direct --origin=user_transcript --fail-under=0.85 --exact-fail-under=0.85 --hallucination-fail-under=0.95 --category-fail-under=0.75 --category-min-cases=3 --delay-ms=250",
     "eval:validate": "tsx src/eval/runAccuracyEval.ts --validate-only",
