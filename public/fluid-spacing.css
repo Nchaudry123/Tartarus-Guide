@@ -1,0 +1,140 @@
+/*
+ * Fluid sizing and spacing (loaded last). Instead of a fixed 48rem chat column and fixed
+ * paddings, sizes scale with the window:
+ * - the root font grows on big screens (16px up to 19px at 2560px wide), so text and every
+ *   rem-based size scale together;
+ * - the chat column widens with the window but stays at a readable line length;
+ * - gutters, gaps and bubble padding follow width, and vertical spacing tightens on short
+ *   windows so more of the conversation fits.
+ */
+
+html {
+  font-size: clamp(16px, 10px + 0.36vw, 19px);
+}
+
+:root {
+  --chat-col: clamp(44rem, 26rem + 26vw, 58rem);
+  --gutter: clamp(0.75rem, 0.4rem + 1.2vw, 1.5rem);
+  --stack: clamp(0.6rem, 0.25rem + 1.1vh, 1.1rem);
+  --bubble-pad-block: clamp(0.75rem, 0.5rem + 0.7vh, 1.1rem);
+  --bubble-pad-inline: clamp(0.85rem, 0.6rem + 0.6vw, 1.3rem);
+  --col-inset: max(var(--gutter), calc((100% - var(--chat-col)) / 2));
+}
+
+/* ---- One column width for messages, the task bar and the composer ---- */
+:root .messages {
+  padding-inline: var(--col-inset) !important;
+  gap: var(--stack);
+}
+:root .message,
+:root .loading {
+  max-width: min(var(--chat-col), 100%);
+}
+:root .current-task-card,
+:root.has-conversation .current-task-card {
+  width: auto;
+  margin-inline: var(--col-inset) !important;
+}
+:root .composer-dock {
+  padding-inline: max(var(--col-inset), env(safe-area-inset-left)) max(var(--col-inset), env(safe-area-inset-right)) !important;
+}
+/* The dock already sets the column inset; the form inside adds none of its own. */
+:root .composer-dock .chat-form {
+  padding-inline: 0 !important;
+}
+
+/* The empty state's suggestion cards use the same column. */
+:root .empty-state {
+  width: min(calc(100% - 1rem), var(--chat-col));
+}
+
+/* ---- Bubbles: padding follows the window, widths follow the column ---- */
+:root .assistant-message .bubble {
+  max-width: 100%;
+  padding: var(--bubble-pad-block) var(--bubble-pad-inline);
+}
+:root .message.user-message .bubble {
+  max-width: min(36rem, 85%);
+  padding: calc(var(--bubble-pad-block) * 0.85) var(--bubble-pad-inline);
+}
+
+/* ---- Shell gutters ---- */
+:root .app-shell {
+  gap: var(--gutter);
+  padding: var(--gutter);
+}
+
+/* ---- Short windows (laptops, landscape tablets): give the height to the conversation ---- */
+@media (min-width: 761px) and (max-height: 760px) {
+  :root {
+    --stack: 0.55rem;
+    --bubble-pad-block: 0.7rem;
+  }
+  :root .current-task-card {
+    margin-top: 0.4rem !important;
+  }
+  /* Reply suggestions sit on one scrollable row instead of wrapping onto two. */
+  :root .assistant-message .followups {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-top: 0.55rem;
+    padding-bottom: 0.1rem;
+  }
+  :root .assistant-message .followups::-webkit-scrollbar {
+    display: none;
+  }
+  :root .assistant-message .followups button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+}
+
+/* ---- Tablets: the three suggestion cards fit side by side ---- */
+@media (min-width: 761px) and (max-width: 900px) {
+  :root .empty-categories {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+}
+
+/* ---- Phones ---- */
+@media (max-width: 760px) {
+  :root {
+    --gutter: 0.7rem;
+    --bubble-pad-block: 0.75rem;
+    --bubble-pad-inline: 0.9rem;
+  }
+  :root .assistant-message {
+    gap: 0.5rem;
+  }
+  :root .assistant-avatar {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+  :root .message.user-message .bubble {
+    max-width: 88%;
+  }
+  /* Copy / Regenerate / Save / Follow-up / feedback stay on one swipeable row. */
+  :root .assistant-message .message-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  :root .assistant-message .message-actions::-webkit-scrollbar {
+    display: none;
+  }
+  :root .assistant-message .message-actions button {
+    flex: 0 0 auto;
+    min-height: 2.25rem !important;
+    height: auto !important;
+    padding-block: 0.3rem !important;
+  }
+  :root .assistant-message .message-actions .feedback-buttons {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+}
