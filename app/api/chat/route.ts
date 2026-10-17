@@ -111,6 +111,7 @@ import {
 } from "../../../src/quality/fusionClaims";
 import { personaNames, personaNamesIfLoaded, recipesForClaims } from "../../../src/retrieval/fusionLookup";
 import { TARTARUS_GUARDIAN_SOURCE } from "../../../src/quality/tartarusGuardians";
+import { withRepairedSourceUrls } from "../../../src/retrieval/sourceUrls";
 import {
   FULL_MOON_BOSS_SOURCE,
   bossFactContradictions,
@@ -1657,7 +1658,7 @@ function companionClarificationResponse(question: string, analysis: CompanionAna
 }
 
 function withMode(response: ChatResponse, retrievalMode: NonNullable<ChatResponse["retrievalMode"]>): ChatResponse {
-  return { ...response, retrievalMode };
+  return { ...withRepairedSourceUrls(response), retrievalMode };
 }
 
 function mockResponse(question: string): ChatResponse {
