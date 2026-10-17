@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAnswerExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "./answerStream";
+import { createAnswerExtractor, createReplyExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "./answerStream";
 
 function feed(chunks: string[]): string {
   const extract = createAnswerExtractor();
@@ -78,4 +78,21 @@ test("salvages the answer from malformed model JSON instead of showing raw JSON"
   assert.equal(salvageAnswerFromBrokenJson(broken), "Level up to at least 16 before June 8. Review your skills.");
   assert.equal(salvageAnswerFromBrokenJson('{"answer": "Fine."}'), "Fine.");
   assert.equal(salvageAnswerFromBrokenJson("no json here"), null);
+});
+
+test("reply extractor streams plain-text replies and stops at the first field label", () => {
+  const extract = createReplyExtractor();
+  const raw = "Answer: Get ready for the June 8 Full Moon. Grind Thebel to level 16 first.\n\nRecommendation:\n- Title: Prep\nConfidence: 0.9";
+  let out = "";
+  for (let index = 0; index < raw.length; index += 5) out += extract.push(raw.slice(index, index + 5));
+  assert.equal(out.trim(), "Get ready for the June 8 Full Moon. Grind Thebel to level 16 first.");
+  assert.equal(extract.done, true);
+});
+
+test("reply extractor still reads JSON replies", () => {
+  const extract = createReplyExtractor();
+  let out = "";
+  for (const chunk of ['  {"ans', 'wer": "Swift Axle is ', 'weak to Electric.", "sections": []}']) out += extract.push(chunk);
+  assert.equal(out, "Swift Axle is weak to Electric.");
+  assert.equal(extract.done, true);
 });

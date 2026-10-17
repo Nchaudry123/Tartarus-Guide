@@ -127,7 +127,8 @@ import {
   withoutBossFactContradictions,
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
-import { createAnswerExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "../../../src/chat/answerStream";
+import { createReplyExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "../../../src/chat/answerStream";
+import { clipReply, parsePlainReply, separateInlineList } from "../../../src/chat/plainReply";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -2097,14 +2098,18 @@ function responseFromPlainText(
   fallbackSources: ChatResponse["sources"],
   companion?: NonNullable<ChatResponse["companion"]>,
 ): ChatResponse {
+  // Labelled fields the model wrote as text (Recommendation:, Confidence:, ...) are not shown.
+  const reply = parsePlainReply(rawAnswer);
   return {
-    answer: compactText(rawAnswer, 1800),
+    answer: clipReply(reply.answer, 1800),
     sections: [],
     tables: [],
     sources: fallbackSources,
-    confidence: fallbackSources.length ? 0.68 : 0.55,
-    missingInfo: "The assistant returned a plain response instead of structured JSON.",
-    companion,
+    confidence: Math.min(reply.confidence ?? 0.68, fallbackSources.length ? 0.68 : 0.55),
+    missingInfo: reply.missingInfo ?? "The assistant returned a plain response instead of structured JSON.",
+    companion: companion && reply.suggestedReplies.length && !companion.suggestedPrompts?.length
+      ? { ...companion, suggestedPrompts: reply.suggestedReplies }
+      : companion,
   };
 }
 
@@ -6503,7 +6508,7 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   const response = draft.answer
     ? {
         ...draft,
-        answer: withoutPartyRuleViolations(limitQuestions(draft.answer)),
+        answer: separateInlineList(withoutPartyRuleViolations(limitQuestions(draft.answer))),
         companion: draft.companion
           ? {
               ...draft.companion,
@@ -6613,7 +6618,7 @@ function liveReplyStreamer(
   accept: (text: string) => boolean,
 ): ((chunk: string) => void) | undefined {
   if (!onToken) return undefined;
-  const extract = createAnswerExtractor();
+  const extract = createReplyExtractor();
   const gate = createSentenceGate({ accept, emit: onToken });
   let finished = false;
   return (chunk: string) => {

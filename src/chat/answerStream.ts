@@ -1,3 +1,5 @@
+import { fieldLabelPattern } from "./plainReply";
+
 /**
  * Live streaming for a model reply that arrives as JSON ({"answer": "...", ...}).
  *
@@ -69,6 +71,57 @@ export function createAnswerExtractor(): AnswerExtractor {
     push,
     get done() {
       return state === "done";
+    },
+  };
+}
+
+/**
+ * Like createAnswerExtractor, but also streams a reply the model wrote as plain text instead of
+ * JSON (it can, since JSON mode is off while streaming). Plain text is released up to the first
+ * field label ("Recommendation:", "Confidence:", ...), with a short tail held back so a label
+ * split across chunks never leaks.
+ */
+export function createReplyExtractor(): AnswerExtractor {
+  let mode: "unknown" | "json" | "plain" = "unknown";
+  const json = createAnswerExtractor();
+  let text = "";
+  let start = 0;
+  let emitted = 0;
+  let done = false;
+  const holdBack = 24;
+
+  const push = (chunk: string): string => {
+    if (done) return "";
+    if (mode === "json") return json.push(chunk);
+    text += chunk;
+    if (mode === "unknown") {
+      const first = text.trimStart()[0];
+      if (!first) return "";
+      if (first === "{" || first === "`" || first === '"') {
+        mode = "json";
+        return json.push(text);
+      }
+      mode = "plain";
+    }
+    if (start === 0 && emitted === 0) {
+      // Wait until a leading "Answer:" label could be recognised.
+      if (text.trimStart().length < 8 && !/\s/.test(text.trimStart())) return "";
+      start = text.length - text.trimStart().length;
+      const label = /^\**\s*answer\s*\**\s*:\s*/i.exec(text.slice(start));
+      if (label) start += label[0].length;
+      emitted = start;
+    }
+    const label = fieldLabelPattern.exec(text.slice(start));
+    const limit = label ? start + label.index : Math.max(emitted, text.length - holdBack);
+    if (label) done = true;
+    const out = text.slice(emitted, limit);
+    emitted = limit;
+    return out;
+  };
+  return {
+    push,
+    get done() {
+      return mode === "json" ? json.done : done;
     },
   };
 }
