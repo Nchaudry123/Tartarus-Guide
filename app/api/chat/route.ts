@@ -100,7 +100,7 @@ import {
   asksForNextStep,
 } from "../../../src/quality/monthPlanning";
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
-import { limitQuestions } from "../../../src/quality/chatStyle";
+import { isPureClarifyingQuestion, limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
 import {
   checkFusionClaims,
@@ -5878,6 +5878,8 @@ Regenerate the JSON answer using the canonical boss facts above.`,
       conversation.analysisQuestion,
       normalized,
     );
+    // A reply that only asks the player something has nothing to cite.
+    if (isPureClarifyingQuestion(normalized)) normalized = { ...normalized, sources: [] };
     // Attach every card before the grounding gate so a blocked answer strips them all.
     const response = withMode(
       applyGroundingGuardrails(
