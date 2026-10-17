@@ -5236,6 +5236,13 @@ async function agentRoute(input: {
     tools: agentTools(evidence, profile, userWords, signal),
     maxSteps: 3,
     requireToolFirst: !casual,
+    // Stop as soon as the evidence can carry the answer: anything for an open question, strong
+    // subject-matched support for an exact one. Otherwise the agent gets another round.
+    shouldStop: () => {
+      if (!evidence.facts.length && !evidence.chunks.length) return false;
+      if (!requiresExactGameEvidence(conversation.analysisQuestion, analysis.intent)) return true;
+      return hasStrongExactContext(conversation.analysisQuestion, { facts: evidence.facts, chunks: evidence.chunks });
+    },
     onProgress: (text) => onProgress?.(`${text}...`, thinkingTheme(analysis.intent)),
     complete: (messages, tools, options) =>
       createToolCompletion(messages, tools, { toolChoice: options.toolChoice, timingLabel: options.timingLabel, signal }),

@@ -89,3 +89,14 @@ test("requireToolFirst nudges once when the model skips the tools", async () => 
   assert.deepEqual(outcome.steps.map((step) => step.tool), ["lookup_facts"]);
   assert.equal(outcome.kind === "answer" && outcome.content, "done");
 });
+
+test("shouldStop ends the loop after a tool round without another model call", async () => {
+  const { complete, seen } = scripted([
+    { calls: [["lookup_facts", { query: "a" }]] },
+    { content: "should not be reached" },
+  ]);
+  const outcome = await runAgentLoop({ system: "s", user: "u", tools: [lookup], complete, shouldStop: () => true });
+  assert.equal(seen.length, 1);
+  assert.equal(outcome.kind === "answer" && outcome.content, "");
+  assert.deepEqual(outcome.steps.map((step) => step.tool), ["lookup_facts"]);
+});

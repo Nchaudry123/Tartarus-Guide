@@ -50,6 +50,11 @@ export async function runAgentLoop(input: {
   maxSteps?: number;
   /** Make the first round call a tool (look something up or ask) instead of answering from memory. */
   requireToolFirst?: boolean;
+  /**
+   * Checked after each round of tool results. True ends the loop without another model call,
+   * for when the gathered evidence is already enough (saves the "I'm done" round trip).
+   */
+  shouldStop?: () => boolean;
   onProgress?: (text: string) => void;
 }): Promise<AgentOutcome> {
   const maxSteps = input.maxSteps ?? 4;
@@ -110,6 +115,7 @@ export async function runAgentLoop(input: {
       }
       messages.push({ role: "tool", tool_call_id: call.id, content: result.content });
     }
+    if (input.shouldStop?.()) return { kind: "answer", content: "", steps };
   }
   return { kind: "answer", content: "", steps };
 }
