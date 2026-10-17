@@ -1057,11 +1057,12 @@
       "dlcOwnership": "none"
     },
     "expectedIntent": "Fusion Advice",
-    "shouldUseSources": false,
-    "mustIncludeAny": ["could not verify", "will not replace"],
+    "shouldUseSources": true,
+    "mustIncludeAll": ["Angel", "not Satan"],
     "mustNotInclude": ["Orpheus with Arsene", "Arsene + Slime", "fuses into Satan"],
+    "requiredDomains": ["aqiu384.github.io"],
     "hallucinationSensitive": true,
-    "maxSources": 0,
+    "maxSources": 1,
     "maxAnswerCharacters": 700
   },
   {
