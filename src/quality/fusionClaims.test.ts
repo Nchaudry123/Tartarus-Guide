@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   checkFusionClaims,
+  pairResultIngredients,
+  pairResults,
   extractFusionClaims,
   fusionCorrectionNotes,
   withoutWrongFusionClaims,
@@ -63,4 +65,13 @@ test("a result that isn't a Persona in the game is still a claim (and wrong)", (
   assert.deepEqual(claimsOf("Pixie + Jack Frost gives you Loki."), ["Pixie + Jack Frost -> Loki"]);
   assert.deepEqual(claimsOf("Ananta + Asura makes your party stronger."), []);
   assert.deepEqual(claimsOf("Ananta and Asura make a great pair."), []);
+});
+
+test("finds the ingredients in a 'what do these make' question and their verified result", () => {
+  assert.deepEqual(pairResultIngredients("If I fuse Ananta with Asura what do I get?", names), ["Ananta", "Asura"]);
+  assert.deepEqual(pairResultIngredients("What do Ananta and Asura make?", names), ["Ananta", "Asura"]);
+  assert.equal(pairResultIngredients("How do I fuse Alilat?", names), null);
+  assert.equal(pairResultIngredients("Is Ananta better than Asura?", names), null);
+  assert.deepEqual(pairResults(["Asura", "Ananta"], recipes, "none"), ["Alilat"]);
+  assert.deepEqual(pairResults(["Pixie", "Jack Frost"], recipes, "all"), []);
 });

@@ -140,3 +140,21 @@ export function withoutWrongFusionClaims(text: string, checks: FusionClaimCheck[
   const corrections = [...new Set(wrong.filter((check) => check.actualResult).map((check) => `${check.ingredients.join(" + ")} fuses into ${check.actualResult}.`))];
   return [...corrections, ...kept].join(" ").trim();
 }
+
+/** "What do Ananta and Asura make?" / "If I fuse Ananta with Asura what do I get?" */
+const asksPairResult =
+  /\b(?:what|which)\b.*\b(?:make|makes|create|creates|get|result|become|fuse into|turn into)\b|\b(?:make|makes|create|creates)\b.*\b(?:what|which)\b/i;
+
+/** The ingredient Personas named in a "what do these make?" question, in order (2 or 3), or null. */
+export function pairResultIngredients(question: string, personaNames: string[]): string[] | null {
+  if (!asksPairResult.test(question) || !/\b(?:and|with|plus)\b|\+/i.test(question)) return null;
+  const found = findNames(question, [...personaNames].sort((a, b) => b.length - a.length));
+  if (found.length < 2 || found.length > 3) return null;
+  return found.map((item) => item.name);
+}
+
+/** The verified result(s) of fusing exactly these ingredients for the player's DLC setting. */
+export function pairResults(ingredients: string[], recipes: FusionRecipeRow[], dlc?: string): string[] {
+  const wanted = key(ingredients);
+  return [...new Set(recipes.filter((row) => key(row.ingredients) === wanted && modeMatches(row, dlc)).map((row) => row.result))];
+}
