@@ -31,6 +31,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
         <meta name="mobile-web-app-capable" content="yes" />
         <link rel="stylesheet" href="/styles.css?v=sea-of-souls-theme" />
+        <link rel="stylesheet" href="/liquid-glass.css?v=1" />
       </head>
       <body>{children}</body>
     </html>
