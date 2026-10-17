@@ -4990,10 +4990,13 @@ function deterministicControllerDecision(
   };
 }
 
-/** Which answer path serves the request: the fixed pipeline (default), the agent, or plain RAG. */
+/**
+ * Which routing serves the request: the tool-calling agent (default), the single-call
+ * pipeline router (CHAT_MODE=pipeline, the rollback), or plain single-pass RAG for evaluation.
+ */
 function chatMode(): "pipeline" | "agent" | "baseline" {
   const mode = process.env.CHAT_MODE?.trim().toLowerCase();
-  return mode === "agent" || mode === "baseline" ? mode : "pipeline";
+  return mode === "pipeline" || mode === "baseline" ? mode : "agent";
 }
 
 type AgentEvidence = {
