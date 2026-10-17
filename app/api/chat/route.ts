@@ -107,7 +107,7 @@ import {
   withoutBossFactContradictions,
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
-import { createAnswerExtractor, createSentenceGate } from "../../../src/chat/answerStream";
+import { createAnswerExtractor, createSentenceGate, salvageAnswerFromBrokenJson } from "../../../src/chat/answerStream";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -1759,8 +1759,14 @@ function extractJson(text: string): unknown {
     const start = text.indexOf("{");
     const end = text.lastIndexOf("}");
     if (start >= 0 && end > start) {
-      return JSON.parse(text.slice(start, end + 1));
+      try {
+        return JSON.parse(text.slice(start, end + 1));
+      } catch {
+        // Fall through to salvaging the answer from malformed JSON.
+      }
     }
+    const salvaged = salvageAnswerFromBrokenJson(text);
+    if (salvaged) return { answer: salvaged };
     throw new Error("Chat model did not return JSON.");
   }
 }
