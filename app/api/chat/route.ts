@@ -58,7 +58,10 @@ import {
   responseCacheKey as buildResponseCacheKey,
   setCachedChatResponse,
 } from "../../../src/chat/responseCache";
-import { progressMessage } from "../../../src/chat/progress";
+import { progressMessage, thinkingTheme, type ThinkingTheme } from "../../../src/chat/progress";
+
+/** Progress update for streaming clients: plain text plus the theme for themed phrases. */
+type ProgressCallback = (message: string, theme?: ThinkingTheme) => void;
 import {
   formatProgressContext,
   getProgressSnapshot,
@@ -4845,14 +4848,14 @@ async function directRagResponse(
   playerProfile?: PlayerProfile,
   history: ChatRequest["history"] = [],
   debug = false,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse | null> {
   if (process.env.USE_MOCK_CHAT === "true" || !hasDirectRagEnv()) {
     return null;
   }
 
-  onProgress?.("Understanding your question...");
+  onProgress?.("Understanding your question...", "general");
   signal?.throwIfAborted();
   const normalizedHistory = normalizeConversationHistory(question, history);
   const conversation = contextualizeQuestion(question, normalizedHistory);
@@ -5121,7 +5124,7 @@ async function directRagResponse(
   );
   if (levelRecommendation) return levelRecommendation;
 
-  onProgress?.(progressMessage(controller.intent, controller.action));
+  onProgress?.(progressMessage(controller.intent, controller.action), thinkingTheme(controller.intent));
   const personaProfileSubject = /\bskills?\s+should\s+i\s+keep\s+for\b/i.test(
     conversation.analysisQuestion,
   )
@@ -5161,7 +5164,7 @@ async function directRagResponse(
     requiresExactGameEvidence(conversation.analysisQuestion, controller.intent) &&
     !hasStrongExactContext(conversation.analysisQuestion, context)
   ) {
-    onProgress?.("Verifying current IGN and Game8 details...");
+    onProgress?.("Verifying current IGN and Game8 details...", "verifying");
     const { verifyAgainstLiveGuides } = await import(
       "../../../src/retrieval/liveGuideVerification"
     );
@@ -5486,7 +5489,7 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
   ];
 
   try {
-    onProgress?.("Putting the answer together...");
+    onProgress?.("Putting the answer together...", "writing");
     const rawAnswer = await complete(messages, { jsonObject: true, timingLabel: "answer" }).catch(() =>
       complete(messages, { timingLabel: "answer-retry" }),
     );
@@ -5658,7 +5661,7 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
 
 async function resolveChatRequest(
   body: Partial<ChatRequest>,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
   if (!requestTimingEnabled() && !body.debug) {
@@ -5680,7 +5683,7 @@ async function resolveChatRequest(
 
 async function resolveChatRequestUntimed(
   body: Partial<ChatRequest>,
-  onProgress?: (message: string) => void,
+  onProgress?: ProgressCallback,
   signal?: AbortSignal,
 ): Promise<ChatResponse> {
   const question = body.question?.trim() ?? "";
@@ -5688,11 +5691,11 @@ async function resolveChatRequestUntimed(
   const cacheKey = responseCacheKey(body);
   const cached = cacheKey ? getCachedChatResponse(cacheKey) : undefined;
   if (cached) {
-    onProgress?.("Pulling that up...");
+    onProgress?.("Pulling that up...", "general");
     return cached;
   }
 
-  onProgress?.("On it...");
+  onProgress?.("On it...", "general");
   const direct = await directRagResponse(
     question,
     body.playerProfile,
@@ -5816,10 +5819,10 @@ function streamedChatResponse(request: Request, body: ChatRequest): Response {
 
       try {
         // Immediate feedback so the UI never sits on a blank spinner.
-        emit({ type: "status", message: "Reading your question..." });
+        emit({ type: "status", message: "Reading your question...", theme: "general" });
         const response = await resolveChatRequest(
           body,
-          (message) => emit({ type: "status", message }),
+          (message, theme) => emit({ type: "status", message, ...(theme ? { theme } : {}) }),
           request.signal,
         );
 

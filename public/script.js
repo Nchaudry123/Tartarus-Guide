@@ -1398,30 +1398,143 @@ function showInputHint(message) {
   }, 2200);
 }
 
+// Playful, spoiler-safe "thinking" lines. The server picks the theme from what it is doing;
+// the phrase rotates every couple of seconds so a longer wait keeps feeling alive.
+const thinkingPhrases = {
+  general: [
+    "Consulting the Velvet Room…",
+    "Igor is stroking his nose thoughtfully…",
+    "Elizabeth is flipping through the Compendium…",
+    "Checking the Dark Hour clock…",
+    "Shuffling the Arcana…",
+    "Grabbing a Hagakure bowl for brainpower…",
+    "Junpei is “thinking really hard”…",
+    "Waiting out the Dark Hour…",
+  ],
+  fusion: [
+    "Igor is warming up the guillotines…",
+    "Elizabeth calls this fusion “most fascinating”…",
+    "Flipping through the Compendium…",
+    "Lining up the Arcana…",
+    "Checking what the Velvet Room has in stock…",
+  ],
+  weakness: [
+    "Analyzing the Shadow…",
+    "Looking for a 1 More…",
+    "Testing affinities on a very nervous Maya…",
+    "Lining up an All-Out Attack…",
+  ],
+  boss: [
+    "Studying the Full Moon Shadow…",
+    "Checking the moon phase…",
+    "Planning the All-Out Attack…",
+    "Stocking up on Revival Beads…",
+  ],
+  social: [
+    "Checking who's free after school…",
+    "Polishing your Charm rank…",
+    "Asking around Gekkoukan…",
+    "Reading the Arcana…",
+  ],
+  schedule: [
+    "Flipping the calendar…",
+    "Counting days to the full moon…",
+    "Weighing evenings against Tartarus…",
+    "Checking tomorrow's weather…",
+  ],
+  tartarus: [
+    "Climbing Tartarus…",
+    "Steering clear of the Reaper…",
+    "Looking for the next access point…",
+    "Mapping the floor…",
+  ],
+  team: [
+    "Sorting out the frontline…",
+    "Checking who's tired…",
+    "Running party tactics…",
+    "Asking Akihiko about protein…",
+  ],
+  quest: [
+    "Reading Elizabeth's request slip…",
+    "Checking the request board…",
+    "Elizabeth is waiting patiently…",
+  ],
+  verifying: [
+    "Double-checking the guides…",
+    "Cross-checking the notes…",
+    "Making sure it's not a Shadow's trick…",
+  ],
+  writing: ["Putting it all together…", "Writing it up…", "Almost there…"],
+};
+const thinkingIntervalMs = 1800;
+let thinkingTimer = null;
+let thinkingTheme = "general";
+let thinkingIndex = 0;
+
+function showThinkingPhrase(text) {
+  const status = document.querySelector("#loading .loading-status");
+  if (!status || !text || status.textContent === text) return;
+  status.classList.add("is-swapping");
+  window.setTimeout(() => {
+    status.textContent = text;
+    status.classList.remove("is-swapping");
+  }, 90);
+}
+
+function stopThinking() {
+  if (thinkingTimer != null) window.clearInterval(thinkingTimer);
+  thinkingTimer = null;
+}
+
+function startThinking(theme = "general") {
+  const pool = thinkingPhrases[theme] || thinkingPhrases.general;
+  // Keep the rotation going when the server repeats the same theme.
+  if (theme === thinkingTheme && thinkingTimer != null) return;
+  thinkingTheme = thinkingPhrases[theme] ? theme : "general";
+  thinkingIndex = Math.floor(Math.random() * pool.length);
+  showThinkingPhrase(pool[thinkingIndex]);
+  stopThinking();
+  thinkingTimer = window.setInterval(() => {
+    if (!document.getElementById("loading")) {
+      stopThinking();
+      return;
+    }
+    const current = thinkingPhrases[thinkingTheme];
+    thinkingIndex = (thinkingIndex + 1) % current.length;
+    showThinkingPhrase(current[thinkingIndex]);
+  }, thinkingIntervalMs);
+}
+
 function addLoading() {
   const node = document.createElement("div");
   node.className = "loading";
   node.id = "loading";
+  const pool = thinkingPhrases.general;
+  // The rotating line is decorative; screen readers get one steady "Thinking" status.
   node.innerHTML = `
     <span class="assistant-avatar"><img src="./assets/sees-portrait-seal.png" alt="" /></span>
     <div class="bubble typing" role="status" aria-live="polite">
-      <span class="loading-status">On it...</span>
+      <span class="sr-only">Thinking</span>
+      <span class="loading-status" aria-hidden="true">${escapeHtml(pool[Math.floor(Math.random() * pool.length)])}</span>
       <span class="typing-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     </div>
   `;
   messages.appendChild(node);
+  stopThinking();
+  thinkingTheme = "";
+  startThinking("general");
   updateLatestButton();
   scrollMessagesToBottom({ force: true, behavior: "auto" });
 }
 
-function updateLoadingStatus(message) {
-  const status = document.querySelector("#loading .loading-status");
-  if (!status || !message || status.textContent === message) return;
-  status.classList.add("is-swapping");
-  window.setTimeout(() => {
-    status.textContent = message;
-    status.classList.remove("is-swapping");
-  }, 90);
+function updateLoadingStatus(message, theme) {
+  if (!document.getElementById("loading")) return;
+  if (theme) {
+    startThinking(theme);
+  } else if (message) {
+    stopThinking();
+    showThinkingPhrase(message);
+  }
   scrollMessagesToBottom({ behavior: "auto" });
 }
 
@@ -1675,7 +1788,7 @@ async function readEventStream(response, onStatus, onToken) {
     for (const line of lines) {
       if (!line.trim()) continue;
       const event = JSON.parse(line);
-      if (event.type === "status") onStatus?.(event.message);
+      if (event.type === "status") onStatus?.(event.message, event.theme);
       if (event.type === "token") onToken?.(event.delta);
       if (event.type === "response") finalResponse = event.data;
     }
@@ -1699,7 +1812,7 @@ async function requestAnswer(question, history = chatHistory.slice(-24), signal)
 
   const cachedAnswer = getCachedExactAnswer(question);
   if (cachedAnswer) {
-    updateLoadingStatus("Pulling that up...");
+    updateLoadingStatus("Pulling that up...", "general");
     return cachedAnswer;
   }
 
