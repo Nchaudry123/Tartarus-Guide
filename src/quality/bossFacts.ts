@@ -8,6 +8,12 @@ import { buildMonthPlan } from "./monthPlanning";
  * - Tartarus bosses players ask about, from Game8's Tartarus boss table and IGN's boss guides.
  */
 
+export const FULL_MOON_BOSS_SOURCE = {
+  title: "All Bosses and Boss Guides",
+  url: "https://game8.co/games/Persona-3-Reload/archives/440373",
+  domain: "game8.co",
+} as const;
+
 export type FullMoonBoss = { names: string[]; date: string; level: number; location: string };
 
 export const fullMoonBosses: FullMoonBoss[] = [
