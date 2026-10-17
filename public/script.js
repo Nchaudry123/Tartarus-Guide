@@ -2910,49 +2910,7 @@ window.addEventListener("storage", (event) => {
   scheduleDashboardRefresh();
 });
 
-// Liquid glass: the specular highlight on a glass surface follows the pointer.
-function setupLiquidGlassHighlight() {
-  if (!window.matchMedia("(pointer: fine)").matches) return;
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const glassSelector = [
-    ".side-panel", ".chat-window", ".bubble", ".composer-shell", ".empty-cat",
-    ".category-list button", ".recent-list button", ".quick-actions button",
-    ".ghost-btn", ".sidebar-toggle", ".composer-tool-btn",
-    ".empty-cat button", ".empty-examples button", ".memory-dialog", ".mic-modal-card",
-  ].join(",");
-  let pending = null;
-  let scheduled = false;
-  let lit = [];
-  document.addEventListener("pointermove", (event) => {
-    pending = event;
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      const point = pending;
-      const surfaces = [];
-      for (let node = point.target instanceof Element ? point.target.closest(glassSelector) : null; node; node = node.parentElement?.closest(glassSelector) ?? null) {
-        surfaces.push(node);
-      }
-      for (const node of lit) {
-        if (!surfaces.includes(node)) {
-          node.style.removeProperty("--lg-x");
-          node.style.removeProperty("--lg-y");
-        }
-      }
-      for (const node of surfaces) {
-        const rect = node.getBoundingClientRect();
-        if (!rect.width || !rect.height) continue;
-        node.style.setProperty("--lg-x", `${((point.clientX - rect.left) / rect.width) * 100}%`);
-        node.style.setProperty("--lg-y", `${((point.clientY - rect.top) / rect.height) * 100}%`);
-      }
-      lit = surfaces;
-    });
-  }, { passive: true });
-}
-
 updateShortcutHints();
-setupLiquidGlassHighlight();
 setupVoiceInput();
 renderProfileContextBar();
 if (!chatHistory.length) {
