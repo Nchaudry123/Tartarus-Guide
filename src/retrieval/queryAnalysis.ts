@@ -105,10 +105,15 @@ function extractPrimarySubject(
     /\bwhen can i (?:start|unlock|meet)\s+(?:the\s+)?(.+?)(?=\s+(?:social link|s-?link)\b|[?.!,]|$)/i,
     /\b((?:elizabeth\s+)?request\s*#?\s*\d{1,3})\b/i,
   ];
-  for (const pattern of patterns) {
-    const match = query.match(pattern);
-    const subject = cleanSubject(match?.[1] ?? "");
-    if (subject) return subject;
+  // A follow-up arrives as "goal: Show me possible fusions for Alilat / latest: I have Ananta
+  // and Asura". Match line by line so the goal's subject is found even though "$" can't cross
+  // the line break.
+  for (const line of query.split("\n")) {
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      const subject = cleanSubject(match?.[1] ?? "");
+      if (subject) return subject;
+    }
   }
 
   return phrases
