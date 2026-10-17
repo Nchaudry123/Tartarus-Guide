@@ -121,7 +121,20 @@ export async function buildPlannedContext(
   // searchFacts already ranks each result set by query relevance. Preserve that
   // ordering when combining planned queries instead of replacing it with a
   // confidence-only sort that can elevate broad guide facts over exact matches.
-  const facts = dedupeFacts(results.flatMap((result) => result.facts)).slice(0, factLimit);
+  // A recipe whose ingredients are all named in a query ("ananta and asura") answers a
+  // "what do these make?" question directly, so it must survive the cut even when the
+  // ingredients' own profile facts and recipes come first.
+  const merged = dedupeFacts(results.flatMap((result) => result.facts));
+  const loweredQueries = queries.map((query) => query.toLowerCase());
+  const namesAllIngredients = (fact: FactMatch) => {
+    if (fact.fact_type !== "fusion_recipe") return false;
+    const ingredients = fact.value.split(/\s*\+\s*/).map((name) => name.trim().toLowerCase()).filter(Boolean);
+    return ingredients.length >= 2 && loweredQueries.some((query) => ingredients.every((name) => query.includes(name)));
+  };
+  const facts = [
+    ...merged.filter(namesAllIngredients),
+    ...merged.filter((fact) => !namesAllIngredients(fact)),
+  ].slice(0, factLimit);
   const chunks = diversifyChunks(results.flatMap((result) => result.chunks), chunkLimit);
   signal?.throwIfAborted();
 

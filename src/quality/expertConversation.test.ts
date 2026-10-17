@@ -12,6 +12,8 @@ test("flags vague craft/fuse questions without a named target", () => {
   assert.equal(isVagueCreationQuestion("how do I make it"), true);
   assert.equal(isVagueCreationQuestion("how do i craft these?"), true);
   assert.equal(isVagueCreationQuestion("How do I fuse Loki?"), false);
+  assert.equal(isVagueCreationQuestion("What do Ananta and Asura make?"), false);
+  assert.equal(isVagueCreationQuestion("what does pixie + jack frost create"), false);
   assert.equal(isVagueCreationQuestion("How do I fuse Jack Frost"), false);
   assert.equal(isVagueCreationQuestion("How do I fuse Jack Frost?"), false);
   assert.equal(isVagueCreationQuestion("what is dancing hand weak to"), false);
