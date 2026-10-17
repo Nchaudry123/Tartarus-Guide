@@ -55,6 +55,31 @@ export const ChatRequestSchema = z
 
 export type ValidatedChatRequest = z.infer<typeof ChatRequestSchema>;
 
+/** A thumbs up/down on one assistant reply, with the turns that led to it. */
+export const FeedbackRequestSchema = z
+  .object({
+    rating: z.union([z.literal(1), z.literal(-1)]),
+    question: z.string().trim().min(1).max(2_000),
+    answer: z.string().trim().min(1).max(8_000),
+    intent: z.string().trim().max(80).optional(),
+    note: z.string().trim().max(500).optional(),
+    history: z
+      .array(
+        z
+          .object({
+            role: z.enum(["user", "assistant"]),
+            content: z.string().trim().min(1).max(3_000),
+          })
+          .strict(),
+      )
+      .max(6)
+      .optional(),
+    playerProfile: PlayerProfileSchema.optional(),
+  })
+  .strict();
+
+export type ValidatedFeedbackRequest = z.infer<typeof FeedbackRequestSchema>;
+
 export class RequestValidationError extends Error {
   constructor(
     message: string,
@@ -64,10 +89,8 @@ export class RequestValidationError extends Error {
   }
 }
 
-export async function readValidatedChatRequest(
-  request: Request,
-  maxBytes = 32_768,
-): Promise<ValidatedChatRequest> {
+/** Content type, size limit and JSON parsing shared by the chat and feedback endpoints. */
+async function readJsonBody(request: Request, maxBytes: number): Promise<unknown> {
   const contentType = request.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.includes("application/json")) {
     throw new RequestValidationError("Content-Type must be application/json.", 415);
@@ -83,13 +106,18 @@ export async function readValidatedChatRequest(
     throw new RequestValidationError("Request body is too large.", 413);
   }
 
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(rawBody);
+    return JSON.parse(rawBody);
   } catch {
     throw new RequestValidationError("Request body must be valid JSON.", 400);
   }
+}
 
+export async function readValidatedChatRequest(
+  request: Request,
+  maxBytes = 32_768,
+): Promise<ValidatedChatRequest> {
+  const parsed = await readJsonBody(request, maxBytes);
   const result = ChatRequestSchema.safeParse(parsed);
   if (!result.success) {
     throw new RequestValidationError("Request body contains invalid fields.", 400);
@@ -183,4 +211,16 @@ export function requestFingerprint(request: Request): string {
   return createHmac("sha256", secret)
     .update(`${address}\n${userAgent}`)
     .digest("hex");
+}
+
+export async function readValidatedFeedback(
+  request: Request,
+  maxBytes = 32_768,
+): Promise<ValidatedFeedbackRequest> {
+  const parsed = await readJsonBody(request, maxBytes);
+  const result = FeedbackRequestSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new RequestValidationError("Request body contains invalid fields.", 400);
+  }
+  return result.data;
 }

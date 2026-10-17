@@ -22,6 +22,7 @@ const enterApp = document.getElementById("enterApp");
 const memorySummary = document.getElementById("memorySummary");
 const appShell = document.querySelector(".app-shell");
 const chatApiUrl = window.TARTARUS_API_URL || "/api/chat";
+const feedbackApiUrl = chatApiUrl.replace(/\/chat$/, "/feedback");
 const sendButton = form?.querySelector('button[type="submit"]');
 const chatHistoryKey = "tartarusChatHistoryV2";
 const exactAnswerCacheKey = "tartarusExactAnswerCacheV1";
@@ -1594,6 +1595,14 @@ function messageActionsHtml() {
       <button type="button" data-action="regenerate" title="Ask this again">Regenerate</button>
       <button type="button" data-action="save" title="Pin to Recent">Save</button>
       <button type="button" data-action="ask-again" title="Focus the composer for a follow-up">Follow-up</button>
+      <span class="feedback-buttons">
+        <button type="button" data-action="feedback" data-rating="1" aria-label="Good answer" title="Good answer">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" d="M7 11v9H4v-9h3zm0 0 4-7c1.6 0 2.4 1 2 2.6L12.3 10H18a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 16.8 20H7"/></svg>
+        </button>
+        <button type="button" data-action="feedback" data-rating="-1" aria-label="Bad answer" title="Bad answer">
+          <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" d="M17 13V4h3v9h-3zm0 0-4 7c-1.6 0-2.4-1-2-2.6l.7-3.4H6a2 2 0 0 1-2-2.3l1.2-6A2 2 0 0 1 7.2 4H17"/></svg>
+        </button>
+      </span>
     </div>
   `;
 }
@@ -1644,6 +1653,7 @@ async function addAssistantMessage(response, options = {}) {
   if (!node) node = document.createElement("article");
   node.removeAttribute("id");
   node.className = `message assistant-message mode-${escapeHtml(response.retrievalMode || "mock")} is-settling`;
+  node.dataset.intent = response.companion?.intent || "";
   if (response.dailyDashboard) node.dataset.dashboardHost = "true";
 
   const finalAnswer = response.answer || streamedAnswer;
@@ -2604,6 +2614,52 @@ function flashActionButton(button, label = "Done") {
   }, 1400);
 }
 
+// Thumbs up/down on a reply: stored server-side so bad answers can become eval cases.
+async function sendAnswerFeedback(assistantNode, button) {
+  const group = button.closest(".feedback-buttons");
+  if (!group || group.dataset.sent === "true") return;
+  const rating = Number(button.dataset.rating) === 1 ? 1 : -1;
+  const answer = assistantNode.querySelector(".answer")?.innerText?.trim() || "";
+  const previousUser = assistantNode.previousElementSibling?.classList.contains("user-message")
+    ? assistantNode.previousElementSibling
+    : null;
+  const question =
+    previousUser?.dataset?.question || previousUser?.querySelector(".message-text")?.textContent?.trim() || "";
+  if (!answer || !question) return;
+  group.dataset.sent = "true";
+  group.querySelectorAll("button").forEach((item) => {
+    item.disabled = true;
+  });
+  button.classList.add("is-chosen");
+  try {
+    const response = await fetch(feedbackApiUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        rating,
+        question: question.slice(0, 2000),
+        answer: answer.slice(0, 8000),
+        intent: assistantNode.dataset.intent || undefined,
+        history: chatHistory
+          .slice(-7, -1)
+          .filter((message) => message?.content?.trim())
+          .map((message) => ({ role: message.role, content: String(message.content).slice(0, 3000) })),
+        playerProfile,
+      }),
+    });
+    if (!response.ok) throw new Error("feedback failed");
+    showInputHint(rating === 1 ? "Thanks! Glad that helped." : "Thanks — flagged so it gets fixed.");
+  } catch {
+    // Let the player try again if it didn't go through.
+    group.dataset.sent = "false";
+    group.querySelectorAll("button").forEach((item) => {
+      item.disabled = false;
+    });
+    button.classList.remove("is-chosen");
+    showInputHint("Couldn't send that feedback — try again in a moment.");
+  }
+}
+
 messages.addEventListener("click", (event) => {
   const toolBtn = event.target.closest("[data-action-tool]");
   if (toolBtn?.dataset.actionTool === "memory") {
@@ -2646,6 +2702,10 @@ messages.addEventListener("click", (event) => {
       });
       flashActionButton(actionBtn, "Saved");
       showInputHint("Pinned to Recent.");
+      return;
+    }
+    if (actionBtn.dataset.action === "feedback" && assistantNode) {
+      void sendAnswerFeedback(assistantNode, actionBtn);
       return;
     }
     if (actionBtn.dataset.action === "ask-again") {
