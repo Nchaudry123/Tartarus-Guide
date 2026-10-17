@@ -101,7 +101,11 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
-import { bossFactContradictions, withoutBossFactContradictions } from "../../../src/quality/bossFacts";
+import {
+  FULL_MOON_BOSS_SOURCE,
+  bossFactContradictions,
+  withoutBossFactContradictions,
+} from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import { createAnswerExtractor, createSentenceGate } from "../../../src/chat/answerStream";
 import {
@@ -5047,7 +5051,8 @@ async function directRagResponse(
     return withMode({
       answer: canonicalRelationship,
       sections: [],
-      sources: [],
+      // The answer comes from the Game8 Social Link table unless it is only asking for progress.
+      sources: needsFullProgress ? [] : [SOCIAL_LINK_START_SOURCE],
       confidence: 0.99,
       missingInfo: needsFullProgress
         ? "Your month (or date) and rough Charm / Academics / Courage ranks."
@@ -5539,12 +5544,19 @@ Answer as a companion. First solve the user's stated bottleneck. Use only the su
       .slice(-6)
       .map((message) => message.content),
   ].join("\n");
-  const responseSources = relevantResponseSources(
-    conversation.analysisQuestion,
-    controller.intent,
-    context,
-    controllerProfile,
-  );
+  // Answers built on the canonical month plan or boss table cite where those tables came from.
+  const canonicalSources = [
+    ...(monthBrief ? [SOCIAL_LINK_START_SOURCE] : []),
+    ...(/Full Moon operation is on/.test(progressFacts) ? [FULL_MOON_BOSS_SOURCE] : []),
+  ];
+  const responseSources = [
+    ...new Map(
+      [
+        ...relevantResponseSources(conversation.analysisQuestion, controller.intent, context, controllerProfile),
+        ...canonicalSources,
+      ].map((source) => [source.url, source]),
+    ).values(),
+  ];
 
   const messages = [
     { role: "system" as const, content: systemPrompt },
