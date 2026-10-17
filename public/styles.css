@@ -4564,3 +4564,23 @@ body {
     text-overflow: ellipsis;
   }
 }
+
+/* Thumbs up/down on replies. */
+.message-actions .feedback-buttons {
+  display: inline-flex;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+.message-actions .feedback-buttons button {
+  display: inline-grid;
+  place-items: center;
+  padding: 0.32rem 0.5rem;
+}
+.message-actions .feedback-buttons button.is-chosen {
+  border-color: #075cff;
+  background: rgba(7, 92, 255, 0.18);
+  color: #0047d6;
+}
+.message-actions .feedback-buttons button:disabled:not(.is-chosen) {
+  opacity: 0.45;
+}
