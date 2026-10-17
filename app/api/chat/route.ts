@@ -2822,7 +2822,11 @@ function structuredPersonaProfileResponse(
       : null;
 
   const response = withMode({
-    answer: skillLead || `${persona} is ${identity}.`,
+    // "What Arcana and base level is Alilat, and what skills does it learn?" wants both parts.
+    answer:
+      skillLead && /\b(?:arcana|level|lvl)\b/i.test(question) && (arcana || baseLevel)
+        ? `${persona} is ${identity}. ${skillLead.startsWith(persona) ? `It${skillLead.slice(persona.length)}` : skillLead}`
+        : skillLead || `${persona} is ${identity}.`,
     sections: sections.slice(0, 4),
     sources: [fusionToolSource],
     confidence: Math.max(...matches.map((fact) => fact.confidence)),
