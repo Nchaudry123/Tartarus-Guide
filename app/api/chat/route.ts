@@ -96,6 +96,7 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import {
   currentRequestTiming,
   requestTimingEnabled,
@@ -5762,6 +5763,49 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
   };
 }
 
+function instantReplyResponse(body: ChatRequest): ChatResponse | null {
+  if (body.debug || process.env.USE_MOCK_CHAT === "true") return null;
+  const question = body.question?.trim() ?? "";
+  const kind = quickReplyKind(question);
+  if (!kind) return null;
+  // "ok" right after the assistant asked something is an answer, not small talk.
+  const previousAssistant = [...(body.history ?? [])].reverse().find((message) => message.role === "assistant");
+  if (kind === "ack" && previousAssistant?.content.includes("?")) return null;
+  const reply = quickReply(question, body.playerProfile ?? {});
+  if (!reply) return null;
+  return withMode(
+    {
+      answer: reply.answer,
+      sections: [],
+      sources: [],
+      confidence: 0.95,
+      missingInfo: "No additional detail is needed.",
+      companion: {
+        intent: "General Discussion",
+        profileUpdates: {},
+        followUpQuestions: [],
+        suggestedPrompts: reply.suggestedPrompts,
+      },
+    },
+    "rag",
+  );
+}
+
+function streamedInstantResponse(request: Request, response: ChatResponse): Response {
+  const encoder = new TextEncoder();
+  const lines = [
+    { type: "token", delta: response.answer },
+    { type: "response", data: response },
+  ].map((event) => `${JSON.stringify(event)}\n`);
+  return new Response(encoder.encode(lines.join("")), {
+    headers: {
+      ...corsHeaders(request),
+      "content-type": "application/x-ndjson; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+    },
+  });
+}
+
 function streamedChatResponse(request: Request, body: ChatRequest): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -5838,6 +5882,15 @@ export async function POST(request: Request) {
       { error: message },
       { status, headers: corsHeaders(request) },
     );
+  }
+
+  // Pure greetings/thanks/goodbyes are answered instantly: no model, no lookup, and no
+  // rate-limit round trip, since serving them costs nothing.
+  const instant = instantReplyResponse(body);
+  if (instant) {
+    return body.stream
+      ? streamedInstantResponse(request, instant)
+      : NextResponse.json(instant, { headers: corsHeaders(request) });
   }
 
   try {
