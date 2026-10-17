@@ -5179,7 +5179,18 @@ async function directRagResponse(
     suggestedPrompts: controller.suggestedPrompts.length ? controller.suggestedPrompts : undefined,
   };
 
-  if (controller.action === "answer_directly") {
+  // The controller's own reply skips the answer-path checks, so it is only used when there is
+  // nothing to check: not a next-step request, and no boss or fusion claims.
+  const directReplyIsSafe = (text: string | null | undefined) => {
+    if (!text) return true;
+    const names = personaNamesIfLoaded();
+    return (
+      !asksForNextStep(conversation.analysisQuestion) &&
+      bossFactContradictions(text).length === 0 &&
+      !(names && extractFusionClaims(text, names).length)
+    );
+  };
+  if (controller.action === "answer_directly" && directReplyIsSafe(controller.answer)) {
     return withMode({
       // The controller's own reply skips the answer-path checks; drop rule-breaking sentences.
       answer: withoutPartyRuleViolations(
@@ -5194,7 +5205,7 @@ async function directRagResponse(
     }, "rag");
   }
 
-  if (controller.action === "ask_clarifying_question") {
+  if (controller.action === "ask_clarifying_question" && directReplyIsSafe(controller.answer)) {
     const answer =
       controller.answer ??
       controllerFollowUps[0] ??
