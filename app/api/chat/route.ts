@@ -101,6 +101,7 @@ import {
 import { blockedChatResponse } from "../../../src/quality/blockedResponse";
 import { limitQuestions } from "../../../src/quality/chatStyle";
 import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
+import { bossFactContradictions, withoutBossFactContradictions } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
 import { createAnswerExtractor, createSentenceGate } from "../../../src/chat/answerStream";
 import {
@@ -5712,6 +5713,31 @@ Regenerate the JSON answer. Fuuka is the permanent navigator after joining and n
         );
       }
     }
+    const bossErrors = bossFactContradictions(chatResponseClaimText(normalized));
+    if (bossErrors.length) {
+      const correctedRaw = await complete(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `${userPrompt}
+
+Your previous draft contradicted the canonical boss facts:
+${bossErrors.map((error) => `- ${error}`).join("\n")}
+
+Regenerate the JSON answer using the canonical boss facts above.`,
+          },
+        ],
+        { jsonObject: true, timingLabel: "boss-correction", model: chatConfig.correctionChatModel },
+      );
+      normalized = keepDraftWhenEmpty(
+        normalizeRagResponse(extractJson(correctedRaw), responseSources, responseCompanion),
+        normalized,
+      );
+      if (bossFactContradictions(chatResponseClaimText(normalized)).length) {
+        normalized = { ...normalized, answer: withoutBossFactContradictions(normalized.answer) };
+      }
+    }
     normalized = ensureRecommendationCard(
       conversation.analysisQuestion,
       normalized,
@@ -5855,7 +5881,11 @@ function withExpertConversationPolish(draft: ChatResponse): ChatResponse {
 }
 
 function partyRulesAccept(text: string): boolean {
-  return !breaksPartyRules(text) && partyRoleContradictions({ answer: text }).length === 0;
+  return (
+    !breaksPartyRules(text) &&
+    partyRoleContradictions({ answer: text }).length === 0 &&
+    bossFactContradictions(text).length === 0
+  );
 }
 
 /**

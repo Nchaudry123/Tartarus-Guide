@@ -1,5 +1,6 @@
 import type { PlayerProfile } from "../../lib/types";
 import { parseGameDate } from "./dailyPlanner";
+import { bossFactsForPrompt } from "./bossFacts";
 
 /**
  * Canonical, spoiler-safe progress facts the answer model must not get wrong:
@@ -77,5 +78,6 @@ export function progressFactsForPrompt(profile: PlayerProfile, text = ""): strin
       `- Combat party members who have joined by ${roster.label}: ${roster.members.join(", ")}. Only suggest or name these fighters; never mention anyone who has not joined yet.`,
     );
   }
+  lines.push(...bossFactsForPrompt(profile, text));
   return lines.length ? ["Canonical progress facts:", ...lines].join("\n") : "";
 }
