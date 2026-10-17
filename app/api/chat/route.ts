@@ -5214,7 +5214,7 @@ async function agentRoute(input: {
   suggestedLookups?: string[];
   onProgress?: ProgressCallback;
   signal?: AbortSignal;
-}): Promise<AgentRouting> {
+}): Promise<AgentRouting | null> {
   const { question, conversation, normalizedHistory, analysis, onProgress, signal } = input;
   const suggested = (input.suggestedLookups ?? []).filter(Boolean);
   const userWords = userWordsOnly(conversation.analysisQuestion);
@@ -5264,11 +5264,9 @@ async function agentRoute(input: {
   }
   if (!outcome.steps.length) {
     const text = outcome.content.trim();
-    return {
-      controller: { ...base, action: "answer_directly", answer: text && !/^ready\.?$/i.test(text) ? text : null },
-      context: null,
-      steps,
-    };
+    // A lookup was required but the model skipped the tools: let the normal routing handle it.
+    if (!casual || !text || /^ready\.?$/i.test(text)) return null;
+    return { controller: { ...base, action: "answer_directly", answer: text }, context: null, steps };
   }
   return {
     controller: base,
@@ -5610,6 +5608,7 @@ async function directRagResponse(
       : rulesDecision.action === "ask_clarifying_question" || rulesDecision.action === "answer_directly"
         ? rulesDecision
         : null;
+  let agentFallback = false;
   const agentRouting =
     mode === "agent" && !ruleDecision
       ? await agentRoute({
@@ -5621,8 +5620,13 @@ async function directRagResponse(
           suggestedLookups: rulesDecision ? uniqueStrings([...rulesDecision.retrievalQueries, rulesDecision.retrievalQuery]).slice(0, 3) : [],
           onProgress,
           signal,
+        }).catch((error) => {
+          if (signal?.aborted) throw error;
+          console.warn("Agent routing failed; using the standard routing:", error instanceof Error ? error.message : error);
+          return null;
         })
       : null;
+  agentFallback = mode === "agent" && !ruleDecision && !agentRouting;
   const controller =
     ruleDecision ??
     agentRouting?.controller ??
@@ -6294,8 +6298,13 @@ Regenerate the JSON answer using the canonical boss facts above.`,
         factCount: context.facts.length,
         chunkCount: context.chunks.length,
         spoilerMode: spoilerDecision.mode,
-        ...(agentRouting
-          ? { guardrailNotes: [...(response.diagnostics?.guardrailNotes ?? []), `Agent steps: ${agentRouting.steps.join(" -> ") || "none"}`] }
+        ...(agentRouting || agentFallback
+          ? {
+              guardrailNotes: [
+                ...(response.diagnostics?.guardrailNotes ?? []),
+                agentRouting ? `Agent steps: ${agentRouting.steps.join(" -> ") || "none"}` : "Agent fallback: standard routing used",
+              ],
+            }
           : {}),
       };
     }

@@ -61,12 +61,20 @@ export async function runAgentLoop(input: {
   ];
   const steps: AgentStep[] = [];
 
+  let nudged = false;
   for (let round = 0; round < maxSteps; round += 1) {
     const lastRound = round === maxSteps - 1;
-    const reply = await input.complete(messages, definitions, {
-      toolChoice: lastRound ? "none" : round === 0 && input.requireToolFirst ? "required" : "auto",
+    // tool_choice "required" isn't honored by every provider (some return an empty reply), so
+    // a skipped lookup gets one explicit nudge instead.
+    let reply = await input.complete(messages, definitions, {
+      toolChoice: lastRound ? "none" : "auto",
       timingLabel: lastRound ? "agent-final" : `agent-step-${round + 1}`,
     });
+    if (round === 0 && input.requireToolFirst && !reply.toolCalls.length && !nudged) {
+      nudged = true;
+      messages.push({ role: "user", content: "Look it up first: call lookup_facts or search_guides (or ask_clarifying_question if a detail is truly missing)." });
+      reply = await input.complete(messages, definitions, { toolChoice: "auto", timingLabel: "agent-step-1-retry" });
+    }
     if (!reply.toolCalls.length || lastRound) {
       return { kind: "answer", content: reply.content ?? "", steps };
     }

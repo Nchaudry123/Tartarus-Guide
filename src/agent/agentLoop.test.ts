@@ -78,11 +78,14 @@ test("unknown tools and failing tools are reported back to the model, not thrown
   assert.deepEqual(outcome.steps.map((step) => [step.tool, step.ok]), [["nope", false], ["broken", false]]);
 });
 
-test("requireToolFirst forces a tool call on the first round only", async () => {
+test("requireToolFirst nudges once when the model skips the tools", async () => {
   const { complete, seen } = scripted([
+    { content: "" },
     { calls: [["lookup_facts", { query: "a" }]] },
     { content: "done" },
   ]);
-  await runAgentLoop({ system: "s", user: "u", tools: [lookup], complete, requireToolFirst: true });
-  assert.deepEqual(seen.map((step) => step.toolChoice), ["required", "auto"]);
+  const outcome = await runAgentLoop({ system: "s", user: "u", tools: [lookup], complete, requireToolFirst: true });
+  assert.match(seen[1]!.lastMessage, /Look it up first/);
+  assert.deepEqual(outcome.steps.map((step) => step.tool), ["lookup_facts"]);
+  assert.equal(outcome.kind === "answer" && outcome.content, "done");
 });
