@@ -104,6 +104,7 @@ import { progressFactsForPrompt } from "../../../src/quality/progressFacts";
 import {
   FULL_MOON_BOSS_SOURCE,
   bossFactContradictions,
+  canonicalBossAffinities,
   withoutBossFactContradictions,
 } from "../../../src/quality/bossFacts";
 import { quickReply, quickReplyKind } from "../../../src/chat/quickReplies";
@@ -2416,10 +2417,16 @@ function buildBossPrepCard(
     firstFactValue(selectedFacts, "strategy") ??
     evidenceText.match(/(?:watch out for|avoid|use|bring|focus)[^.]{20,180}\./i)?.[0];
 
+  // Game8's boss tables are canonical; retrieved facts only fill in bosses they don't cover.
+  const canonical = canonicalBossAffinities(bossName);
+  const weaknessLabel = canonical
+    ? canonical.weak.length ? joinNatural(canonical.weak) : "None listed"
+    : weaknesses.length ? joinNatural(weaknesses) : "Not confirmed";
+  const avoidLabel = canonical ? canonical.avoid : defensiveAffinities;
   return {
     boss: bossName,
-    weakness: weaknesses.length ? joinNatural(weaknesses) : "Not confirmed",
-    avoid: defensiveAffinities.length ? defensiveAffinities.slice(0, 2).join(" · ") : undefined,
+    weakness: weaknessLabel,
+    avoid: avoidLabel.length ? avoidLabel.slice(0, 2).join(" · ") : undefined,
     recommendedLevel: recommendedLevel ? compactCardValue(recommendedLevel, 40) : undefined,
     party: firstFactValue(selectedFacts, "recommended_party")
       ? compactCardValue(firstFactValue(selectedFacts, "recommended_party")!, 120)
@@ -3107,7 +3114,7 @@ function structuredBloodyMariaResponse(
       ],
       bossPrep: {
         boss: "Bloody Maria",
-        weakness: "Not confirmed",
+        weakness: "Pierce",
         avoid: "Fear follow-up pressure",
         party: "Yukari for Me Patra; Aigis for Pierce pressure",
         danger: "Evil Smile can set up Fear before a punishing follow-up",
@@ -3192,7 +3199,7 @@ function structuredPriestessBossResponse(
       ],
       bossPrep: {
         boss: "Priestess",
-        weakness: "Not confirmed",
+        weakness: "None listed (nulls Ice)",
         avoid: "Ice attacks into Priestess",
         recommendedLevel: "10+",
         party: "Yukari for healing; protagonist covers elements",
