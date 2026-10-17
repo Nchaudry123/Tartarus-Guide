@@ -4309,22 +4309,23 @@ body {
   order: 0;
 }
 :root.is-mobile.has-conversation .composer-tool-btn {
-  width: 2.5rem !important;
-  height: 2.5rem !important;
-  min-width: 2.5rem !important;
-  min-height: 2.5rem !important;
+  width: 2.75rem !important;
+  height: 2.75rem !important;
+  min-width: 2.75rem !important;
+  min-height: 2.75rem !important;
 }
+/* 48px message box and 44px buttons: comfortable tap targets (checked by the smoke test). */
 :root.is-mobile.has-conversation .chat-form textarea {
-  min-height: 2.5rem !important;
+  min-height: 3rem !important;
   font-size: 16px;
   border: 0;
   background: transparent;
 }
 :root.is-mobile.has-conversation .chat-form button[type="submit"] {
-  width: 2.5rem !important;
-  height: 2.5rem !important;
-  min-width: 2.5rem !important;
-  min-height: 2.5rem !important;
+  width: 2.75rem !important;
+  height: 2.75rem !important;
+  min-width: 2.75rem !important;
+  min-height: 2.75rem !important;
 }
 :root.is-mobile.has-conversation .chat-form textarea {
   border: 0 !important;
@@ -4376,11 +4377,13 @@ body {
   display: none;
 }
 
-/* The grid column animates closed; the panel slides and fades out with it. */
-:root:not(.is-mobile) .app-shell {
+/* The grid column animates closed and the panel slides out with it, only while the user is
+   toggling (.is-sidebar-animating). Animating on every layout change made a desktop-to-phone
+   resize slide the columns for 0.45s, so the chat briefly sat off-screen. */
+:root:not(.is-mobile) .app-shell.is-sidebar-animating {
   transition: grid-template-columns 0.45s cubic-bezier(0.16, 1, 0.3, 1), gap 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
-:root:not(.is-mobile) .side-panel {
+:root:not(.is-mobile) .app-shell.is-sidebar-animating .side-panel {
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease, visibility 0s linear 0s;
 }
 :root:not(.is-mobile) .app-shell.is-sidebar-collapsed {
@@ -4392,6 +4395,8 @@ body {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+}
+:root:not(.is-mobile) .app-shell.is-sidebar-animating.is-sidebar-collapsed .side-panel {
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease, visibility 0s linear 0.45s;
 }
 
