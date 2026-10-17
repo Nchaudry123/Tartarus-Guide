@@ -5695,6 +5695,8 @@ async function directRagResponse(
   const controller =
     ruleDecision ??
     agentRouting?.controller ??
+    // Agent fell back: route exactly as the pipeline would.
+    rulesDecision ??
     (await decideCompanionAction(question, analysis, playerProfile, normalizedHistory, complete));
   const controllerProfile = mergeProfile(playerProfile, controller.profileUpdates);
   const spoilerDecision = evaluateSpoilerPolicy({
