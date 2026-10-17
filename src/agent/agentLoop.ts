@@ -93,23 +93,27 @@ export async function runAgentLoop(input: {
         function: { name: call.name, arguments: call.arguments },
       })),
     });
-    for (const call of reply.toolCalls) {
-      const tool = byName.get(call.name);
-      const args = parseArgs(call.arguments);
-      if (!tool) {
-        steps.push({ tool: call.name, args, ok: false });
-        messages.push({ role: "tool", tool_call_id: call.id, content: `Unknown tool "${call.name}".` });
-        continue;
-      }
-      if (tool.progress) input.onProgress?.(tool.progress(args));
-      let result: AgentToolResult;
-      try {
-        result = await tool.run(args);
-        steps.push({ tool: call.name, args, ok: true });
-      } catch (error) {
-        steps.push({ tool: call.name, args, ok: false });
-        result = { content: `The ${call.name} tool failed: ${error instanceof Error ? error.message : "unknown error"}.` };
-      }
+    // Tool calls from one round run in parallel; results go back in the order they were asked.
+    const results = await Promise.all(
+      reply.toolCalls.map(async (call) => {
+        const tool = byName.get(call.name);
+        const args = parseArgs(call.arguments);
+        if (!tool) return { call, args, ok: false, result: { content: `Unknown tool "${call.name}".` } as AgentToolResult };
+        if (tool.progress) input.onProgress?.(tool.progress(args));
+        try {
+          return { call, args, ok: true, result: await tool.run(args) };
+        } catch (error) {
+          return {
+            call,
+            args,
+            ok: false,
+            result: { content: `The ${call.name} tool failed: ${error instanceof Error ? error.message : "unknown error"}.` } as AgentToolResult,
+          };
+        }
+      }),
+    );
+    for (const { call, args, ok, result } of results) {
+      steps.push({ tool: call.name, args, ok });
       if (result.terminal) {
         return { kind: "terminal", tool: call.name, args, content: result.content, steps };
       }

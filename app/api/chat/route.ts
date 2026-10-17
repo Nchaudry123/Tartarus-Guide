@@ -5191,6 +5191,7 @@ Tools:
 
 Rules:
 - Use the player's exact names in queries. One focused query per thing you need; call several tools if the question has several parts.
+- Request every lookup you need in the same turn (they run in parallel) rather than one per turn.
 - For exact facts use lookup_facts; for strategy or "how do I" questions also use search_guides.
 - For pure small talk ("hey", "thanks") call no tools and reply with a short friendly message.
 - When you have enough evidence, reply with the single word READY.`;

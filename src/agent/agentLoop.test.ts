@@ -100,3 +100,25 @@ test("shouldStop ends the loop after a tool round without another model call", a
   assert.equal(outcome.kind === "answer" && outcome.content, "");
   assert.deepEqual(outcome.steps.map((step) => step.tool), ["lookup_facts"]);
 });
+
+test("tool calls from one round run in parallel", async () => {
+  let running = 0;
+  let peak = 0;
+  const slow: AgentTool = {
+    ...lookup,
+    run: async (args) => {
+      running += 1;
+      peak = Math.max(peak, running);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      running -= 1;
+      return { content: String(args.query) };
+    },
+  };
+  const { complete, seen } = scripted([
+    { calls: [["lookup_facts", { query: "a" }], ["lookup_facts", { query: "b" }]] },
+    { content: "done" },
+  ]);
+  await runAgentLoop({ system: "s", user: "u", tools: [slow], complete });
+  assert.equal(peak, 2);
+  assert.equal(seen[1]!.lastMessage, "b");
+});
