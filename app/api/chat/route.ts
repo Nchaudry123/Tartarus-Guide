@@ -491,7 +491,7 @@ function fusionDlcClarificationResponse(
   if (!asksForFusionRoute(question) || profile.dlcOwnership) return null;
   const response = withMode({
     answer:
-      "Before I calculate the recipes: do you have the Persona DLC enabled? DLC Personas change the fusion chart, so the same ingredients can produce a different result.",
+      "Before I calculate the recipes: do you have the Persona DLC enabled? DLC Personas change the fusion chart, so the same ingredients can produce a different result. Tell me \"No Persona DLC\" or \"I have all Persona DLC\".",
     sections: [],
     sources: [fusionToolSource],
     confidence: 0.99,
