@@ -12,6 +12,15 @@ const required = (name: string): string => {
   return value;
 };
 
+/** Longest any single database request may take; a stalled connection otherwise hangs the reply. */
+export const databaseRequestTimeoutMs = 15_000;
+
+/** fetch with a timeout, still honouring the caller's own abort signal. */
+export function fetchWithDatabaseTimeout(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const timeout = AbortSignal.timeout(databaseRequestTimeoutMs);
+  return fetch(input, { ...init, signal: init.signal ? AbortSignal.any([init.signal, timeout]) : timeout });
+}
+
 export const supabase = createClient(
   required("SUPABASE_URL"),
   required("SUPABASE_SERVICE_ROLE_KEY"),
@@ -20,6 +29,7 @@ export const supabase = createClient(
       persistSession: false,
       autoRefreshToken: false,
     },
+    global: { fetch: fetchWithDatabaseTimeout },
   },
 );
 

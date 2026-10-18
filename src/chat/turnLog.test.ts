@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatResponse } from "../../lib/types";
-import { agentToolNames, currentTurnTrace, noteTurn, questionFingerprint, runWithTurnTrace, turnLogRow, type TurnTrace } from "./turnLog";
+import { agentToolNames, currentTurnTrace, turnLogsEnabled, noteTurn, questionFingerprint, runWithTurnTrace, turnLogRow, type TurnTrace } from "./turnLog";
 
 const reply = (extra: Partial<ChatResponse> = {}): ChatResponse => ({
   answer: "Swift Axle is weak to Electric.",
@@ -54,4 +54,12 @@ test("noteTurn records into the active turn only", async () => {
     await Promise.resolve();
     assert.deepEqual(currentTurnTrace(), { agentTools: [], safetyNet: true, agentFallback: false, route: "agent" });
   });
+});
+
+test("turn logs are on for the production deployment only, unless overridden", () => {
+  assert.equal(turnLogsEnabled({ VERCEL_ENV: "production" }), true);
+  assert.equal(turnLogsEnabled({ VERCEL_ENV: "preview" }), false);
+  assert.equal(turnLogsEnabled({}), false);
+  assert.equal(turnLogsEnabled({ TURN_LOGS: "on" }), true);
+  assert.equal(turnLogsEnabled({ VERCEL_ENV: "production", TURN_LOGS: "off" }), false);
 });

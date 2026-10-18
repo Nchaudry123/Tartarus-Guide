@@ -126,8 +126,14 @@ export function turnLogRow(input: {
   };
 }
 
-export function turnLogsEnabled(): boolean {
-  return process.env.TURN_LOGS !== "off";
+/**
+ * Player traffic only: on by default in the production deployment, off for local runs, evals
+ * and preview deployments. TURN_LOGS=on or off overrides.
+ */
+export function turnLogsEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.TURN_LOGS === "on") return true;
+  if (env.TURN_LOGS === "off") return false;
+  return env.VERCEL_ENV === "production";
 }
 
 /** Fire-and-forget insert; a logging failure never affects the reply. */

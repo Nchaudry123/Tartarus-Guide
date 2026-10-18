@@ -482,7 +482,7 @@ async function main(): Promise<void> {
   };
   await mkdir("evals/results", { recursive: true });
   const failedCandidates = failedQuestionCandidates(results);
-  await writeFile(outPath, JSON.stringify({ ...report, chatMode: process.env.CHAT_MODE ?? "pipeline" }, null, 2));
+  await writeFile(outPath, JSON.stringify({ ...report, chatMode: process.env.CHAT_MODE?.trim().toLowerCase() || "agent" }, null, 2));
   await writeFile(
     "evals/results/failed-question-candidates-latest.json",
     JSON.stringify(
